@@ -1,0 +1,47 @@
+== uname -a ==
+Linux Caden 6.6.36.6-microsoft-standard-WSL2+ #7 SMP PREEMPT_DYNAMIC Sun Jan 12 16:55:48 CST 2025 x86_64 x86_64 x86_64 GNU/Linux
+
+== /etc/os-release ==
+PRETTY_NAME="Ubuntu 22.04.5 LTS"
+NAME="Ubuntu"
+VERSION_ID="22.04"
+VERSION="22.04.5 LTS (Jammy Jellyfish)"
+VERSION_CODENAME=jammy
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=jammy
+
+== 编译器 ==
+gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+g++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+
+== 构建工具 ==
+cmake version 3.22.1
+git version 2.34.1
+
+== ZeroMQ ==
+libzmq3-dev:amd64 4.3.4-2
+libzmq5:amd64 4.3.4-2
+-rw-r--r-- 1 root root 30485 Dec 16  2021 /usr/include/zmq.h
+
+== CPU ==
+Architecture:                         x86_64
+CPU(s):                               24
+Model name:                           Intel(R) Core(TM) i7-14650HX
+Thread(s) per core:                   2
+Core(s) per socket:                   12
+Socket(s):                            1
+
+== 内存 ==
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       1.1Gi        14Gi       2.0Mi       289Mi        14Gi
+Swap:          4.0Gi          0B       4.0Gi
+
+== 磁盘 ==
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sdc       1007G  4.1G  952G   1% /
+/dev/sdc       1007G  4.1G  952G   1% /

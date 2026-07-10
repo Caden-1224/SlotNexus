@@ -1,0 +1,38 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 22,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "wsl-debug",
+      "displayName": "WSL 本地 Debug 构建",
+      "description": "WSL 内 Unix Makefiles + Debug，用于 Mock 全链路开发与回归",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-wsl",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "wsl-debug",
+      "displayName": "构建 WSL Debug",
+      "configurePreset": "wsl-debug",
+      "jobs": 8
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "wsl-debug",
+      "displayName": "测试 WSL Debug",
+      "configurePreset": "wsl-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+# 构建目录（按平台命名，不提交）
+build-*/
+
+# CMake / 编译生成物
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+*.o
+*.a
+*.so
+*.so.*
+
+# 模型、厂商 SDK 与第三方源码（只保留 README 说明）
+models/*
+!models/README.md
+third_party/*
+!third_party/README.md
+*.rkllm
+*.rknn
+*.onnx
+*.img
+
+# 音频与日志证据可能含隐私，只允许通过 artifacts 白名单方式提交
+*.wav
+*.pcm
+*.raw
+
+# 编辑器与临时文件
+.vscode/
+.idea/
+*.swp
+*.tmp
