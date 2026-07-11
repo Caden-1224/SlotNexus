@@ -22,4 +22,5 @@ option(VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS
 enable_testing()
 
 add_subdirectory(libs/common)
+add_subdirectory(libs/protocol)
 add_subdirectory(tests/unit)
