@@ -7,3 +7,8 @@ add_test(NAME smoke_test COMMAND smoke_test)
 add_executable(protocol_test protocol_test.cpp)
 target_link_libraries(protocol_test PRIVATE voxorchestra::protocol)
 add_test(NAME protocol_test COMMAND protocol_test)
+
+# NDJSON 增量解帧。
+add_executable(frame_decoder_test frame_decoder_test.cpp)
+target_link_libraries(frame_decoder_test PRIVATE voxorchestra::network)
+add_test(NAME frame_decoder_test COMMAND frame_decoder_test)
