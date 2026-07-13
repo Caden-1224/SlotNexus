@@ -4,6 +4,8 @@ add_library(voxorchestra_network STATIC
   src/channel.cpp
   src/poller.cpp
   src/event_loop.cpp
+  src/tcp_connection.cpp
+  src/tcp_server.cpp
 )
 add_library(voxorchestra::network ALIAS voxorchestra_network)
 

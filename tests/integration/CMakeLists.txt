@@ -10,3 +10,7 @@ add_test(NAME pubsub_integration_test COMMAND pubsub_integration_test)
 add_executable(pushpull_integration_test pushpull_integration_test.cpp)
 target_link_libraries(pushpull_integration_test PRIVATE voxorchestra::transport)
 add_test(NAME pushpull_integration_test COMMAND pushpull_integration_test)
+
+add_executable(tcp_server_test tcp_server_test.cpp)
+target_link_libraries(tcp_server_test PRIVATE voxorchestra::network)
+add_test(NAME tcp_server_test COMMAND tcp_server_test)
