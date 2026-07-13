@@ -12,3 +12,8 @@ add_test(NAME protocol_test COMMAND protocol_test)
 add_executable(frame_decoder_test frame_decoder_test.cpp)
 target_link_libraries(frame_decoder_test PRIVATE voxorchestra::network)
 add_test(NAME frame_decoder_test COMMAND frame_decoder_test)
+
+# epoll Reactor（EventLoop/Channel/Poller）。
+add_executable(reactor_test reactor_test.cpp)
+target_link_libraries(reactor_test PRIVATE voxorchestra::network)
+add_test(NAME reactor_test COMMAND reactor_test)
