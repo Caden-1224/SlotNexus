@@ -14,3 +14,7 @@ add_test(NAME pushpull_integration_test COMMAND pushpull_integration_test)
 add_executable(tcp_server_test tcp_server_test.cpp)
 target_link_libraries(tcp_server_test PRIVATE voxorchestra::network)
 add_test(NAME tcp_server_test COMMAND tcp_server_test)
+
+add_executable(gateway_test gateway_test.cpp)
+target_link_libraries(gateway_test PRIVATE edge_gateway_lib)
+add_test(NAME gateway_test COMMAND gateway_test)
