@@ -22,3 +22,8 @@ add_test(NAME reactor_test COMMAND reactor_test)
 add_executable(task_registry_test task_registry_test.cpp)
 target_link_libraries(task_registry_test PRIVATE voxorchestra::task_registry)
 add_test(NAME task_registry_test COMMAND task_registry_test)
+
+# 节点运行时：任务状态机、隔离、超时、取消、重复 exit。
+add_executable(runtime_test runtime_test.cpp)
+target_link_libraries(runtime_test PRIVATE voxorchestra::runtime)
+add_test(NAME runtime_test COMMAND runtime_test)
