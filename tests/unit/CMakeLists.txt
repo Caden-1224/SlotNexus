@@ -17,3 +17,8 @@ add_test(NAME frame_decoder_test COMMAND frame_decoder_test)
 add_executable(reactor_test reactor_test.cpp)
 target_link_libraries(reactor_test PRIVATE voxorchestra::network)
 add_test(NAME reactor_test COMMAND reactor_test)
+
+# 任务注册表：work_id 生命周期与幂等。
+add_executable(task_registry_test task_registry_test.cpp)
+target_link_libraries(task_registry_test PRIVATE voxorchestra::task_registry)
+add_test(NAME task_registry_test COMMAND task_registry_test)
