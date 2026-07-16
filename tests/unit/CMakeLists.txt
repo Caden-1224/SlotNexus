@@ -27,3 +27,8 @@ add_test(NAME task_registry_test COMMAND task_registry_test)
 add_executable(runtime_test runtime_test.cpp)
 target_link_libraries(runtime_test PRIVATE voxorchestra::runtime)
 add_test(NAME runtime_test COMMAND runtime_test)
+
+# Backend 契约：统一事件 BackendEvent 与音频常量。
+add_executable(backend_contract_test backend_contract_test.cpp)
+target_link_libraries(backend_contract_test PRIVATE voxorchestra::backend)
+add_test(NAME backend_contract_test COMMAND backend_contract_test)
