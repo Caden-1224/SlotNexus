@@ -42,6 +42,9 @@ void RpcClient::recreate_socket() {
   // 兜底发送超时：慢服务端不应无限阻塞调用方。
   const int kDefaultSendTimeoutMs = 3000;
   socket_->set(zmq::sockopt::sndtimeo, kDefaultSendTimeoutMs);
+  // 关闭时立即丢弃滞留状态：避免 REQ socket 停在死端点的重连轮询，
+  // 导致 zmq_ctx_term 永久等待 io 线程退出。
+  socket_->set(zmq::sockopt::linger, 0);
 }
 
 std::string RpcClient::call(const std::string& request,
@@ -130,6 +133,11 @@ bool RpcServer::serve_once_timeout(const Handler& h,
   try {
     received = socket_->recv(request, zmq::recv_flags::none).has_value();
   } catch (zmq::error_t& e) {
+    if (e.num() == EINTR) {
+      // 被信号中断（如 SIGTERM 优雅退出）：按无请求处理返回 false，
+      // 调用方的服务循环会重新轮询并检查退出标志。
+      return false;
+    }
     throw make_error(e);
   }
   if (!received) {

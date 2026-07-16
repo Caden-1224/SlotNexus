@@ -43,6 +43,29 @@ TaskRuntime::SetupResult TaskRuntime::setup(const std::string& request_id,
   return result;
 }
 
+TaskRuntime::SetupResult TaskRuntime::setup_with(const std::string& work_id,
+                                                 const std::string& request_id,
+                                                 const std::string& payload) {
+  SetupResult result;
+  std::lock_guard<std::mutex> lock(map_mutex_);
+  if (channels_.find(work_id) != channels_.end()) {
+    result.error = TaskChannel::Error::kBadState;  // 同名任务已存在
+    return result;
+  }
+  if (channels_.size() >= registry_.capacity()) {
+    result.error = TaskChannel::Error::kCapacity;
+    return result;
+  }
+  auto channel = std::make_shared<TaskChannel>(work_id, backend_factory_());
+  result.error = channel->setup(request_id, payload);
+  if (result.error != TaskChannel::Error::kOk) {
+    return result;
+  }
+  channels_.emplace(work_id, std::move(channel));
+  result.work_id = work_id;
+  return result;
+}
+
 TaskChannel::Error TaskRuntime::inference(const std::string& work_id,
                                           const std::string& request_id,
                                           const std::string& payload,

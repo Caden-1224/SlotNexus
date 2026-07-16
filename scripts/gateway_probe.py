@@ -4,17 +4,17 @@
 用法：
   python3 scripts/gateway_probe.py [端口] [JSON 负载]
 
-默认端口 19100；默认负载为一条合法 inference 请求。
+默认端口 9100（edge_gateway）；默认负载为一条合法 setup 请求。
 示例：
-  python3 scripts/gateway_probe.py                    # 合法请求 -> ack
-  python3 scripts/gateway_probe.py 19100 'garbage'    # 非法 JSON -> error
+  python3 scripts/gateway_probe.py                    # setup -> Manager 分配 work_id
+  python3 scripts/gateway_probe.py 9100 'garbage'     # 非法 JSON -> error
 """
 import socket
 import sys
 
 
 def main() -> None:
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 19100
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 9100
     payload = (
         sys.argv[2]
         if len(sys.argv) > 2

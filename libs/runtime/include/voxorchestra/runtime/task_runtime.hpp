@@ -38,6 +38,11 @@ class TaskRuntime {
   };
   SetupResult setup(const std::string& request_id, const std::string& payload);
 
+  // 使用外部指定的 work_id 创建任务（Unit Manager 全局分配，节点侧使用）；
+  // 同名任务已存在返回 kBadState，容量耗尽返回 kCapacity。
+  SetupResult setup_with(const std::string& work_id, const std::string& request_id,
+                         const std::string& payload);
+
   TaskChannel::Error inference(const std::string& work_id,
                                const std::string& request_id,
                                const std::string& payload,

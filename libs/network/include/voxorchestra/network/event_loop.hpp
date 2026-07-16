@@ -45,6 +45,9 @@ class EventLoop {
   bool is_in_loop_thread() const { return std::this_thread::get_id() == thread_id_; }
   void assert_in_loop_thread() const;
 
+  // run() 是否正在运行事件循环。
+  bool running() const { return running_.load(); }
+
   // Channel 注册/更新/移除（必须在 loop 线程调用）。
   void update_channel(Channel* ch);
   void remove_channel(Channel* ch);

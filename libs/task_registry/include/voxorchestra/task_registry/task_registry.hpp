@@ -37,6 +37,9 @@ class TaskRegistry {
   // 当前存活任务数。
   std::size_t size() const;
 
+  // 容量上限（0 表示默认值，见构造）。
+  std::size_t capacity() const;
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;

@@ -16,5 +16,10 @@ target_link_libraries(tcp_server_test PRIVATE voxorchestra::network)
 add_test(NAME tcp_server_test COMMAND tcp_server_test)
 
 add_executable(gateway_test gateway_test.cpp)
-target_link_libraries(gateway_test PRIVATE edge_gateway_lib)
+target_link_libraries(gateway_test PRIVATE edge_gateway_lib voxorchestra::app_common)
 add_test(NAME gateway_test COMMAND gateway_test)
+
+# 端到端验收：真实三进程拓扑的 Echo 链路。
+add_executable(echo_e2e_test echo_e2e_test.cpp)
+target_link_libraries(echo_e2e_test PRIVATE voxorchestra::protocol)
+add_test(NAME echo_e2e_test COMMAND echo_e2e_test)

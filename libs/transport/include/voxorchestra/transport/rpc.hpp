@@ -60,7 +60,8 @@ class RpcServer {
 
   void bind(const std::string& endpoint);
 
-  // 等待并处理一条请求；timeout 内没有请求返回 false，收到则返回 true。
+  // 等待并处理一条请求；timeout 内没有请求返回 false（含被信号中断，
+  // 此时调用方应重新轮询），收到则返回 true。
   bool serve_once_timeout(const Handler& h, std::chrono::milliseconds timeout);
 
   void close();  // 幂等；关闭后 serve_* 抛 kClosed

@@ -1,6 +1,6 @@
 // edge_gateway 可执行入口。
 //
-// 用法：edge_gateway [--port 9100]
+// 用法：edge_gateway [--port 9100] [--manager-url tcp://127.0.0.1:19100]
 // SIGINT/SIGTERM 优雅退出。
 #include <csignal>
 #include <cstdint>
@@ -33,15 +33,26 @@ std::uint16_t parse_port(int argc, char** argv) {
   return port;
 }
 
+std::string parse_manager_url(int argc, char** argv) {
+  std::string url = "tcp://127.0.0.1:19100";
+  for (int i = 1; i < argc - 1; ++i) {
+    if (std::string(argv[i]) == "--manager-url") {
+      url = argv[i + 1];
+    }
+  }
+  return url;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   const std::uint16_t port = parse_port(argc, argv);
+  const std::string manager_url = parse_manager_url(argc, argv);
 
   voxorchestra::network::EventLoop loop;
   g_loop = &loop;
 
-  voxorchestra::gateway::EdgeGateway gateway(&loop, "127.0.0.1", port);
+  voxorchestra::gateway::EdgeGateway gateway(&loop, "127.0.0.1", port, manager_url);
 
   std::signal(SIGINT, handle_signal);
   std::signal(SIGTERM, handle_signal);

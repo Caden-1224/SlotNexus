@@ -1,6 +1,12 @@
-// Gateway 集成测试：外部 JSON → MessageEnvelope 校验与结构化错误。
+// Gateway 集成测试：外部 JSON → 信封校验、转发给 Manager、结构化错误。
+//
+// 进程内 fake Manager：RpcServer 回 ack 信封（回显关联字段），验证
+// 网关把 action 转发出去并把响应送回原连接。
+#include "action_helpers.hpp"
 #include "edge_gateway.hpp"
 #include "voxorchestra/network/event_loop.hpp"
+#include "voxorchestra/protocol/message_envelope.hpp"
+#include "voxorchestra/transport/rpc.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -14,6 +20,8 @@
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include <zmq.hpp>
 
 namespace eg = voxorchestra::gateway;
 using namespace std::chrono_literals;
@@ -110,14 +118,41 @@ class TestClient {
   }
 };
 
-// 进程内网关：专用线程跑事件循环。
+constexpr const char* kFakeManagerEndpoint = "tcp://127.0.0.1:19555";
+
+// fake Manager：把收到的 action 回 ack 信封（回显关联字段），模拟
+// 真实 Manager 的响应形态。有独立线程服务，保证与网关的 RPC 并发。
+std::string fake_manager_handler(const std::string& request_json) {
+  try {
+    const voxorchestra::protocol::MessageEnvelope req =
+        voxorchestra::protocol::MessageEnvelope::from_json(request_json);
+    return voxorchestra::app::BuildAck(req, {{"status", "ok"}}).to_json();
+  } catch (...) {
+    return R"({"version":1,"type":"error","error":{"code":1,"message":"bad json"}})";
+  }
+}
+
+// 进程内网关：专用线程跑事件循环；with_fake_manager 时起 fake Manager 线程。
 struct GatewayFixture {
+  zmq::context_t ctx{1};
+  voxorchestra::transport::RpcServer fake_manager{ctx};
+  std::atomic<bool> fake_stop{false};
+  std::thread fake_thread;
   voxorchestra::network::EventLoop loop;
-  eg::EdgeGateway gateway{&loop, "127.0.0.1", 0};
+  eg::EdgeGateway gateway{&loop, "127.0.0.1", 0,
+                          kFakeManagerEndpoint};  // 默认连 fake Manager
   std::atomic<bool> started{false};
   std::thread thread;
 
-  GatewayFixture() {
+  GatewayFixture(bool with_fake_manager = true) {
+    if (with_fake_manager) {
+      fake_manager.bind(kFakeManagerEndpoint);
+      fake_thread = std::thread([this] {
+        while (!fake_stop.load()) {
+          fake_manager.serve_once_timeout(fake_manager_handler, 50ms);
+        }
+      });
+    }
     thread = std::thread([this] { loop.run(); });
     loop.run_in_loop([this] {
       gateway.start();
@@ -133,13 +168,17 @@ struct GatewayFixture {
   }
 
   ~GatewayFixture() {
+    fake_stop.store(true);
+    if (fake_thread.joinable()) {
+      fake_thread.join();  // serve_once 50ms 轮询，很快退出
+    }
     gateway.stop();
     loop.quit();
     thread.join();
   }
 };
 
-void test_valid_request_gets_ack() {
+void test_forwarded_request_gets_ack() {
   GatewayFixture g;
   TestClient c;
   CHECK(c.connect_to(g.port()));
@@ -150,12 +189,12 @@ void test_valid_request_gets_ack() {
 
   std::string reply;
   CHECK(c.recv_line(reply, 2000ms));
-  // ack 信封：类型 ack，回显关联字段。
+  // 网关转发给 Manager，Manager 的 ack 信封经网关送回原连接。
   CHECK(reply.find(R"("type":"ack")") != std::string::npos);
   CHECK(reply.find(R"("request_id":"r-1")") != std::string::npos);
   CHECK(reply.find(R"("work_id":"w-1")") != std::string::npos);
   CHECK(reply.find(R"("session_id":"s-1")") != std::string::npos);
-  std::cout << "  [ok] 合法请求返回 ack 信封并回显关联字段" << std::endl;
+  std::cout << "  [ok] action 转发到 Manager，ack 信封送回原连接" << std::endl;
 }
 
 void test_invalid_json_gets_error_and_connection_survives() {
@@ -169,9 +208,10 @@ void test_invalid_json_gets_error_and_connection_survives() {
   CHECK(reply.find(R"("type":"error")") != std::string::npos);
   CHECK(reply.find("\"code\":1") != std::string::npos);  // kInvalidJson == 1
 
-  // 错误后连接仍可用：再发一条合法请求。
-  CHECK(c.send_all(R"({"version":1,"type":"event","request_id":"r-2"})" "\n"));
+  // 错误后连接仍可用：再发一条合法 action，经 Manager 返回 ack。
+  CHECK(c.send_all(R"({"version":1,"type":"setup","request_id":"r-2"})" "\n"));
   CHECK(c.recv_line(reply, 2000ms));
+  CHECK(reply.find(R"("type":"ack")") != std::string::npos);
   CHECK(reply.find(R"("request_id":"r-2")") != std::string::npos);
   std::cout << "  [ok] 非法 JSON 返回结构化错误，连接保持可用" << std::endl;
 }
@@ -212,6 +252,22 @@ void test_missing_type_gets_error() {
   std::cout << "  [ok] 缺少 type 返回错误码 4" << std::endl;
 }
 
+void test_client_direction_types_rejected() {
+  GatewayFixture g;
+  TestClient c;
+  CHECK(c.connect_to(g.port()));
+
+  // event/ack/error 是服务端→客户端方向，客户端发送被拒绝。
+  CHECK(c.send_all(R"({"version":1,"type":"event","request_id":"r-3"})" "\n"));
+  std::string reply;
+  CHECK(c.recv_line(reply, 2000ms));
+  CHECK(reply.find(R"("type":"error")") != std::string::npos);
+  CHECK(reply.find("\"code\":3") != std::string::npos);
+  CHECK(reply.find(R"("request_id":"r-3")") != std::string::npos);
+  CHECK(reply.find("客户端不允许") != std::string::npos);
+  std::cout << "  [ok] 客户端发送服务端方向类型（event）被拒绝" << std::endl;
+}
+
 void test_oversized_closes_connection() {
   GatewayFixture g;
   TestClient c;
@@ -225,16 +281,38 @@ void test_oversized_closes_connection() {
   std::cout << "  [ok] 超长帧直接断开连接（不回复）" << std::endl;
 }
 
+void test_manager_unreachable_gets_error() {
+  // 不启 fake Manager，网关转发 3s 超时后回 manager_unreachable，连接保持。
+  GatewayFixture g(false);
+  TestClient c;
+  CHECK(c.connect_to(g.port()));
+
+  CHECK(c.send_all(R"({"version":1,"type":"inference","request_id":"r-4"})" "\n"));
+  std::string reply;
+  CHECK(c.recv_line(reply, 5000ms));
+  CHECK(reply.find(R"("type":"error")") != std::string::npos);
+  CHECK(reply.find("manager_unreachable") != std::string::npos);
+  CHECK(reply.find(R"("request_id":"r-4")") != std::string::npos);
+
+  // 错误后连接仍可用。
+  CHECK(c.send_all("not json\n"));
+  CHECK(c.recv_line(reply, 2000ms));
+  CHECK(reply.find(R"("type":"error")") != std::string::npos);
+  std::cout << "  [ok] Manager 不可达返回 manager_unreachable，连接保持可用" << std::endl;
+}
+
 }  // namespace
 
 int main() {
   std::cout << "gateway_test:" << std::endl;
-  test_valid_request_gets_ack();
+  test_forwarded_request_gets_ack();
   test_invalid_json_gets_error_and_connection_survives();
   test_unknown_version_gets_error();
   test_unknown_type_gets_error();
   test_missing_type_gets_error();
+  test_client_direction_types_rejected();
   test_oversized_closes_connection();
+  test_manager_unreachable_gets_error();
 
   if (g_failures == 0) {
     std::cout << "gateway_test 全部通过" << std::endl;

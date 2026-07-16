@@ -3,7 +3,7 @@ add_library(edge_gateway_lib STATIC
   edge_gateway.cpp
 )
 target_include_directories(edge_gateway_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(edge_gateway_lib PUBLIC voxorchestra::network voxorchestra::protocol)
+target_link_libraries(edge_gateway_lib PUBLIC voxorchestra::network voxorchestra::protocol voxorchestra::transport)
 
 add_executable(edge_gateway main.cpp)
 target_link_libraries(edge_gateway PRIVATE edge_gateway_lib)

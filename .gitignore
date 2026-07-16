@@ -32,3 +32,6 @@ third_party/*
 .idea/
 *.swp
 *.tmp
+
+# CTest 运行目录
+Testing/

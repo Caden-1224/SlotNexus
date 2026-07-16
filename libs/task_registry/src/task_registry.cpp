@@ -41,6 +41,11 @@ class TaskRegistry::Impl {
     return alive_.size();
   }
 
+  std::size_t capacity() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return max_tasks_;
+  }
+
  private:
   const std::size_t max_tasks_;
   mutable std::mutex mutex_;
@@ -60,5 +65,7 @@ bool TaskRegistry::find(const std::string& work_id) const { return impl_->find(w
 bool TaskRegistry::release(const std::string& work_id) { return impl_->release(work_id); }
 
 std::size_t TaskRegistry::size() const { return impl_->size(); }
+
+std::size_t TaskRegistry::capacity() const { return impl_->capacity(); }
 
 }  // namespace voxorchestra::task_registry

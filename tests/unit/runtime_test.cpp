@@ -181,6 +181,33 @@ void test_repeated_exit() {
   std::cout << "  [ok] 重复 exit：第二次 kNotExist，退出后任务不可再操作" << std::endl;
 }
 
+// setup_with：外部指定 work_id（Unit Manager 全局分配场景）。
+void test_setup_with_external_work_id() {
+  etr::TaskRuntime runtime;
+  const auto ext = runtime.setup_with("w-7", "s-1", "cfg");
+  CHECK(ext.error == etr::TaskChannel::Error::kOk);
+  CHECK(ext.work_id == "w-7");
+  CHECK(runtime.is_alive("w-7"));
+
+  // 同名任务重复创建 → kBadState。
+  CHECK(runtime.setup_with("w-7", "s-2", "cfg2").error ==
+        etr::TaskChannel::Error::kBadState);
+
+  // 自分配 setup() 序列不受外部 id 影响。
+  const auto self = runtime.setup("s-3", "c");
+  CHECK(self.error == etr::TaskChannel::Error::kOk);
+  CHECK(self.work_id == "w-0");
+
+  // 按外部 id 正常推理，随后释放。
+  std::string out;
+  CHECK(runtime.inference("w-7", "r-1", "hi", std::chrono::milliseconds(100),
+                          &out) == etr::TaskChannel::Error::kOk);
+  CHECK(out == "echo:hi");
+  CHECK(runtime.exit("w-7") == etr::TaskChannel::Error::kOk);
+  CHECK(!runtime.is_alive("w-7"));
+  std::cout << "  [ok] setup_with：外部 work_id 创建/重复拒绝/推理/释放" << std::endl;
+}
+
 // 容量：超限 setup 返回 kCapacity，exit 释放后名额恢复且 id 不复用。
 void test_capacity() {
   etr::TaskRuntime runtime(2);
@@ -206,6 +233,7 @@ int main() {
   test_cancel_and_busy();
   test_repeated_exit();
   test_capacity();
+  test_setup_with_external_work_id();
 
   if (g_failures == 0) {
     std::cout << "runtime_test 全部通过" << std::endl;
