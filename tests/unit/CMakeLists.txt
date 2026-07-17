@@ -32,3 +32,8 @@ add_test(NAME runtime_test COMMAND runtime_test)
 add_executable(backend_contract_test backend_contract_test.cpp)
 target_link_libraries(backend_contract_test PRIVATE voxorchestra::backend)
 add_test(NAME backend_contract_test COMMAND backend_contract_test)
+
+# Fake 语音识别：确定性 partial/final、取消语义与会话重置。
+add_executable(fake_asr_test fake_asr_test.cpp)
+target_link_libraries(fake_asr_test PRIVATE voxorchestra::fake_backends)
+add_test(NAME fake_asr_test COMMAND fake_asr_test)
