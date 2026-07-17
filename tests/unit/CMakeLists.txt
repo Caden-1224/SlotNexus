@@ -37,3 +37,8 @@ add_test(NAME backend_contract_test COMMAND backend_contract_test)
 add_executable(fake_asr_test fake_asr_test.cpp)
 target_link_libraries(fake_asr_test PRIVATE voxorchestra::fake_backends)
 add_test(NAME fake_asr_test COMMAND fake_asr_test)
+
+# Fake 文本检索：Top-K 语义、排序确定性与注入知识库。
+add_executable(fake_retriever_test fake_retriever_test.cpp)
+target_link_libraries(fake_retriever_test PRIVATE voxorchestra::fake_backends)
+add_test(NAME fake_retriever_test COMMAND fake_retriever_test)
