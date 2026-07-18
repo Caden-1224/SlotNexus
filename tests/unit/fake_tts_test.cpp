@@ -40,16 +40,18 @@ void test_short_text_single_chunk() {
   CHECK(events[0].kind == eb::BackendEvent::Kind::kPcm);
   CHECK(events[0].text.empty());
   CHECK(events[0].pcm.size() == static_cast<std::size_t>(eb::kFrameSamples));
-  // 公式 ((c*613 + s*311) % 2048) - 1024，c=0：
-  CHECK(events[0].pcm[0] == -1024);       // (0)%2048-1024
-  CHECK(events[0].pcm[1] == -713);        // 311-1024
-  CHECK(events[0].pcm[2] == -402);        // 622-1024
+  // 500 Hz 方波：每 32 采样一周期，前 16 采样 +6000、后 16 采样 -6000。
+  CHECK(events[0].pcm[0] == 6000);
+  CHECK(events[0].pcm[15] == 6000);
+  CHECK(events[0].pcm[16] == -6000);
+  CHECK(events[0].pcm[31] == -6000);
   CHECK(events[1].kind == eb::BackendEvent::Kind::kDone);
   CHECK(events[1].pcm.empty());
-  std::cout << "  [ok] 短文本：单 PCM 块（320 采样）+ kDone，采样值公式可断言" << std::endl;
+  std::cout << "  [ok] 短文本：单 PCM 块（320 采样）+ kDone，500 Hz 方波可断言"
+            << std::endl;
 }
 
-// 长文本（>32 字节）：块数 = ⌈字节数/32⌉，块内容随块序号变化。
+// 长文本（>32 字节）：块数 = ⌈字节数/32⌉，相位跨块连续。
 void test_long_text_multi_chunk() {
   ef::FakeTtsBackend tts;
   auto events = collect(tts);
@@ -61,9 +63,11 @@ void test_long_text_multi_chunk() {
   CHECK(events[2].kind == eb::BackendEvent::Kind::kDone);
   CHECK(events[0].pcm.size() == static_cast<std::size_t>(eb::kFrameSamples));
   CHECK(events[1].pcm.size() == static_cast<std::size_t>(eb::kFrameSamples));
-  CHECK(events[0].pcm[0] == -1024);  // c=0, s=0
-  CHECK(events[1].pcm[0] == -411);   // c=1: 613-1024
-  std::cout << "  [ok] 长文本：2 个 PCM 块，块间内容不同" << std::endl;
+  CHECK(events[0].pcm[0] == 6000);  // 全局序号 0
+  // 第二块首采样：全局序号 320，320 % 32 == 0 → 高电平（相位连续）。
+  CHECK(events[1].pcm[0] == 6000);
+  CHECK(events[1].pcm[15] == 6000);
+  std::cout << "  [ok] 长文本：2 个 PCM 块，相位跨块连续（无跳变）" << std::endl;
 }
 
 // 空文本：仍产出 1 个 PCM 块 + kDone（消费者可依赖"必有输出与结束"）。

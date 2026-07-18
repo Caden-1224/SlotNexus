@@ -3,7 +3,9 @@
 // 确定性规则：
 //   - synthesize(text) 产出块数 = max(1, ⌈文本字节数 / 32⌉) 个 kPcm 帧，
 //     每帧 320 采样（20 ms @ 16 kHz）；
-//   - 采样值 = ((块序号*613 + 采样下标*311) mod 2048) - 1024，
+//   - 波形为 500 Hz 方波（每 32 采样一周期、高低电平各 16 采样），幅度
+//     ±6000（约 -5.5 dBFS，人耳可清晰听见）；相位按全局采样序号连续，
+//     跨块不跳变。采样值 = (全局序号 % 32 < 16) ? 6000 : -6000，
 //     完全由（块序号, 采样下标）决定，可逐采样断言；
 //   - 全部帧后产出 kDone（不携带数据）；
 //   - cancel() 后 synthesize 不再产出任何事件；
@@ -37,8 +39,8 @@ class FakeTtsBackend final : public ITtsBackend {
     for (std::size_t c = 0; c < chunk_count; ++c) {
       std::vector<int16_t> pcm(static_cast<std::size_t>(kFrameSamples));
       for (std::size_t s = 0; s < pcm.size(); ++s) {
-        pcm[s] = static_cast<int16_t>(
-            ((c * 613 + s * 311) % 2048) - 1024);
+        const std::size_t g = c * static_cast<std::size_t>(kFrameSamples) + s;
+        pcm[s] = (g % 32 < 16) ? 6000 : -6000;  // 500 Hz 方波，相位跨块连续
       }
       cb_({BackendEvent::Kind::kPcm, {}, std::move(pcm)});
     }
