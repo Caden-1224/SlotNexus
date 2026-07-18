@@ -9,7 +9,9 @@
 - **网络接入层**：epoll 事件循环（EventLoop/Channel/Poller）+ TCP/NDJSON 增量解帧，慢客户端写缓冲保护
 - **任务运行时**：TaskChannel 状态机（setup/inference/cancel/taskinfo/exit），单流语义、协作式取消与超时、容量控制
 - **控制面链路**：edge_gateway → unit_manager → 节点，work_id 全局分配与路由，Echo 演示后端
-- **端到端验证**：双任务交错 20 轮无跨流，未知任务/取消/重复 exit 语义正确，三进程 SIGTERM 优雅退出（CTest 12/12）
+- **可替换后端契约**：IAsrBackend / IRetriever / ILlmBackend / ITtsBackend / IAudioSink 五类接口与统一事件（partial/final/token/pcm/done），纯头零依赖
+- **确定性 Fake 节点**：ASR / RAG / LLM / TTS 四个 Fake 以真实 Node 进程运行，输出完全可复现，TTS 产出 WAV 文件；默认 x86 构建不依赖 NPU SDK 或声卡（ldd 验收脚本）
+- **端到端验证**：双任务交错 20 轮无跨流，未知任务/取消/重复 exit 语义正确，三进程 SIGTERM 优雅退出；五节点单 Manager 轮转路由互不串扰（CTest 19/19）
 
 ## 快速开始
 
@@ -19,16 +21,23 @@ cmake --build --preset wsl-debug
 ctest --preset wsl-debug
 ```
 
-## 演示（Echo 链路）
+## 演示（多节点链路）
 
 ```bash
+# 五节点：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204
 ./build-wsl/apps/echo_node/echo_node &
-./build-wsl/apps/unit_manager/unit_manager &
+./build-wsl/apps/asr_node/asr_node &
+./build-wsl/apps/rag_node/rag_node &
+./build-wsl/apps/llm_node/llm_node &
+./build-wsl/apps/tts_node/tts_node --output-dir /tmp/tts-out &
+./build-wsl/apps/unit_manager/unit_manager --node tcp://127.0.0.1:19200 \
+  --node tcp://127.0.0.1:19201 --node tcp://127.0.0.1:19202 \
+  --node tcp://127.0.0.1:19203 --node tcp://127.0.0.1:19204 &
 ./build-wsl/apps/edge_gateway/edge_gateway &
 
-# 客户端探测：setup 获得 work_id，再发推理
+# setup 轮转分配 work_id（w-0→echo / w-1→asr / w-2→rag / w-3→llm / w-4→tts）
 python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"setup","request_id":"s-1"}'
-python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"inference","work_id":"w-0","request_id":"r-1","payload":{"text":"你好"}}'
+python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"inference","work_id":"w-1","request_id":"r-1","payload":{"text":"3"}}'
 ```
 
 ## 项目结构
@@ -46,6 +55,6 @@ data/        知识库与固定输入：knowledge / fixtures
 
 ## 路线图
 
-- 四类 Backend 契约与 Fake 节点（ASR / RAG / LLM / TTS）
+- ✅ 四类 Backend 契约与 Fake 节点（ASR / RAG / LLM / TTS）
 - Session 编排、请求队列与取消传播
 - 真实硬件后端接入（sherpa-onnx / RKLLM / SummerTTS）

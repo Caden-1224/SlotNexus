@@ -1,6 +1,7 @@
 // llm_node 可执行入口：Fake 大模型文本生成节点。
 //
-// 用法：llm_node [--listen tcp://127.0.0.1:19202]
+// 用法：llm_node [--listen tcp://127.0.0.1:19203]
+// 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204。
 //
 // Node 外壳（RuntimeNode + TaskRuntime）只依赖接口；本文件实现 IBackend
 // 适配器，把流式 FakeLlmBackend 驱动到完成并返回最终文本：
@@ -58,7 +59,7 @@ void handle_signal(int /*sig*/) { g_stop = 1; }
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string listen = "tcp://127.0.0.1:19202";
+  std::string listen = "tcp://127.0.0.1:19203";
   for (int i = 1; i < argc - 1; ++i) {
     if (std::string(argv[i]) == "--listen") {
       listen = argv[i + 1];

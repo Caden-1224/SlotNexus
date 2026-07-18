@@ -1,0 +1,37 @@
+# backend-contracts 测试记录（2026-07-18）
+
+## 全量 CTest：19/19 通过（build-wsl，Debug）
+
+| 测试 | 结果 | 说明 |
+|---|---|---|
+| smoke_test | 通过 | 基础库冒烟 |
+| protocol_test | 通过 | 消息信封编解码 |
+| frame_decoder_test | 通过 | NDJSON 解帧 |
+| reactor_test | 通过 | epoll Reactor |
+| task_registry_test | 通过 | work_id 注册表 |
+| runtime_test | 通过 | 任务状态机 |
+| backend_contract_test | 通过 | 契约事件与常量 |
+| fake_asr_test | 通过 | Fake ASR 确定性/取消/会话 |
+| fake_retriever_test | 通过 | Fake 检索 Top-K/排序 |
+| fake_llm_test | 通过 | Fake LLM token 流 |
+| fake_tts_test | 通过 | Fake TTS PCM 流 |
+| fake_audio_sink_test | 通过 | WAV 头/往返/生命周期 |
+| rpc/pubsub/pushpull_integration_test | 通过 | ZMQ 三模式 |
+| tcp_server_test / gateway_test | 通过 | TCP 与网关 |
+| echo_e2e_test | 通过 | 三进程 Echo 链路 |
+| fake_nodes_e2e_test | 通过 | 五节点单 Manager 路由 |
+
+## 五节点 E2E 断言（fake_nodes_e2e_test）
+
+- setup ×5：w-0..w-4 轮转路由到 echo/asr/rag/llm/tts 五个节点；
+- echo {"text":"你好"} → "echo:你好"；
+- asr {"text":"3"} → "第1帧(320) 第2帧(320) 第3帧(320)"；
+- rag {"text":"VoxOrchestra 是什么"} → Top-2 JSON（k-voxorchestra 0.95 / k-arch 0.90）；
+- llm {"text":"你好 世界 VoxOrchestra"} → "你好 世界 VoxOrchestra"；
+- tts {"text":"VoxOrchestra"} → WAV 文件 684 字节（44 头 + 640 PCM），"RIFF" 魔数正确；
+- 未知 work_id → not_exist；SIGTERM 七个进程全部退出码 0。
+
+## 无硬件依赖（scripts/check_no_hw_deps.sh）
+
+echo_node / asr_node / rag_node / llm_node / tts_node / unit_manager / edge_gateway：
+全部无 rkllm / rknn / sherpa / onnx / summer / asound / libsndfile 链接。

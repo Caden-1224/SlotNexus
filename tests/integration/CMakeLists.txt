@@ -23,3 +23,8 @@ add_test(NAME gateway_test COMMAND gateway_test)
 add_executable(echo_e2e_test echo_e2e_test.cpp)
 target_link_libraries(echo_e2e_test PRIVATE voxorchestra::protocol)
 add_test(NAME echo_e2e_test COMMAND echo_e2e_test)
+
+# 端到端验收：五节点（echo + 四类 Fake）单 Manager 轮转路由。
+add_executable(fake_nodes_e2e_test fake_nodes_e2e_test.cpp)
+target_link_libraries(fake_nodes_e2e_test PRIVATE voxorchestra::protocol)
+add_test(NAME fake_nodes_e2e_test COMMAND fake_nodes_e2e_test)

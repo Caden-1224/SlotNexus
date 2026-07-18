@@ -1,6 +1,7 @@
 // tts_node 可执行入口：Fake 语音合成节点（WAV 输出）。
 //
-// 用法：tts_node [--listen tcp://127.0.0.1:19203] [--output-dir <目录>]（默认 tts-out）
+// 用法：tts_node [--listen tcp://127.0.0.1:19204] [--output-dir <目录>]（默认 tts-out）
+// 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204。
 //
 // Node 外壳（RuntimeNode + TaskRuntime）只依赖接口；本文件实现 IBackend
 // 适配器，把流式 FakeTtsBackend 的 PCM 帧写入 FakeAudioSink（WAV 文件）：
@@ -98,7 +99,7 @@ void handle_signal(int /*sig*/) { g_stop = 1; }
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string listen = "tcp://127.0.0.1:19203";
+  std::string listen = "tcp://127.0.0.1:19204";
   std::string output_dir = "tts-out";
   for (int i = 1; i < argc - 1; ++i) {
     if (std::string(argv[i]) == "--listen") {

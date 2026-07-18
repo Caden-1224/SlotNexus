@@ -1,6 +1,7 @@
 // rag_node 可执行入口：Fake 文本检索节点。
 //
-// 用法：rag_node [--listen tcp://127.0.0.1:19201] [--top-k N]（默认 2）
+// 用法：rag_node [--listen tcp://127.0.0.1:19202] [--top-k N]（默认 2）
+// 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204。
 //
 // Node 外壳（RuntimeNode + TaskRuntime）只依赖接口；本文件实现 IBackend
 // 适配器，把查询送入 FakeRetriever 并序列化结果：
@@ -59,7 +60,7 @@ void handle_signal(int /*sig*/) { g_stop = 1; }
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string listen = "tcp://127.0.0.1:19201";
+  std::string listen = "tcp://127.0.0.1:19202";
   std::size_t top_k = 2;
   for (int i = 1; i < argc - 1; ++i) {
     if (std::string(argv[i]) == "--listen") {
