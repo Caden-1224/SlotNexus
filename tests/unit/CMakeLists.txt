@@ -42,3 +42,8 @@ add_test(NAME fake_asr_test COMMAND fake_asr_test)
 add_executable(fake_retriever_test fake_retriever_test.cpp)
 target_link_libraries(fake_retriever_test PRIVATE voxorchestra::fake_backends)
 add_test(NAME fake_retriever_test COMMAND fake_retriever_test)
+
+# Fake 大模型生成：token 序列、最终文本、取消语义与会话重置。
+add_executable(fake_llm_test fake_llm_test.cpp)
+target_link_libraries(fake_llm_test PRIVATE voxorchestra::fake_backends)
+add_test(NAME fake_llm_test COMMAND fake_llm_test)
