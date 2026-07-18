@@ -47,3 +47,13 @@ add_test(NAME fake_retriever_test COMMAND fake_retriever_test)
 add_executable(fake_llm_test fake_llm_test.cpp)
 target_link_libraries(fake_llm_test PRIVATE voxorchestra::fake_backends)
 add_test(NAME fake_llm_test COMMAND fake_llm_test)
+
+# Fake 语音合成：确定性 PCM 块序列、取消语义与会话重置。
+add_executable(fake_tts_test fake_tts_test.cpp)
+target_link_libraries(fake_tts_test PRIVATE voxorchestra::fake_backends)
+add_test(NAME fake_tts_test COMMAND fake_tts_test)
+
+# Fake 音频输出（WAV）：文件头、数据往返与生命周期语义。
+add_executable(fake_audio_sink_test fake_audio_sink_test.cpp)
+target_link_libraries(fake_audio_sink_test PRIVATE voxorchestra::fake_backends)
+add_test(NAME fake_audio_sink_test COMMAND fake_audio_sink_test)
