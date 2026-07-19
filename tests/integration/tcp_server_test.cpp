@@ -298,6 +298,29 @@ void test_slow_client_write_limit() {
   t.join();
 }
 
+void test_disconnect_releases_connection() {
+  // 回归：连接断开后 TcpServer 连接表必须清空（此前 close 回调按
+  // c->fd() 擦除，而 fd 已被置 -1，erase(-1) 恒为 no-op，连接对象泄漏）。
+  EchoServer s;
+  {
+    TestClient c1;
+    TestClient c2;
+    TestClient c3;
+    CHECK(c1.connect_to(s.port()));
+    CHECK(c2.connect_to(s.port()));
+    CHECK(c3.connect_to(s.port()));
+  }  // 三个客户端全部断开
+
+  std::atomic<int> remaining{-1};
+  CHECK(wait_until(
+      [&] {
+        s.loop.run_in_loop([&] { remaining.store(s.server.connection_count()); });
+        return remaining.load() == 0;
+      },
+      2000ms));
+  std::cout << "  [ok] 连接断开后连接表清空（无连接对象泄漏）" << std::endl;
+}
+
 void test_double_stop() {
   EchoServer s;
   s.server.stop();  // 重复 stop 幂等，不崩溃
@@ -315,6 +338,7 @@ int main() {
   test_oversized_frame_closes();
   test_early_disconnect_and_reconnect();
   test_slow_client_write_limit();
+  test_disconnect_releases_connection();
   test_double_stop();
 
   if (g_failures == 0) {

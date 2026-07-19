@@ -126,8 +126,10 @@ void TcpServer::handle_accept() {
             on_message_(c, f);
           }
         },
-        [this](const std::shared_ptr<TcpConnection>& c) {
-          connections_.erase(c->fd());
+        // 按创建时的原始 fd 擦除：close_in_loop 会在回调前把 c->fd()
+        // 置为 -1，若用 c->fd() 擦除会恒为 no-op，导致连接对象泄漏。
+        [this, conn_fd](const std::shared_ptr<TcpConnection>& c) {
+          connections_.erase(conn_fd);
           if (on_connection_close_) {
             on_connection_close_(c);
           }

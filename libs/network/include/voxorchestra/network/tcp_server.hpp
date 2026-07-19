@@ -50,6 +50,9 @@ class TcpServer {
   // 实际绑定的端口（bind 端口 0 时由内核分配，供测试使用）。
   std::uint16_t local_port() const { return local_port_; }
 
+  // 当前存活的连接数（仅供测试观察，须在 loop 线程读取）。
+  std::size_t connection_count() const { return connections_.size(); }
+
  private:
   void stop_in_loop();
   void handle_accept();
