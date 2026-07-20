@@ -83,39 +83,46 @@ MessageEnvelope MessageEnvelope::from_json(const std::string& json) {
     throw ProtocolError(ProtocolErrorCode::kInvalidJson, "消息必须是 JSON 对象");
   }
 
-  const int version = obj.value("version", 0);
-  if (version != kProtocolVersion) {
-    throw ProtocolError(ProtocolErrorCode::kUnknownVersion,
-                        "协议版本 " + std::to_string(version) + " 不受支持，当前版本为 " +
-                            std::to_string(kProtocolVersion));
-  }
-
-  if (!obj.contains("type")) {
-    throw ProtocolError(ProtocolErrorCode::kMissingField, "缺少必需字段 type");
-  }
-  MessageType type{};
-  if (!message_type_from_string(obj["type"].get<std::string>(), type)) {
-    throw ProtocolError(ProtocolErrorCode::kInvalidType,
-                        "未知消息类型: " + obj["type"].get<std::string>());
-  }
-
   MessageEnvelope env;
-  env.set_version(version);
-  env.set_type(type);
-  env.set_work_id(obj.value("work_id", std::string{}));
-  env.set_request_id(obj.value("request_id", std::string{}));
-  env.set_session_id(obj.value("session_id", std::string{}));
-  env.set_index(obj.value("index", int64_t{-1}));
-  env.set_timestamp_ms(obj.value("timestamp_ms", int64_t{-1}));
-  env.set_finish(obj.value("finish", false));
-  if (obj.contains("payload")) {
-    env.set_payload(obj["payload"]);
-  }
-  if (obj.contains("error") && obj["error"].is_object()) {
-    ErrorInfo e;
-    e.code = obj["error"].value("code", 0);
-    e.message = obj["error"].value("message", std::string{});
-    env.set_error(std::move(e));
+  try {
+    // 所有类型化字段访问都可能因类型错误抛出 nlohmann 异常，统一转为
+    // ProtocolError，避免原始异常逃逸到网关/节点进程导致崩溃。
+    const int version = obj.value("version", 0);
+    if (version != kProtocolVersion) {
+      throw ProtocolError(ProtocolErrorCode::kUnknownVersion,
+                          "协议版本 " + std::to_string(version) + " 不受支持，当前版本为 " +
+                              std::to_string(kProtocolVersion));
+    }
+
+    if (!obj.contains("type")) {
+      throw ProtocolError(ProtocolErrorCode::kMissingField, "缺少必需字段 type");
+    }
+    MessageType type{};
+    if (!message_type_from_string(obj["type"].get<std::string>(), type)) {
+      throw ProtocolError(ProtocolErrorCode::kInvalidType,
+                          "未知消息类型: " + obj["type"].get<std::string>());
+    }
+
+    env.set_version(version);
+    env.set_type(type);
+    env.set_work_id(obj.value("work_id", std::string{}));
+    env.set_request_id(obj.value("request_id", std::string{}));
+    env.set_session_id(obj.value("session_id", std::string{}));
+    env.set_index(obj.value("index", int64_t{-1}));
+    env.set_timestamp_ms(obj.value("timestamp_ms", int64_t{-1}));
+    env.set_finish(obj.value("finish", false));
+    if (obj.contains("payload")) {
+      env.set_payload(obj["payload"]);
+    }
+    if (obj.contains("error") && obj["error"].is_object()) {
+      ErrorInfo e;
+      e.code = obj["error"].value("code", 0);
+      e.message = obj["error"].value("message", std::string{});
+      env.set_error(std::move(e));
+    }
+  } catch (const nlohmann::json::exception& e) {
+    throw ProtocolError(ProtocolErrorCode::kInvalidJson,
+                        std::string("消息字段类型错误: ") + e.what());
   }
   return env;
 }
