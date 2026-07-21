@@ -20,7 +20,7 @@ namespace voxorchestra::network {
 
 enum class FrameResult {
   kOk,         // 正常处理完本次输入
-  kOversized,  // 出现超过上限且未换行的帧，缓冲已清空
+  kOversized,  // 出现超过上限的帧（无论是否已换行），缓冲已清空
 };
 
 class NdjsonFrameDecoder {

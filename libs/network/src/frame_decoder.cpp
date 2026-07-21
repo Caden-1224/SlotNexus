@@ -28,6 +28,12 @@ FrameResult NdjsonFrameDecoder::feed(std::string_view chunk,
     if (!frame.empty() && frame.back() == '\r') {
       frame.pop_back();
     }
+    // 无论是否已带换行，超过上限一律视为协议错误（否则超长帧
+    // 可在换行命中后绕过限制）。
+    if (frame.size() > max_frame_bytes_) {
+      reset();
+      return FrameResult::kOversized;
+    }
     buffer_.erase(0, nl + 1);
 
     // 空白行不构成有效 JSON 帧，跳过。

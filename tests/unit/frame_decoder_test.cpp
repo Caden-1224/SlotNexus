@@ -129,6 +129,28 @@ void test_oversized() {
   std::cout << "  [ok] 超长帧报错并清空缓冲，reset 后可复用" << std::endl;
 }
 
+void test_oversized_with_newline() {
+  // 带换行的超长帧同样必须拒绝（此前只在"无换行"分支检查上限，
+  // 客户端可发送任意长的帧绕过 1 MiB 保护）。
+  en::NdjsonFrameDecoder d(64);
+  std::vector<std::string> frames;
+  CHECK(d.feed(std::string(65, 'x') + "\n", frames) == en::FrameResult::kOversized);
+  CHECK(frames.empty());
+  CHECK(d.partial_size() == 0);
+
+  // 分两次喂入、换行在第二次到达：仍须拒绝。
+  en::NdjsonFrameDecoder d2(64);
+  CHECK(d2.feed(std::string(60, 'x'), frames) == en::FrameResult::kOk);
+  CHECK(d2.feed(std::string(10, 'x') + "\n", frames) == en::FrameResult::kOversized);
+  CHECK(d2.partial_size() == 0);
+
+  // CRLF 形式的超长帧也拒绝。
+  en::NdjsonFrameDecoder d3(64);
+  CHECK(d3.feed(std::string(65, 'x') + "\r\n", frames) == en::FrameResult::kOversized);
+  CHECK(frames.empty());
+  std::cout << "  [ok] 带换行/CRLF 的超长帧一律 kOversized" << std::endl;
+}
+
 void test_frame_exactly_at_limit() {
   // 帧内容恰好等于上限且带换行：合法。
   en::NdjsonFrameDecoder d(64);
@@ -150,6 +172,7 @@ int main() {
   test_crlf();
   test_empty_lines_skipped();
   test_oversized();
+  test_oversized_with_newline();
   test_frame_exactly_at_limit();
 
   if (g_failures == 0) {

@@ -6,7 +6,8 @@
 
 | 组件 | 来源 | 版本 | 许可证 | 用途 | 允许复制到仓库 |
 |---|---|---|---|---|---|
-| （暂无） | | | | | |
+| nlohmann-json | apt 包 nlohmann-json3-dev | 3.10.5 | MIT | MessageEnvelope JSON 编解码 | 否（系统包，不打包） |
+| ZeroMQ（libzmq） | apt 包 libzmq3-dev / libzmq5 | 4.3.4 | MPL-2.0 | 控制面 RPC 与数据面流 | 否（系统包，动态链接） |
 
 规则：
 
