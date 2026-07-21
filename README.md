@@ -31,22 +31,7 @@
 
 ## 项目架构图
 
-```text
-  Voice Client（WAV / 麦克风 / 文本）
-        │  TCP + NDJSON
-        ▼
-   ┌───────────┐    ┌──────────────┐
-   │  Gateway  │───▶│ Unit Manager │   setup / taskinfo / exit
-   └───────────┘    └──────┬───────┘   （控制面 REQ/REP + deadline）
-                           │
-                    ┌──────▼───────┐
-                    │   Session    │   work_id / request_id / session_id
-                    └──────┬───────┘   取消传播与晚到消息过滤
-   ┌───────────────────────┼───────────────────────┐
-   ▼                       ▼                       ▼
- ASR Node ─▶ RAG Node ─▶ (L2/L3) LLM Node ─▶ TTS Node ─▶ WAV / ALSA
-   └──────────── 数据面：ZeroMQ 异步流（有界、可取消） ────────────┘
-```
+![VoxOrchestra 架构图](docs/arch.png)
 
 ### 三个平面
 
@@ -194,6 +179,6 @@ docs/        设计文档（随开发补齐）
 
 ## 第三方组件、模型与许可
 
-- `THIRD_PARTY_NOTICES.md`：第三方组件登记与许可边界（当前系统依赖 ZeroMQ 与 nlohmann-json，均以系统包引入、不打包进仓库）；
+- `THIRD_PARTY_NOTICES.md`：第三方组件登记与许可边界（nlohmann-json 单头文件已打包进仓库，ZeroMQ 以系统包引入）；
 - `models/README.md`：模型获取与校验方式（模型文件不入库）；
 - `third_party/README.md`：第三方源码/SDK 获取说明（源码不入库）。

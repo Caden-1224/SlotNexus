@@ -12,11 +12,13 @@ compile_commands.json
 *.so
 *.so.*
 
-# 模型、厂商 SDK 与第三方源码（只保留 README 说明）
+# 模型、厂商 SDK 与第三方源码（只保留 README 说明与已打包的 MIT 单头文件）
 models/*
 !models/README.md
 third_party/*
 !third_party/README.md
+!third_party/nlohmann/
+!third_party/nlohmann/json.hpp
 *.rkllm
 *.rknn
 *.onnx

@@ -1,12 +1,12 @@
 # 第三方组件与许可记录
 
-本项目目前不打包任何第三方代码或二进制。
+已打包的第三方组件：nlohmann-json 单头文件（MIT，`third_party/nlohmann/json.hpp`，许可头保留在文件内）；其余以系统包方式引入，不打包进仓库。
 
 引入任何第三方组件（源码、库、模型、SDK、镜像脚本）前，必须在此记录：
 
 | 组件 | 来源 | 版本 | 许可证 | 用途 | 允许复制到仓库 |
 |---|---|---|---|---|---|
-| nlohmann-json | apt 包 nlohmann-json3-dev | 3.10.5 | MIT | MessageEnvelope JSON 编解码 | 否（系统包，不打包） |
+| nlohmann-json | 仓库 `third_party/nlohmann/json.hpp`（源自 nlohmann-json3-dev） | 3.10.5 | MIT | MessageEnvelope JSON 编解码 | 是（单头文件，许可头已保留） |
 | ZeroMQ（libzmq） | apt 包 libzmq3-dev / libzmq5 | 4.3.4 | MPL-2.0 | 控制面 RPC 与数据面流 | 否（系统包，动态链接） |
 
 规则：
