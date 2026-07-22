@@ -57,3 +57,8 @@ add_test(NAME fake_tts_test COMMAND fake_tts_test)
 add_executable(fake_audio_sink_test fake_audio_sink_test.cpp)
 target_link_libraries(fake_audio_sink_test PRIVATE voxorchestra::fake_backends)
 add_test(NAME fake_audio_sink_test COMMAND fake_audio_sink_test)
+
+# 轻量 RAG：文本规范化、BM25 手算对照、JSONL 知识库与 L0-L3 路由。
+add_executable(rag_test rag_test.cpp)
+target_link_libraries(rag_test PRIVATE voxorchestra::rag)
+add_test(NAME rag_test COMMAND rag_test)
