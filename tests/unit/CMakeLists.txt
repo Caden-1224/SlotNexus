@@ -62,3 +62,18 @@ add_test(NAME fake_audio_sink_test COMMAND fake_audio_sink_test)
 add_executable(rag_test rag_test.cpp)
 target_link_libraries(rag_test PRIVATE voxorchestra::rag)
 add_test(NAME rag_test COMMAND rag_test)
+
+# 有界队列：容量、满队列行为（拒绝/超时/阻塞）、关闭、清空、峰值与并发。
+add_executable(bounded_queue_test bounded_queue_test.cpp)
+target_link_libraries(bounded_queue_test PRIVATE voxorchestra::common)
+add_test(NAME bounded_queue_test COMMAND bounded_queue_test)
+
+# 分句器：中英文句末标点、连续标点、换行与流式切分。
+add_executable(sentence_chunker_test sentence_chunker_test.cpp)
+target_link_libraries(sentence_chunker_test PRIVATE voxorchestra::common)
+add_test(NAME sentence_chunker_test COMMAND sentence_chunker_test)
+
+# WAV 读取器：16-bit PCM 解析、未知块跳过、格式拒绝与损坏输入。
+add_executable(wav_reader_test wav_reader_test.cpp)
+target_link_libraries(wav_reader_test PRIVATE voxorchestra::common)
+add_test(NAME wav_reader_test COMMAND wav_reader_test)
