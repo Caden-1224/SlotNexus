@@ -77,3 +77,16 @@ add_test(NAME sentence_chunker_test COMMAND sentence_chunker_test)
 add_executable(wav_reader_test wav_reader_test.cpp)
 target_link_libraries(wav_reader_test PRIVATE voxorchestra::common)
 add_test(NAME wav_reader_test COMMAND wav_reader_test)
+
+# Session 状态机：合法/非法迁移、任意阶段取消与轨迹记录。
+add_executable(session_state_test session_state_test.cpp)
+target_link_libraries(session_state_test PRIVATE voxorchestra::session)
+add_test(NAME session_state_test COMMAND session_state_test)
+
+# Session 编排管线：四类路由、WAV 输入、满队列丢弃、取消传播与晚到过滤。
+add_executable(session_pipeline_test session_pipeline_test.cpp)
+target_link_libraries(session_pipeline_test PRIVATE
+  voxorchestra::session
+  voxorchestra::fake_backends
+)
+add_test(NAME session_pipeline_test COMMAND session_pipeline_test)
