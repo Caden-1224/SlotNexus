@@ -14,6 +14,7 @@ BINS=(
   "$BUILD/apps/tts_node/tts_node"
   "$BUILD/apps/unit_manager/unit_manager"
   "$BUILD/apps/edge_gateway/edge_gateway"
+  "$BUILD/apps/session_node/session_node"
 )
 PATTERN='rkllm|rknn|sherpa|onnx|summer|asound|libsndfile'
 FAILED=0

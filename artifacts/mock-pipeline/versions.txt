@@ -1,0 +1,25 @@
+# Mock 流水线版本链（证据）
+# 采集时间：2026-07-23（WSL，x86_64）
+
+## 环境
+- WSL: Ubuntu 22.04（Linux 5.15.x WSL2 内核）
+- 编译器: g++ (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0
+- CMake: 3.22.x
+- libzmq: 4.3.x（系统包 libzmq3-dev）
+- cppzmq: 2017 版单头 zmq.hpp（无 poller_t，使用经典 zmq_poll）
+- nlohmann/json: 3.10.5（仓库内 third_party 单头文件）
+
+## 协议
+- MessageEnvelope 协议版本: 1（libs/protocol/message_envelope.hpp）
+
+## 端口约定
+- edge_gateway: TCP 9100（演示）/ 9101（e2e 测试）
+- unit_manager: ZMQ 19100
+- session_node: ZMQ 19210（新增）
+- echo/asr/rag/llm/tts: 19200-19204（交付，session 链路未使用）
+
+## 知识库与阈值（config/mock/session.json，实测标定）
+- 知识库: data/knowledge/knowledge.jsonl（8 条）
+- direct_threshold: 5.0 / context_threshold: 1.0 / top_k: 2
+- 队列容量: 文本 8 / PCM 32；满队列超时 50ms 丢弃并计数
+- tts_min_duration_ms: 1000（短回答补静音帧到 1 秒）

@@ -287,6 +287,23 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
     sink_thread.join();
   }
 
+  // 最小合成时长：输出不足时补静音帧（成功路径；取消/失败不补齐）。
+  if (!cancelled_.load() && result.error.empty() && !timed_out() &&
+      config_.tts_min_duration.count() > 0) {
+    const std::size_t min_frames = static_cast<std::size_t>(
+        config_.tts_min_duration.count() * backend::kSampleRateHz /
+        1000 / backend::kFrameSamples);
+    while (result.pcm_frames < min_frames) {
+      std::vector<std::int16_t> silence(
+          static_cast<std::size_t>(backend::kFrameSamples), 0);
+      if (sink->write_pcm(silence)) {
+        ++result.pcm_frames;
+      } else {
+        break;
+      }
+    }
+  }
+
   const bool sink_ok = sink->close();
   if (cancelled_.load()) {
     result.cancelled = true;

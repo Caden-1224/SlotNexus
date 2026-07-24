@@ -28,6 +28,9 @@ third_party/*
 *.wav
 *.pcm
 *.raw
+# 固定输入 fixture 例外：确定性生成、无隐私（生成方法见
+# scripts/gen_fixture_wav.py 与 README 的 data/fixtures 说明）
+!data/fixtures/voice.wav
 
 # 编辑器与临时文件
 .vscode/

@@ -42,6 +42,10 @@ struct PipelineConfig {
   std::chrono::milliseconds queue_push_timeout{50};  // 满队列等待，超时丢弃
   std::chrono::milliseconds stage_delay{0};  // 测试仪表：阶段人工延时（模拟流式）
   std::string output_dir = "session-out";    // WAV 输出目录
+  // 最小合成时长：Fake TTS 按文本字节数产出帧（32 字节/帧），短回答
+  // 只有 20-200ms（人耳"闪一下"）。输出不足该时长时补静音帧到该时长，
+  // 保证演示音频可听；0 表示不补齐（测试与单元场景保持原样）。
+  std::chrono::milliseconds tts_min_duration{0};
 };
 
 // 一次运行（一个请求）的输入。

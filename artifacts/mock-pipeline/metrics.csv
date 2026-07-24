@@ -1,0 +1,32 @@
+# 指标：BM25 得分实测、路由结果、队列峰值与音频时长
+# 环境：WSL Ubuntu 22.04 x86_64；知识库 data/knowledge/knowledge.jsonl（8 条）
+# 阈值：direct=5.0 / context=1.0 / top_k=2；stage_delay=20ms（演示）
+
+# 1) 演示查询的 BM25 Top-1/Top-2 实测得分（阈值标定依据）
+query,route,top1_id,top1_score,top2_id,top2_score
+停止播放,l0,-,-,-,-                  # 关键词命中，绕过检索
+16kHz 音频格式,l1,k-audio,9.71031,k-voxorchestra,1.99522
+生成过滤怎么实现,l2,k-runtime,4.22858,k-cancel,2.46718
+你好 今天天气怎么样,l3,-,0,-,-        # 无命中
+VoxOrchestra 是什么,l2,k-backend,1.29912,k-voxorchestra,1.18836
+多进程架构怎么实现,l1,k-arch,8.43578,k-backend,3.53109
+
+# 2) 队列峰值与输出统计（演示运行，demo-full.log）
+request_id,route,final_text(截断),token_count,pcm_frames,text_queue_peak,pcm_queue_peak,dropped_sentences,dropped_pcm_frames,wav_bytes
+r-l0,l0,已停止当前播放，随时待命,0,50,1,2,0,0,32044
+r-l1,l1,VoxOrchestra 音频格式统一为 16kHz 单声道 16-bit PCM…,0,50,1,3,0,0,32044
+r-l2,l2,- VoxOrchestra 的 Backend 是可替换实现…（上下文+查询）,15,50,1,4,0,0,32044
+r-l3,l3,你好 今天天气怎么样,2,50,1,1,0,0,32044
+r-wav,l1,（50 帧 ASR 文本命中 k-audio）VoxOrchestra 音频格式统一为…,0,50,1,3,0,0,32044
+
+# 3) 取消时间线（session_e2e_test 直连场景，stage-delay=20ms）
+#    0ms      推理请求到达，LLM 生成开始（21 token × 20ms ≈ 430ms 全程）
+#    150ms    cancel 到达（另一条 REQ 连接），generation 递增并传播
+#    150ms后  晚到 token 全部过滤；回复 status=cancelled、pcm_frames=0
+#    之后     新请求 status=ok，generation = 取消前世代 + 2
+
+# 4) 说明
+#    - pcm_frames=50 = tts_min_duration_ms=1000 补静音帧后的帧数（20ms/帧）
+#    - 队列峰值均不超过配置容量（文本 8 / PCM 32）
+#    - r-wav 的 route=l1 是真实 BM25 行为：50 帧描述文本含数字 16/20，
+#      与 k-audio 条目（16kHz、20 毫秒）撞词，非缺陷

@@ -31,7 +31,57 @@
 
 ## 项目架构图
 
-![VoxOrchestra 架构图](docs/arch.png)
+```mermaid
+flowchart TB
+   Client["Voice Client<br/>麦克风 / WAV / 文本"]
+
+   subgraph Control["外部接入与控制面（已实现）"]
+       direction LR
+       Gateway["Edge Gateway<br/>主从 Reactor · TCP/NDJSON"]
+       Manager["Unit Manager<br/>work_id 分配 · 节点路由"]
+       Registry["TaskRegistry<br/>allocate / find / release"]
+       Gateway -->|"REQ/REP RPC<br/>deadline + 结构化错误"| Manager
+       Manager --- Registry
+   end
+
+   subgraph Pipeline["会话编排与推理数据面"]
+       direction LR
+       Session["Session Node<br/>状态机 · cancel · generation<br/>已实现（Mock）"]
+       ASR["ASR Node<br/>Fake 已实现<br/>sherpa-onnx 待接入"]
+       RAG["RAG Node<br/>Fake 已实现<br/>JSONL + BM25 已实现"]
+       LLM["LLM Node<br/>Fake 已实现<br/>RKLLM 待接入"]
+       TTS["TTS Node<br/>Fake 已实现<br/>SummerTTS 待接入"]
+       Sink["Audio Sink<br/>WAV / ALSA<br/>板卡阶段"]
+
+       Session -.->|"音频帧"| ASR
+       ASR -.->|"partial / final"| RAG
+       RAG -.->|"L2 / L3 + context"| LLM
+       RAG -.->|"L0 / L1 直答"| TTS
+       LLM -.->|"token / 句子"| TTS
+       TTS -.->|"PCM"| Sink
+   end
+
+   Runtime["统一 Node Runtime（已实现）<br/>setup / inference / cancel / taskinfo / exit<br/>TaskChannel · Backend 契约"]
+   Foundation["共享中间件基础（已实现）<br/>MessageEnvelope · ZeroMQ Transport · epoll Network"]
+
+   Client -->|"TCP + NDJSON"| Gateway
+   Manager -.->|"统一任务生命周期"| Session
+   Manager -->|"setup / inference / cancel<br/>taskinfo / exit"| ASR
+   Manager -->|"统一 action 路由"| RAG
+   Manager -->|"统一 action 路由"| LLM
+   Manager -->|"统一 action 路由"| TTS
+
+   Runtime -.-> Session
+   Runtime --- ASR
+   Runtime --- RAG
+   Runtime --- LLM
+   Runtime --- TTS
+   Foundation --- Gateway
+   Foundation --- Manager
+   Foundation --- Runtime
+```
+
+图中实线表示已落地的当前调用路径，虚线表示待板卡 Backend 接入的目标路径。当前 Gateway、Unit Manager、Node Runtime、五类 Fake 契约、JSONL/BM25 与 Session 编排（固定 WAV → Fake PCM 全链路）均已实现；真实硬件 Backend 尚未完成。
 
 ### 三个平面
 
@@ -81,7 +131,7 @@
 ### 5. 语音交互链路：ASR → 分级 RAG → LLM → TTS
 
 - **ASR**：流式识别，逐帧 partial、末帧 final（板卡阶段接入流式 Zipformer 识别框架；当前为确定性 Fake）；
-- **分级 RAG**：L0 紧急控制（规则命中，绕过 LLM）/ L1 高置信事实直答 / L2 复杂问题带上下文 / L3 闲聊不注入伪知识；BM25 检索，可解释、可测试、无向量库常驻开销（当前为确定性 Fake 检索器，真实 BM25 与 JSONL 知识库为下一阶段）；
+- **分级 RAG**：L0 紧急控制（规则命中，绕过 LLM）/ L1 高置信事实直答 / L2 复杂问题带上下文 / L3 闲聊不注入伪知识；JSONL 知识库、BM25 检索与 Session 编排已接入完整链路（阈值在 `config/mock/session.json` 实测标定）；
 - **LLM**：DeepSeek-R1-Distill-Qwen-1.5B W4A16 预转换模型作为首个上游基线（板卡阶段），流式 token 回调与取消过滤；
 - **TTS**：离线语音合成，消息/音频队列消除卡顿，当前输出 WAV 文件，板卡阶段接入声卡输出；
 - **会话编排**：Idle → Listening → Routing → Thinking → Speaking 状态机与 generation 晚到过滤为当前开发阶段目标（见状态表）；已落地部分为节点级协作式取消与超时。
@@ -95,7 +145,7 @@
 | Linux / C++17 | 全链路实现语言：进程、线程、epoll 事件驱动 |
 | ZeroMQ | 控制面 RPC 与数据面流的通信底座 |
 | epoll 主从 Reactor | TCP 网关连接管理，连接生命周期一线程归属 |
-| CMake + CTest | 根级构建与测试（当前 19 个测试） |
+| CMake + CTest | 根级构建与测试（当前 20 个测试） |
 | Shell 脚本 | 演示、板卡体检与无硬件依赖验收 |
 
 **应用场景**：无公网的全离线部署（工业、车载、机器人等边缘环境）；医疗、金融等隐私敏感场景；端侧语音交互与边缘智能应用。
@@ -104,13 +154,14 @@
 
 | 能力 | 状态 | 说明 |
 |---|---|---|
-| 仓库骨架、根级 CMake/CTest | ✅ | 空目录可复现构建，CTest 19/19 通过 |
+| 仓库骨架、根级 CMake/CTest | ✅ | 空目录可复现构建，CTest 27/27 通过 |
 | 统一消息信封 MessageEnvelope | ✅ | 版本化 JSON，1 MiB 上限，结构化错误码 |
 | ZMQ 多模式通信 | ✅ | RPC（deadline）/ PUB/SUB（订阅握手）/ PUSH/PULL，均含超时与退出测试 |
 | TCP 网关与 NDJSON 解帧 | ✅ | epoll 主从 Reactor，半包/粘包/超长帧/慢客户端处理 |
 | Unit Manager / Node Runtime | ✅ | TaskChannel 状态机，Echo 三进程 E2E，双任务交错 20 轮无跨流 |
 | 后端契约与确定性 Fake | ✅ | 五类接口 + 统一事件；ASR/RAG/LLM/TTS 以真实进程运行，TTS 产出 WAV |
-| Session 编排、分级 RAG、取消与晚到过滤 | 🚧 进行中 | 下一阶段：L0-L3 路由、JSONL/BM25、有界队列、generation |
+| JSONL/BM25 分级 RAG | ✅ | L0-L3 路由、文本规范化、Top-K 检索与单元测试已落地 |
+| Session 编排、取消与晚到过滤 | ✅ | 固定 WAV → Fake PCM 全链路；状态机（Idle→Listening→Routing→Thinking→Speaking）、有界文本/PCM 队列、generation 取消传播与晚到过滤；E2E + 故障注入测试覆盖 |
 | 真实硬件后端（sherpa-onnx / RKLLM / SummerTTS / ALSA） | ⏳ 板卡阶段 | 默认构建关闭，仅 `VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON` 时接入 |
 | 泰山派 3M 全真实链路 | ⏳ | 上游模型与运行库基线验证 → 项目 Backend → 全链路，逐级验证 |
 
@@ -121,18 +172,28 @@
 ```bash
 cmake --preset wsl-debug
 cmake --build --preset wsl-debug -j8
-ctest --preset wsl-debug        # 19 个测试，全部通过
+ctest --preset wsl-debug        # 27 个测试，全部通过
 ```
 
 无硬件依赖可用 `scripts/check_no_hw_deps.sh` 逐二进制验收（ldd 检查 rkllm / sherpa / onnx / asound 等链接）。
 
 ## 演示（Mock 全链路）
 
+五节点单 Manager 轮转路由（交付）：
+
 ```bash
 scripts/demo_mock_chain.sh
 ```
 
 一键拉起五节点 + Manager + 网关，展示 work_id 轮转路由、逐节点推理输出、TTS 产出的 WAV 与 SIGTERM 优雅退出；日志与音频落在 `/tmp/voxorchestra-demo/`。
+
+Session 编排全链路（交付：固定 WAV → Fake PCM）：
+
+```bash
+scripts/demo_mock_session.sh
+```
+
+一键拉起 session_node + Manager + 网关，展示四类路由（L0 控制 / L1 直答 / L2 带上下文 / L3 闲聊）、固定 WAV 完整链路、taskinfo 队列统计与 SIGTERM 优雅退出；输出 1 秒 WAV 落在 `/tmp/voxorchestra-session/`（Fake TTS 为 500 Hz 测试音，实际内容见各请求 `final_text`，真实语音板卡阶段接入）。
 
 单条协议交互（手动探测）：
 
@@ -141,7 +202,7 @@ python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"setup","request_id":
 # → {"version":1,"work_id":"w-0","type":"ack",...}
 
 python3 scripts/gateway_probe.py 9100 \
-  '{"version":1,"type":"inference","work_id":"w-1","request_id":"r-1","payload":{"text":"3"}}'
+ '{"version":1,"type":"inference","work_id":"w-1","request_id":"r-1","payload":{"text":"3"}}'
 # → 逐帧 partial 汇总后的 final 文本
 ```
 
@@ -149,7 +210,7 @@ python3 scripts/gateway_probe.py 9100 \
 
 | 项 | 约定 |
 |---|---|
-| 节点端口 | echo `19200` / asr `19201` / rag `19202` / llm `19203` / tts `19204` |
+| 节点端口 | echo `19200` / asr `19201` / rag `19202` / llm `19203` / tts `19204` / session `19210` |
 | 网关端口 | `9100` |
 | 音频格式 | 16 kHz 单声道 16-bit，20 ms 帧（320 采样） |
 | 帧上限 | 单帧 1 MiB（解帧器与信封双重限制，超限断开） |

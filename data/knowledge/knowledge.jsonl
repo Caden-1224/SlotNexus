@@ -1,0 +1,10 @@
+# VoxOrchestra 小型演示知识库（JSONL，供 BM25 检索与 L0-L3 路由测试）
+# 条目为项目自身事实，固定不变；id 与文本均会被路由日志记录。
+{"id": "k-voxorchestra", "text": "VoxOrchestra 是端侧全离线语音交互中间件，在单台设备上完成语音输入到语音输出的完整闭环"}
+{"id": "k-arch", "text": "VoxOrchestra 使用多进程架构，TCP 网关、单元管理器、会话编排与各模型节点各自独立运行"}
+{"id": "k-backend", "text": "VoxOrchestra 的 Backend 是可替换实现，Fake 用于测试协议与编排，真实模型在板卡阶段接入"}
+{"id": "k-rag", "text": "VoxOrchestra 的 RAG 路由分为 L0 到 L3 四层，L0 紧急控制、L1 事实直答、L2 带上下文、L3 闲聊"}
+{"id": "k-audio", "text": "VoxOrchestra 音频格式统一为 16kHz 单声道 16-bit PCM，帧长 20 毫秒"}
+{"id": "k-queue", "text": "VoxOrchestra 的文本与 PCM 队列有界，满队列超时丢弃并计数，防止慢消费者耗尽内存"}
+{"id": "k-cancel", "text": "VoxOrchestra 用 generation 隔离取消前后的数据，晚到的 token 与 PCM 一律丢弃"}
+{"id": "k-runtime", "text": "VoxOrchestra 的 Node Runtime 统一处理 setup、推理、取消、查询与退出等任务生命周期"}

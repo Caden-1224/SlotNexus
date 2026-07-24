@@ -513,6 +513,47 @@ void test_cancel_mid_tts_late_pcm() {
             << std::endl;
 }
 
+// ---------- 最小合成时长：短回答补静音帧到可听时长 ----------
+
+void test_min_tts_duration_padding() {
+  Fixture f;
+  fake::FakeAsrBackend asr;
+  RecordingLlm llm;
+  fake::FakeTtsBackend tts;
+  sess::PipelineConfig c = base_config(f);
+  c.tts_min_duration = 1000ms;  // 不足 1 秒补静音帧
+  sess::SessionPipeline pipe(
+      c, f.router, asr, llm, tts, [&](const std::string& p) {
+        return std::make_unique<fake::FakeAudioSink>(p);  // 真实 WAV
+      });
+  // L1 短回答（23 字节 → FakeTts 仅 1 帧 20ms）：补齐到 50 帧 = 1 秒。
+  const auto r = pipe.run({sess::PipelineInput::Mode::kText, "the cat", ""},
+                          "r-min", 0ms);
+  CHECK(r.ok);
+  CHECK(r.route == "l1");
+  CHECK(r.pcm_frames == 50);  // 1000ms / 20ms
+  // 输出 WAV 数据长度 = 50 × 320 × 2 字节。
+  std::FILE* fh = std::fopen(r.wav_path.c_str(), "rb");
+  CHECK(fh != nullptr);
+  if (fh != nullptr) {
+    std::fseek(fh, 0, SEEK_END);
+    const long size = std::ftell(fh);
+    std::fclose(fh);
+    CHECK(size == 44 + 50 * 320 * 2);
+  }
+  // 默认配置（0）：不补齐（pcm_frames 保持 FakeTts 原生帧数）。
+  sess::SessionPipeline pipe0(base_config(f), f.router, asr, llm, tts,
+                              [](const std::string&) {
+                                return std::make_unique<CountingSink>();
+                              });
+  const auto r0 = pipe0.run({sess::PipelineInput::Mode::kText, "the cat", ""},
+                            "r-min0", 0ms);
+  CHECK(r0.ok);
+  CHECK(r0.pcm_frames == 1);  // 原生 1 帧，不补齐
+  std::cout << "  [ok] 最小合成时长：短回答补齐到配置时长，默认配置不补齐"
+            << std::endl;
+}
+
 // ---------- 超时与单流 ----------
 
 void test_deadline_timeout() {
@@ -567,6 +608,7 @@ int main() {
   test_queue_full_drop();
   test_cancel_mid_llm_late_tokens();
   test_cancel_mid_tts_late_pcm();
+  test_min_tts_duration_padding();
   test_deadline_timeout();
   test_single_flow_busy();
 
