@@ -10,6 +10,7 @@
 #include "voxorchestra/backend/fake/fake_asr_backend.hpp"
 #include "voxorchestra/backend/fake/fake_llm_backend.hpp"
 #include "voxorchestra/backend/fake/fake_tts_backend.hpp"
+#include "voxorchestra/common/log.hpp"
 #include "voxorchestra/protocol/message_envelope.hpp"
 #include "voxorchestra/rag/knowledge_store.hpp"
 
@@ -194,9 +195,18 @@ void SessionNode::handle_request(const std::string& identity,
   try {
     request = MessageEnvelope::from_json(request_json);
   } catch (const ProtocolError& e) {
+    common::LogLine("session err bad_json frame=" + request_json.substr(0, 80));
     send_reply(build_error(request, static_cast<int>(e.code()), e.what()));
     return;
   }
+  // 请求级日志：一次调用的完整路径从这里的 request_id 开始关联。
+  common::LogLine("session req request_id=" + request.request_id() + " type=" +
+                  protocol::message_type_to_string(request.type()) +
+                  " work_id=" + request.work_id());
+  // 错误分支统一记日志（门禁 3：请求与响应全程可关联）。
+  const auto log_err = [](const MessageEnvelope& req, const std::string& msg) {
+    common::LogLine("session err request_id=" + req.request_id() + " " + msg);
+  };
 
   switch (request.type()) {
     case MessageType::kSetup: {
@@ -204,6 +214,7 @@ void SessionNode::handle_request(const std::string& identity,
       {
         std::lock_guard<std::mutex> lock(sessions_mutex_);
         if (sessions_.count(request.work_id()) > 0) {
+          log_err(request, "duplicate_setup");
           send_reply(build_error(request, 2, "重复 setup"));  // kBadState
           return;
         }
@@ -235,6 +246,7 @@ void SessionNode::handle_request(const std::string& identity,
         std::lock_guard<std::mutex> lock(sessions_mutex_);
         const auto it = sessions_.find(request.work_id());
         if (it == sessions_.end()) {
+          log_err(request, "unknown_work_id");
           send_reply(build_error(request, 1, "未知任务: " + request.work_id()));
           return;
         }
@@ -242,6 +254,7 @@ void SessionNode::handle_request(const std::string& identity,
       }
       bool expected = false;
       if (!s->busy.compare_exchange_strong(expected, true)) {
+        log_err(request, "busy");
         send_reply(build_error(request, 3, "会话忙碌（单流）"));  // kBusy
         return;
       }
@@ -283,6 +296,7 @@ void SessionNode::handle_request(const std::string& identity,
         std::lock_guard<std::mutex> lock(sessions_mutex_);
         const auto it = sessions_.find(request.work_id());
         if (it == sessions_.end()) {
+          log_err(request, "unknown_work_id");
           send_reply(build_error(request, 1, "未知任务: " + request.work_id()));
           return;
         }
@@ -305,6 +319,7 @@ void SessionNode::handle_request(const std::string& identity,
         std::lock_guard<std::mutex> lock(sessions_mutex_);
         const auto it = sessions_.find(request.work_id());
         if (it == sessions_.end()) {
+          log_err(request, "unknown_work_id");
           send_reply(build_error(request, 1, "未知任务: " + request.work_id()));
           return;
         }
@@ -337,6 +352,7 @@ void SessionNode::handle_request(const std::string& identity,
         std::lock_guard<std::mutex> lock(sessions_mutex_);
         const auto it = sessions_.find(request.work_id());
         if (it == sessions_.end()) {
+          log_err(request, "unknown_work_id");
           send_reply(build_error(request, 1, "未知任务: " + request.work_id()));
           return;
         }
@@ -355,6 +371,7 @@ void SessionNode::handle_request(const std::string& identity,
       return;
     }
     default:
+      log_err(request, "invalid_type");
       send_reply(build_error(request,
                              static_cast<int>(ProtocolErrorCode::kInvalidType),
                              "session_node 不支持该消息类型"));
@@ -373,6 +390,9 @@ void SessionNode::run_inference(const std::string& identity,
   push.set(zmq::sockopt::sndtimeo, kWorkerPushTimeoutMs);
   push.connect(reply_endpoint_);
 
+  common::LogLine("session run request_id=" + request_id + " work_id=" + work_id +
+                  " mode=" +
+                  (input.mode == PipelineInput::Mode::kWav ? "wav" : "text"));
   const PipelineResult result = s->pipeline->run(input, request_id, deadline);
 
   {
@@ -389,14 +409,23 @@ void SessionNode::run_inference(const std::string& identity,
   reply.set_session_id("");
   nlohmann::json p = ResultStats(result);
   p["wav_path"] = result.wav_path;
+  std::string status;
   if (result.cancelled) {
-    p["status"] = "cancelled";
+    status = "cancelled";
   } else if (result.ok) {
-    p["status"] = "ok";
+    status = "ok";
   } else {
-    p["status"] = "error";
+    status = "error";
     p["error"] = result.error;
   }
+  p["status"] = status;
+  common::LogLine("session done request_id=" + request_id + " work_id=" + work_id +
+                  " status=" + status + " route=" + result.route +
+                  " tokens=" + std::to_string(result.token_count) +
+                  " pcm=" + std::to_string(result.pcm_frames) +
+                  (result.wav_path.empty()
+                       ? ""
+                       : " wav=" + result.wav_path));
   reply.set_payload(std::move(p));
   reply.set_finish(true);
   try {

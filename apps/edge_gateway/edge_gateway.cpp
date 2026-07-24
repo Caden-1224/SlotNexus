@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "voxorchestra/common/log.hpp"
 #include "voxorchestra/protocol/message_envelope.hpp"
 #include "voxorchestra/transport/transport_error.hpp"
 
@@ -70,6 +71,7 @@ void EdgeGateway::handle_message(
   } catch (const ProtocolError& e) {
     // 非法请求：回结构化错误信封，连接保持可用（超长帧不会走到这里，
     // 由连接层直接关闭）。
+    common::LogLine("gw err bad_json frame=" + frame.substr(0, 80));
     MessageEnvelope error_env;
     error_env.set_type(MessageType::kError);
     error_env.set_error({static_cast<int>(e.code()), e.what()});
@@ -77,6 +79,10 @@ void EdgeGateway::handle_message(
     conn->send(error_env.to_json() + "\n");
     return;
   }
+  // 请求级日志：request_id 在此进入网关日志（门禁 3）。
+  common::LogLine("gw req request_id=" + request.request_id() + " type=" +
+                  protocol::message_type_to_string(request.type()) +
+                  " work_id=" + request.work_id());
 
   switch (request.type()) {
     case MessageType::kSetup:
@@ -89,6 +95,8 @@ void EdgeGateway::handle_message(
       return;
     default:
       // ack/event/error 是服务端→客户端方向，客户端不可发送。
+      common::LogLine("gw err request_id=" + request.request_id() +
+                      " invalid_client_type");
       MessageEnvelope reject;
       reject.set_type(MessageType::kError);
       reject.set_work_id(request.work_id());
@@ -105,17 +113,28 @@ void EdgeGateway::handle_message(
 
 void EdgeGateway::forward_to_manager(
     const std::shared_ptr<network::TcpConnection>& conn, const std::string& frame) {
+  // 解析请求信封用于日志关联（失败时为空信封，request_id 为空串）。
+  MessageEnvelope request;
+  try {
+    request = MessageEnvelope::from_json(frame);
+  } catch (const ProtocolError&) {
+    request = MessageEnvelope{};
+  }
   try {
     const std::string reply = manager_->call(frame, kForwardDeadline);
+    MessageEnvelope reply_env;
+    try {
+      reply_env = MessageEnvelope::from_json(reply);
+    } catch (const ProtocolError&) {
+      // 管理器回复异常不在此处理：原样转发，由客户端与测试暴露。
+    }
+    common::LogLine("gw reply request_id=" + request.request_id() + " type=" +
+                    protocol::message_type_to_string(reply_env.type()));
     conn->send(reply + "\n");
   } catch (const transport::TransportError& e) {
     // Manager 不可达或超时：回错误信封，连接保持可用，客户端可重试。
-    MessageEnvelope request;
-    try {
-      request = MessageEnvelope::from_json(frame);
-    } catch (const ProtocolError&) {
-      request = MessageEnvelope{};
-    }
+    common::LogLine("gw err request_id=" + request.request_id() +
+                    " manager_unreachable");
     MessageEnvelope error_env;
     error_env.set_type(MessageType::kError);
     error_env.set_work_id(request.work_id());

@@ -1,0 +1,47 @@
+{
+  "content_mismatch": 0,
+  "cross_stream": 0,
+  "duration_ms": 7813,
+  "gate_m1": "pass",
+  "log_correlation": {
+    "gateway": 50,
+    "manager": 50,
+    "session_node": 50
+  },
+  "per_kind": {
+    "l0": {
+      "success": 10,
+      "total": 10
+    },
+    "l1": {
+      "success": 10,
+      "total": 10
+    },
+    "l2": {
+      "success": 10,
+      "total": 10
+    },
+    "l3": {
+      "success": 10,
+      "total": 10
+    },
+    "wav": {
+      "success": 10,
+      "total": 10
+    }
+  },
+  "precondition_cleanup": "none",
+  "residue": {
+    "exit_codes": [
+      0,
+      0,
+      0
+    ],
+    "port_leftover": 0,
+    "process_leftover": 0
+  },
+  "rounds_total": 50,
+  "success": 50,
+  "test": "session_rounds_test",
+  "timeout": 0
+}
