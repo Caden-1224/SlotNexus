@@ -1,0 +1,62 @@
+#
+# 命令: ctest --test-dir build-clean --output-on-failure
+Internal ctest changing into directory: /home/caden/work/voxorchestra-runtime/build-clean
+Test project /home/caden/work/voxorchestra-runtime/build-clean
+      Start  1: smoke_test
+ 1/27 Test  #1: smoke_test .......................   Passed    0.00 sec
+      Start  2: protocol_test
+ 2/27 Test  #2: protocol_test ....................   Passed    0.02 sec
+      Start  3: frame_decoder_test
+ 3/27 Test  #3: frame_decoder_test ...............   Passed    0.00 sec
+      Start  4: reactor_test
+ 4/27 Test  #4: reactor_test .....................   Passed    0.05 sec
+      Start  5: task_registry_test
+ 5/27 Test  #5: task_registry_test ...............   Passed    0.01 sec
+      Start  6: runtime_test
+ 6/27 Test  #6: runtime_test .....................   Passed    0.65 sec
+      Start  7: backend_contract_test
+ 7/27 Test  #7: backend_contract_test ............   Passed    0.01 sec
+      Start  8: fake_asr_test
+ 8/27 Test  #8: fake_asr_test ....................   Passed    0.00 sec
+      Start  9: fake_retriever_test
+ 9/27 Test  #9: fake_retriever_test ..............   Passed    0.00 sec
+      Start 10: fake_llm_test
+10/27 Test #10: fake_llm_test ....................   Passed    0.00 sec
+      Start 11: fake_tts_test
+11/27 Test #11: fake_tts_test ....................   Passed    0.00 sec
+      Start 12: fake_audio_sink_test
+12/27 Test #12: fake_audio_sink_test .............   Passed    0.01 sec
+      Start 13: rag_test
+13/27 Test #13: rag_test .........................   Passed    0.00 sec
+      Start 14: bounded_queue_test
+14/27 Test #14: bounded_queue_test ...............   Passed    0.22 sec
+      Start 15: sentence_chunker_test
+15/27 Test #15: sentence_chunker_test ............   Passed    0.00 sec
+      Start 16: wav_reader_test
+16/27 Test #16: wav_reader_test ..................   Passed    0.00 sec
+      Start 17: session_state_test
+17/27 Test #17: session_state_test ...............   Passed    0.00 sec
+      Start 18: session_pipeline_test
+18/27 Test #18: session_pipeline_test ............   Passed    1.24 sec
+      Start 19: rpc_integration_test
+19/27 Test #19: rpc_integration_test .............   Passed    1.71 sec
+      Start 20: pubsub_integration_test
+20/27 Test #20: pubsub_integration_test ..........   Passed    0.91 sec
+      Start 21: pushpull_integration_test
+21/27 Test #21: pushpull_integration_test ........   Passed    0.21 sec
+      Start 22: tcp_server_test
+22/27 Test #22: tcp_server_test ..................   Passed    0.18 sec
+      Start 23: gateway_test
+23/27 Test #23: gateway_test .....................   Passed    3.52 sec
+      Start 24: echo_e2e_test
+24/27 Test #24: echo_e2e_test ....................   Passed    0.22 sec
+      Start 25: fake_nodes_e2e_test
+25/27 Test #25: fake_nodes_e2e_test ..............   Passed    0.38 sec
+      Start 26: session_e2e_test
+26/27 Test #26: session_e2e_test .................   Passed    2.29 sec
+      Start 27: session_fault_test
+27/27 Test #27: session_fault_test ...............   Passed    1.66 sec
+
+100% tests passed, 0 tests failed out of 27
+
+Total Test time (real) =  13.31 sec
