@@ -1,0 +1,10 @@
+chain_fault_test:
+  [ok] 非法 JSON：结构化错误回包，连接保持可用
+  [ok] 超长帧：连接关闭，网关进程存活并继续服务
+  [ok] 未知 work_id：全链结构化错误，进程存活并恢复
+  [ok] 重复 cancel/exit：幂等应答，释放后可新建会话
+PROCESS_CLEANUP
+  gateway exit=0 manager exit=0 session_node exit=0
+  leftover_processes=0 listening_ports=0
+chain_fault_test 全部通过（含进程清理）
+chain exit=0

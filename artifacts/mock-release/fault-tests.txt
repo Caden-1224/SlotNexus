@@ -1,0 +1,91 @@
+Test project /home/caden/work/voxorchestra-runtime/build-wsl
+    Start 28: session_fault_test
+1/2 Test #28: session_fault_test ...............   Passed    8.16 sec
+    Start 29: chain_fault_test
+2/2 Test #29: chain_fault_test .................   Passed    0.59 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =   8.75 sec
+ctest fault exit=0
+
+==== session_fault_test 逐项输出 ====
+session_fault_test:
+  [ok] 后端抛异常：错误结果、状态回 Idle、无崩溃
+[00:49:33.533] session req request_id=s-x type=setup work_id=w-x
+[00:49:33.534] session req request_id=r-x type=inference work_id=w-x
+[00:49:33.534] session run request_id=r-x work_id=w-x mode=text
+[00:49:33.684] session req request_id=e-x type=exit work_id=w-x
+[00:49:33.696] session done request_id=r-x work_id=w-x status=cancelled route=l2 tokens=8 pcm=0 wav=/tmp/vox-fault-out/session_346a24f0.wav
+[00:49:33.697] session req request_id=t-x type=taskinfo work_id=w-x
+[00:49:33.697] session err request_id=t-x unknown_work_id
+[00:49:33.698] session req request_id=s-x2 type=setup work_id=w-x
+[00:49:33.698] session req request_id=r-x2 type=inference work_id=w-x
+[00:49:33.698] session run request_id=r-x2 work_id=w-x mode=text
+[00:49:33.719] session done request_id=r-x2 work_id=w-x status=ok route=l1 tokens=0 pcm=3 wav=/tmp/vox-fault-out/session_4517dd66.wav
+  [ok] 在途推理中 exit：cancelled 收尾、同 work_id 可重建
+[00:49:33.808] session req request_id=s-c type=setup work_id=w-c
+[00:49:33.813] session req request_id=r-c type=inference work_id=w-c
+[00:49:33.814] session run request_id=r-c work_id=w-c mode=text
+[00:49:33.963] session req request_id=c-c type=cancel work_id=w-c
+[00:49:33.979] session done request_id=r-c work_id=w-c status=cancelled route=l2 tokens=8 pcm=0 wav=/tmp/vox-fault-out/session_2f6a1d11.wav
+[00:49:33.985] session req request_id=r-c2 type=inference work_id=w-c
+[00:49:33.985] session run request_id=r-c2 work_id=w-c mode=text
+[00:49:34.9] session done request_id=r-c2 work_id=w-c status=ok route=l1 tokens=0 pcm=3 wav=/tmp/vox-fault-out/session_c70bde19.wav
+  [ok] 在途推理中 cancel：cancelled 收尾、会话可复用
+[00:49:34.88] session req request_id=s-b type=setup work_id=w-b
+[00:49:34.88] session req request_id=r-b type=inference work_id=w-b
+[00:49:34.88] session run request_id=r-b work_id=w-b mode=text
+[00:49:34.190] session req request_id=r-b2 type=inference work_id=w-b
+[00:49:34.190] session err request_id=r-b2 busy
+[00:49:34.982] session done request_id=r-b work_id=w-b status=ok route=l2 tokens=42 pcm=13 wav=/tmp/vox-fault-out/session_2e6a1b7e.wav
+  [ok] 忙时第二次推理：明确 kBusy 拒绝
+[00:49:35.76] session req request_id=s-i type=setup work_id=w-i
+[00:49:35.77] session req request_id=c-i type=cancel work_id=w-i
+[00:49:35.79] session req request_id=r-i type=inference work_id=w-i
+[00:49:35.79] session run request_id=r-i work_id=w-i mode=text
+[00:49:35.100] session done request_id=r-i work_id=w-i status=ok route=l1 tokens=0 pcm=3 wav=/tmp/vox-fault-out/session_256a0d53.wav
+  [ok] 空闲 cancel：ack 应答，后续推理正常
+[00:49:35.163] session req request_id=s-w type=setup work_id=w-w
+[00:49:35.164] session req request_id=r-w type=inference work_id=w-w
+[00:49:35.164] session run request_id=r-w work_id=w-w mode=wav
+[00:49:35.164] session done request_id=r-w work_id=w-w status=error route= tokens=0 pcm=0 wav=/tmp/vox-fault-out/session_436a3c8d.wav
+  [ok] 缺失 WAV：明确错误结果
+  [ok] 挂起后端：max_run 兜底超时、状态回 Idle、管线可复用
+[00:49:39.245] session req request_id=s-t type=setup work_id=w-t
+[00:49:39.247] session req request_id=r-t type=inference work_id=w-t
+[00:49:39.248] session run request_id=r-t work_id=w-t mode=text
+[00:49:41.415] session done request_id=r-t work_id=w-t status=error route=l2 tokens=42 pcm=0 wav=/tmp/vox-fault-out/session_406a37d4.wav
+[00:49:41.416] session req request_id=t-t type=taskinfo work_id=w-t
+[00:49:41.417] session req request_id=r-t2 type=inference work_id=w-t
+[00:49:41.418] session run request_id=r-t2 work_id=w-t mode=text
+[00:49:41.469] session done request_id=r-t2 work_id=w-t status=ok route=l1 tokens=0 pcm=3 wav=/tmp/vox-fault-out/session_4d35ff12.wav
+  [ok] max_run 节点层：超时收尾、busy 复位、后续推理正常
+[00:49:41.538] session req request_id=s-dc type=setup work_id=w-dc
+[00:49:41.539] session req request_id=c-dc1 type=cancel work_id=w-dc
+[00:49:41.540] session req request_id=c-dc2 type=cancel work_id=w-dc
+[00:49:41.541] session req request_id=r-dc type=inference work_id=w-dc
+[00:49:41.541] session run request_id=r-dc work_id=w-dc mode=text
+[00:49:41.561] session done request_id=r-dc work_id=w-dc status=ok route=l1 tokens=0 pcm=3 wav=/tmp/vox-fault-out/session_fe0e7345.wav
+  [ok] 重复 cancel：两次均 ack（幂等），会话存活
+[00:49:41.626] session req request_id=s-de type=setup work_id=w-de
+[00:49:41.626] session req request_id=e-de1 type=exit work_id=w-de
+[00:49:41.627] session req request_id=e-de2 type=exit work_id=w-de
+[00:49:41.627] session err request_id=e-de2 unknown_work_id
+[00:49:41.627] session req request_id=s-de2 type=setup work_id=w-de
+[00:49:41.627] session req request_id=e-de3 type=exit work_id=w-de
+  [ok] 重复 exit：首次 ack、再次结构化错误、同 work_id 可重建
+session_fault_test 全部通过
+exit=0
+
+==== chain_fault_test 逐项输出 ====
+chain_fault_test:
+  [ok] 非法 JSON：结构化错误回包，连接保持可用
+  [ok] 超长帧：连接关闭，网关进程存活并继续服务
+  [ok] 未知 work_id：全链结构化错误，进程存活并恢复
+  [ok] 重复 cancel/exit：幂等应答，释放后可新建会话
+PROCESS_CLEANUP
+  gateway exit=0 manager exit=0 session_node exit=0
+  leftover_processes=0 listening_ports=0
+chain_fault_test 全部通过（含进程清理）
+exit=0

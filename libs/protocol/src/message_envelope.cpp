@@ -59,7 +59,12 @@ std::string MessageEnvelope::to_json() const {
            ? nlohmann::json::object()
            : nlohmann::json{{"code", error_.code}, {"message", error_.message}}},
   };
-  const std::string s = obj.dump();
+  // replace 错误处理：串行化对任意内容字节总成功。解析诊断/客户端字段
+  // 可能携带非 UTF-8 字节（如非法输入被内嵌进错误信息），默认严格校验
+  // 会在 dump 抛 type_error.316，未捕获时直接终止进程——非法输入必须
+  // 回结构化错误而不是崩掉网关/节点（非法 JSON 故障注入回归发现）。
+  const std::string s =
+      obj.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
   if (s.size() > kMaxSerializedBytes) {
     throw ProtocolError(ProtocolErrorCode::kOversized,
                         "序列化后的消息超过 " + std::to_string(kMaxSerializedBytes) + " 字节");
