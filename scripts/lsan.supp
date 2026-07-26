@@ -1,0 +1,9 @@
+# LSAN 抑制规则（供 ASan 回归使用：ASAN/LSAN_OPTIONS=suppressions=...）。
+#
+# EdgeGateway 的 zmq context：进程退出路径上的已知有意释放。
+# 事件循环退出后 zmq 对象（创建于事件线程）已无法在同一线程安全销毁，
+# zmq_ctx_term 在 REQ socket 停留死端点重连轮询时可能永久阻塞，因此
+# 析构函数选择放弃显式终止、由操作系统回收（见 edge_gateway.cpp 析构
+# 注释）。LSAN 在进程退出时仍会按可达性报告这 8 字节包装对象，特此抑制，
+# 不属内存泄漏缺陷。
+leak:zmq::context_t

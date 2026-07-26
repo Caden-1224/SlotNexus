@@ -119,7 +119,7 @@ void TcpServer::handle_accept() {
       break;  // 其他错误：记录并停止接受
     }
 
-    auto conn = std::make_shared<TcpConnection>(
+    auto conn = TcpConnection::Create(
         loop_, conn_fd,
         [this](const std::shared_ptr<TcpConnection>& c, const std::string& f) {
           if (on_message_) {

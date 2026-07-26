@@ -11,6 +11,12 @@ Channel::Channel(EventLoop* loop, int fd) : loop_(loop), fd_(fd) {}
 Channel::~Channel() = default;
 
 void Channel::handle_events(int received_events) {
+  // 保活归属对象：read/error 回调可能关闭连接并销毁归属对象（Channel
+  // 随之释放），若此处不持有引用，分发后半段会访问已释放的成员。
+  std::shared_ptr<void> guard;
+  if (tied_) {
+    guard = tie_.lock();
+  }
   revents_ = received_events;
 
   if ((revents_ & kErrorEvent) != 0) {

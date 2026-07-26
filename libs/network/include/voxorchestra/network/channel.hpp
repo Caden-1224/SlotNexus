@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 
 namespace voxorchestra::network {
 
@@ -47,6 +48,14 @@ class Channel {
   // 由 EventLoop 调用：按 revents 分发到对应回调。
   void handle_events(int received_events);
 
+  // 绑定归属对象（如 TcpConnection）：事件分发期间持有一个引用，
+  // 防止回调关闭连接并销毁归属对象（连带释放本 Channel）后，
+  // handle_events 继续访问已释放的成员（use-after-free）。
+  void set_tie(const std::shared_ptr<void>& tie) {
+    tie_ = tie;
+    tied_ = true;
+  }
+
   // 从所属 EventLoop/Poller 注销（必须在该 loop 线程调用）。
   void remove();
 
@@ -66,6 +75,8 @@ class Channel {
   int events_ = 0;        // 期望监听的事件
   int revents_ = 0;       // 本次就绪的事件
   bool added_to_poller_ = false;
+  std::weak_ptr<void> tie_;  // 归属对象弱引用（事件分发期间保活）
+  bool tied_ = false;
   ReadCallback read_cb_;
   WriteCallback write_cb_;
   ErrorCallback error_cb_;

@@ -3,6 +3,7 @@
 // 控制面语义（setup/cancel/taskinfo/exit）低频、需要明确结果，用本封装。
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <functional>
 #include <memory>
@@ -40,7 +41,7 @@ class RpcClient {
   zmq::context_t& ctx_;
   std::string endpoint_;
   bool connected_ = false;
-  bool closed_ = false;
+  std::atomic<bool> closed_{false};
   std::unique_ptr<zmq::socket_t> socket_;
 };
 
@@ -71,7 +72,9 @@ class RpcServer {
 
   zmq::context_t& ctx_;
   std::string endpoint_;
-  bool closed_ = false;
+  // 原子标志：close() 可与服务线程的 serve_once_timeout 并发（优雅停机）；
+  // socket 只在服务线程销毁，close() 不跨线程操作 zmq 对象（见实现注释）。
+  std::atomic<bool> closed_{false};
   std::unique_ptr<zmq::socket_t> socket_;
 };
 

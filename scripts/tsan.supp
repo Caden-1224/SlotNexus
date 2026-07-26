@@ -1,0 +1,7 @@
+# TSan 抑制规则（供 TSan 回归使用：TSAN_OPTIONS=suppressions=...）。
+#
+# libzmq 内部数据竞争：libzmq 为未插桩第三方库（系统包），其内部 I/O
+# 线程与调用线程的内存操作（memcpy/malloc 等拦截函数）会被 TSan 交叉
+# 报告为竞争；报告的两帧均位于 libzmq.so 内部，属库内部实现细节而非
+# 本项目代码缺陷，特此抑制。本项目自有代码的竞争不受影响，仍会报告。
+race:libzmq.so.5

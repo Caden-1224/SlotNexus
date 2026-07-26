@@ -42,6 +42,12 @@ class EventLoop {
   // 在事件循环线程内调用时立即执行，否则入队并唤醒。
   void run_in_loop(Task task);
 
+  // 线程安全：始终入队，到当前事件分发批次结束后统一执行。
+  // 用于需要把对象销毁推迟到批次结束的场景（如连接关闭保活）：
+  // 分发循环持有 Channel 原始指针，批次中途销毁会让后续分发
+  // 访问已释放内存（use-after-free）。
+  void queue_in_loop(Task task);
+
   bool is_in_loop_thread() const { return std::this_thread::get_id() == thread_id_; }
   void assert_in_loop_thread() const;
 
@@ -54,7 +60,7 @@ class EventLoop {
 
  private:
   void wakeup();         // 写 eventfd 唤醒
-  void handle_wakeup();  // 读 eventfd 并执行任务队列
+  void handle_wakeup();  // 读 eventfd（任务统一到批次结束后执行）
   void run_pending_tasks();
 
   std::thread::id thread_id_;

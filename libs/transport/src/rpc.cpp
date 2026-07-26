@@ -6,6 +6,13 @@
 
 #include "voxorchestra/transport/transport_error.hpp"
 
+// RpcServer 线程模型（TSan 回归发现并修复，Mock 冻结阶段）：
+//   serve_once_timeout 在服务线程运行，close() 可在任意线程调用（优雅停机）。
+//   zmq socket 非线程安全：socket 只允许在服务线程销毁，close() 只置原子
+//   标志；服务线程在下一轮 serve_once_timeout 入口观察到 closed_ 后自行
+//   销毁 socket（此后不再触碰），或由析构在服务线程退出后兜底。
+//   recv 带 timeout，close() 后最迟一个 timeout 窗口内服务循环退出。
+
 namespace voxorchestra::transport {
 
 namespace {
@@ -120,7 +127,12 @@ void RpcServer::bind(const std::string& endpoint) {
 
 bool RpcServer::serve_once_timeout(const Handler& h,
                                    std::chrono::milliseconds timeout) {
-  throw_if_closed();
+  if (closed_.load()) {
+    // 服务线程销毁 socket：close() 已置标志且不跨线程操作 zmq 对象，
+    // 在此回收（此后本线程也不再使用 socket_）。
+    socket_.reset();
+    throw TransportError(TransportErrorCode::kClosed, "RpcServer 已关闭");
+  }
   if (!socket_) {
     throw TransportError(TransportErrorCode::kRecvFailed,
                          "RpcServer 未 bind");
@@ -154,11 +166,12 @@ bool RpcServer::serve_once_timeout(const Handler& h,
 }
 
 void RpcServer::close() {
-  if (closed_) {
+  if (closed_.exchange(true)) {
     return;
   }
-  closed_ = true;
-  socket_.reset();
+  // 不在此销毁 socket：服务线程可能正阻塞在 recv，跨线程 zmq 操作是
+  // 未定义行为。socket 由服务线程在 serve_once_timeout 入口回收，
+  // 或由析构在服务线程退出后兜底。
 }
 
 void RpcServer::throw_if_closed() const {

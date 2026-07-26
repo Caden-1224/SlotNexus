@@ -1,0 +1,191 @@
+==================
+WARNING: ThreadSanitizer: double lock of a mutex (pid=28046)
+    #0 pthread_mutex_lock ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:4240 (libtsan.so.0+0x53908)
+    #1 __gthread_mutex_lock(pthread_mutex_t*) <null> (tsan_min_repro+0x3227)
+    #2 std::mutex::lock() <null> (tsan_min_repro+0x32b0)
+    #3 std::unique_lock<std::mutex>::lock() <null> (tsan_min_repro+0x4eb9)
+    #4 std::unique_lock<std::mutex>::unique_lock(std::mutex&) <null> (tsan_min_repro+0x421a)
+    #5 voxorchestra::common::BoundedQueue<int>::push(int const&) <null> (tsan_min_repro+0x3d06)
+    #6 main <null> (tsan_min_repro+0x287f)
+
+  Location is stack of main thread.
+
+  Location is global '<null>' at 0x000000000000 ([stack]+0x000000020860)
+
+  Mutex M11 (0x7fffffffd860) created at:
+    #0 pthread_mutex_lock ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:4240 (libtsan.so.0+0x53908)
+    #1 __gthread_mutex_lock(pthread_mutex_t*) <null> (tsan_min_repro+0x3227)
+    #2 std::mutex::lock() <null> (tsan_min_repro+0x32b0)
+    #3 std::unique_lock<std::mutex>::lock() <null> (tsan_min_repro+0x4eb9)
+    #4 std::unique_lock<std::mutex>::unique_lock(std::mutex&) <null> (tsan_min_repro+0x421a)
+    #5 voxorchestra::common::BoundedQueue<int>::push(int const&) <null> (tsan_min_repro+0x3d06)
+    #6 main <null> (tsan_min_repro+0x287f)
+
+SUMMARY: ThreadSanitizer: double lock of a mutex (/tmp/tsan_min_repro+0x3227) in __gthread_mutex_lock(pthread_mutex_t*)
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=28046)
+  Read of size 8 at 0x7fffffffd940 by main thread (mutexes: write M11):
+    #0 voxorchestra::common::BoundedQueue<int>::push(int const&)::{lambda()#1}::operator()() const <null> (tsan_min_repro+0x3c71)
+    #1 void std::condition_variable::wait<voxorchestra::common::BoundedQueue<int>::push(int const&)::{lambda()#1}>(std::unique_lock<std::mutex>&, voxorchestra::common::BoundedQueue<int>::push(int const&)::{lambda()#1}) <null> (tsan_min_repro+0x464a)
+    #2 voxorchestra::common::BoundedQueue<int>::push(int const&) <null> (tsan_min_repro+0x3d21)
+    #3 main <null> (tsan_min_repro+0x287f)
+
+  Previous write of size 8 at 0x7fffffffd940 by thread T1 (mutexes: write M11):
+    #0 voxorchestra::common::BoundedQueue<int>::pop_locked(int&) <null> (tsan_min_repro+0x4456)
+    #1 voxorchestra::common::BoundedQueue<int>::pop_timeout(int&, std::chrono::duration<long, std::ratio<1l, 1000l> >) <null> (tsan_min_repro+0x3ba2)
+    #2 main::{lambda()#1}::operator()() const <null> (tsan_min_repro+0x2730)
+    #3 void std::__invoke_impl<void, main::{lambda()#1}>(std::__invoke_other, main::{lambda()#1}&&) <null> (tsan_min_repro+0x2f9e)
+    #4 std::__invoke_result<main::{lambda()#1}>::type std::__invoke<main::{lambda()#1}>(main::{lambda()#1}&&) <null> (tsan_min_repro+0x2f15)
+    #5 void std::thread::_Invoker<std::tuple<main::{lambda()#1}> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) <null> (tsan_min_repro+0x2e76)
+    #6 std::thread::_Invoker<std::tuple<main::{lambda()#1}> >::operator()() <null> (tsan_min_repro+0x2e1c)
+    #7 std::thread::_State_impl<std::thread::_Invoker<std::tuple<main::{lambda()#1}> > >::_M_run() <null> (tsan_min_repro+0x2dd2)
+    #8 <null> <null> (libstdc++.so.6+0xdc252)
+
+  Location is stack of main thread.
+
+  Location is global '<null>' at 0x000000000000 ([stack]+0x000000020940)
+
+  Mutex M11 (0x7fffffffd860) created at:
+    #0 pthread_mutex_lock ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:4240 (libtsan.so.0+0x53908)
+    #1 __gthread_mutex_lock(pthread_mutex_t*) <null> (tsan_min_repro+0x3227)
+    #2 std::mutex::lock() <null> (tsan_min_repro+0x32b0)
+    #3 std::unique_lock<std::mutex>::lock() <null> (tsan_min_repro+0x4eb9)
+    #4 std::unique_lock<std::mutex>::unique_lock(std::mutex&) <null> (tsan_min_repro+0x421a)
+    #5 voxorchestra::common::BoundedQueue<int>::push(int const&) <null> (tsan_min_repro+0x3d06)
+    #6 main <null> (tsan_min_repro+0x287f)
+
+  Thread T1 (tid=28048, running) created by main thread at:
+    #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:969 (libtsan.so.0+0x605b8)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xdc328)
+    #2 main <null> (tsan_min_repro+0x284b)
+
+SUMMARY: ThreadSanitizer: data race (/tmp/tsan_min_repro+0x3c71) in voxorchestra::common::BoundedQueue<int>::push(int const&)::{lambda()#1}::operator()() const
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=28046)
+  Write of size 8 at 0x7fffffffd918 by main thread (mutexes: write M11):
+    #0 std::deque<int, std::allocator<int> >::push_back(int const&) <null> (tsan_min_repro+0x562a)
+    #1 voxorchestra::common::BoundedQueue<int>::push_locked(int const&) <null> (tsan_min_repro+0x4694)
+    #2 voxorchestra::common::BoundedQueue<int>::push(int const&) <null> (tsan_min_repro+0x3d5c)
+    #3 main <null> (tsan_min_repro+0x287f)
+
+  Previous read of size 8 at 0x7fffffffd918 by thread T1 (mutexes: write M11):
+    #0 std::operator==(std::_Deque_iterator<int, int&, int*> const&, std::_Deque_iterator<int, int&, int*> const&) <null> (tsan_min_repro+0x4fd7)
+    #1 std::deque<int, std::allocator<int> >::empty() const <null> (tsan_min_repro+0x42db)
+    #2 voxorchestra::common::BoundedQueue<int>::pop_timeout(int&, std::chrono::duration<long, std::ratio<1l, 1000l> >) <null> (tsan_min_repro+0x3b10)
+    #3 main::{lambda()#1}::operator()() const <null> (tsan_min_repro+0x2730)
+    #4 void std::__invoke_impl<void, main::{lambda()#1}>(std::__invoke_other, main::{lambda()#1}&&) <null> (tsan_min_repro+0x2f9e)
+    #5 std::__invoke_result<main::{lambda()#1}>::type std::__invoke<main::{lambda()#1}>(main::{lambda()#1}&&) <null> (tsan_min_repro+0x2f15)
+    #6 void std::thread::_Invoker<std::tuple<main::{lambda()#1}> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) <null> (tsan_min_repro+0x2e76)
+    #7 std::thread::_Invoker<std::tuple<main::{lambda()#1}> >::operator()() <null> (tsan_min_repro+0x2e1c)
+    #8 std::thread::_State_impl<std::thread::_Invoker<std::tuple<main::{lambda()#1}> > >::_M_run() <null> (tsan_min_repro+0x2dd2)
+    #9 <null> <null> (libstdc++.so.6+0xdc252)
+
+  Location is stack of main thread.
+
+  Location is global '<null>' at 0x000000000000 ([stack]+0x000000020918)
+
+  Mutex M11 (0x7fffffffd860) created at:
+    #0 pthread_mutex_lock ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:4240 (libtsan.so.0+0x53908)
+    #1 __gthread_mutex_lock(pthread_mutex_t*) <null> (tsan_min_repro+0x3227)
+    #2 std::mutex::lock() <null> (tsan_min_repro+0x32b0)
+    #3 std::unique_lock<std::mutex>::lock() <null> (tsan_min_repro+0x4eb9)
+    #4 std::unique_lock<std::mutex>::unique_lock(std::mutex&) <null> (tsan_min_repro+0x421a)
+    #5 voxorchestra::common::BoundedQueue<int>::push(int const&) <null> (tsan_min_repro+0x3d06)
+    #6 main <null> (tsan_min_repro+0x287f)
+
+  Thread T1 (tid=28048, running) created by main thread at:
+    #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:969 (libtsan.so.0+0x605b8)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xdc328)
+    #2 main <null> (tsan_min_repro+0x284b)
+
+SUMMARY: ThreadSanitizer: data race (/tmp/tsan_min_repro+0x562a) in std::deque<int, std::allocator<int> >::push_back(int const&)
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=28046)
+  Read of size 4 at 0x7b5000000020 by thread T1 (mutexes: write M11):
+    #0 voxorchestra::common::BoundedQueue<int>::pop_locked(int&) <null> (tsan_min_repro+0x43fd)
+    #1 voxorchestra::common::BoundedQueue<int>::pop_timeout(int&, std::chrono::duration<long, std::ratio<1l, 1000l> >) <null> (tsan_min_repro+0x3ba2)
+    #2 main::{lambda()#1}::operator()() const <null> (tsan_min_repro+0x2730)
+    #3 void std::__invoke_impl<void, main::{lambda()#1}>(std::__invoke_other, main::{lambda()#1}&&) <null> (tsan_min_repro+0x2f9e)
+    #4 std::__invoke_result<main::{lambda()#1}>::type std::__invoke<main::{lambda()#1}>(main::{lambda()#1}&&) <null> (tsan_min_repro+0x2f15)
+    #5 void std::thread::_Invoker<std::tuple<main::{lambda()#1}> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) <null> (tsan_min_repro+0x2e76)
+    #6 std::thread::_Invoker<std::tuple<main::{lambda()#1}> >::operator()() <null> (tsan_min_repro+0x2e1c)
+    #7 std::thread::_State_impl<std::thread::_Invoker<std::tuple<main::{lambda()#1}> > >::_M_run() <null> (tsan_min_repro+0x2dd2)
+    #8 <null> <null> (libstdc++.so.6+0xdc252)
+
+  Previous write of size 4 at 0x7b5000000020 by main thread (mutexes: write M11):
+    #0 void __gnu_cxx::new_allocator<int>::construct<int, int const&>(int*, int const&) <null> (tsan_min_repro+0x6982)
+    #1 void std::allocator_traits<std::allocator<int> >::construct<int, int const&>(std::allocator<int>&, int*, int const&) <null> (tsan_min_repro+0x6084)
+    #2 std::deque<int, std::allocator<int> >::push_back(int const&) <null> (tsan_min_repro+0x55fe)
+    #3 voxorchestra::common::BoundedQueue<int>::push_locked(int const&) <null> (tsan_min_repro+0x4694)
+    #4 voxorchestra::common::BoundedQueue<int>::push(int const&) <null> (tsan_min_repro+0x3d5c)
+    #5 main <null> (tsan_min_repro+0x287f)
+
+  Location is heap block of size 512 at 0x7b5000000000 allocated by main thread:
+    #0 operator new(unsigned long) ../../../../src/libsanitizer/tsan/tsan_new_delete.cpp:64 (libtsan.so.0+0x8f162)
+    #1 __gnu_cxx::new_allocator<int>::allocate(unsigned long, void const*) <null> (tsan_min_repro+0x7494)
+    #2 std::allocator_traits<std::allocator<int> >::allocate(std::allocator<int>&, unsigned long) <null> (tsan_min_repro+0x6bd8)
+    #3 std::_Deque_base<int, std::allocator<int> >::_M_allocate_node() <null> (tsan_min_repro+0x6328)
+    #4 std::_Deque_base<int, std::allocator<int> >::_M_create_nodes(int**, int**) <null> (tsan_min_repro+0x58f2)
+    #5 std::_Deque_base<int, std::allocator<int> >::_M_initialize_map(unsigned long) <null> (tsan_min_repro+0x4acf)
+    #6 std::_Deque_base<int, std::allocator<int> >::_Deque_base() <null> (tsan_min_repro+0x3fd7)
+    #7 std::deque<int, std::allocator<int> >::deque() <null> (tsan_min_repro+0x37da)
+    #8 voxorchestra::common::BoundedQueue<int>::BoundedQueue(unsigned long) <null> (tsan_min_repro+0x385e)
+    #9 main <null> (tsan_min_repro+0x27de)
+
+  Mutex M11 (0x7fffffffd860) created at:
+    #0 pthread_mutex_lock ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:4240 (libtsan.so.0+0x53908)
+    #1 __gthread_mutex_lock(pthread_mutex_t*) <null> (tsan_min_repro+0x3227)
+    #2 std::mutex::lock() <null> (tsan_min_repro+0x32b0)
+    #3 std::unique_lock<std::mutex>::lock() <null> (tsan_min_repro+0x4eb9)
+    #4 std::unique_lock<std::mutex>::unique_lock(std::mutex&) <null> (tsan_min_repro+0x421a)
+    #5 voxorchestra::common::BoundedQueue<int>::push(int const&) <null> (tsan_min_repro+0x3d06)
+    #6 main <null> (tsan_min_repro+0x287f)
+
+  Thread T1 (tid=28048, running) created by main thread at:
+    #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:969 (libtsan.so.0+0x605b8)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xdc328)
+    #2 main <null> (tsan_min_repro+0x284b)
+
+SUMMARY: ThreadSanitizer: data race (/tmp/tsan_min_repro+0x43fd) in voxorchestra::common::BoundedQueue<int>::pop_locked(int&)
+==================
+==================
+WARNING: ThreadSanitizer: data race (pid=28046)
+  Write of size 1 at 0x7fffffffd950 by main thread (mutexes: write M11):
+    #0 voxorchestra::common::BoundedQueue<int>::close() <null> (tsan_min_repro+0x3e0e)
+    #1 main <null> (tsan_min_repro+0x28d5)
+
+  Previous read of size 1 at 0x7fffffffd950 by thread T1 (mutexes: write M11):
+    #0 voxorchestra::common::BoundedQueue<int>::pop_timeout(int&, std::chrono::duration<long, std::ratio<1l, 1000l> >) <null> (tsan_min_repro+0x3b26)
+    #1 main::{lambda()#1}::operator()() const <null> (tsan_min_repro+0x2730)
+    #2 void std::__invoke_impl<void, main::{lambda()#1}>(std::__invoke_other, main::{lambda()#1}&&) <null> (tsan_min_repro+0x2f9e)
+    #3 std::__invoke_result<main::{lambda()#1}>::type std::__invoke<main::{lambda()#1}>(main::{lambda()#1}&&) <null> (tsan_min_repro+0x2f15)
+    #4 void std::thread::_Invoker<std::tuple<main::{lambda()#1}> >::_M_invoke<0ul>(std::_Index_tuple<0ul>) <null> (tsan_min_repro+0x2e76)
+    #5 std::thread::_Invoker<std::tuple<main::{lambda()#1}> >::operator()() <null> (tsan_min_repro+0x2e1c)
+    #6 std::thread::_State_impl<std::thread::_Invoker<std::tuple<main::{lambda()#1}> > >::_M_run() <null> (tsan_min_repro+0x2dd2)
+    #7 <null> <null> (libstdc++.so.6+0xdc252)
+
+  Location is stack of main thread.
+
+  Location is global '<null>' at 0x000000000000 ([stack]+0x000000020950)
+
+  Mutex M11 (0x7fffffffd860) created at:
+    #0 pthread_mutex_lock ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:4240 (libtsan.so.0+0x53908)
+    #1 __gthread_mutex_lock(pthread_mutex_t*) <null> (tsan_min_repro+0x3227)
+    #2 std::mutex::lock() <null> (tsan_min_repro+0x32b0)
+    #3 std::unique_lock<std::mutex>::lock() <null> (tsan_min_repro+0x4eb9)
+    #4 std::unique_lock<std::mutex>::unique_lock(std::mutex&) <null> (tsan_min_repro+0x421a)
+    #5 voxorchestra::common::BoundedQueue<int>::push(int const&) <null> (tsan_min_repro+0x3d06)
+    #6 main <null> (tsan_min_repro+0x287f)
+
+  Thread T1 (tid=28048, running) created by main thread at:
+    #0 pthread_create ../../../../src/libsanitizer/tsan/tsan_interceptors_posix.cpp:969 (libtsan.so.0+0x605b8)
+    #1 std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) <null> (libstdc++.so.6+0xdc328)
+    #2 main <null> (tsan_min_repro+0x284b)
+
+SUMMARY: ThreadSanitizer: data race (/tmp/tsan_min_repro+0x3e0e) in voxorchestra::common::BoundedQueue<int>::close()
+==================
+repro ok
+ThreadSanitizer: reported 5 warnings

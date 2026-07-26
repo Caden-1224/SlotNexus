@@ -29,6 +29,7 @@ EventLoop::EventLoop() {
 }
 
 EventLoop::~EventLoop() {
+  run_pending_tasks();  // 释放队列中的保活引用（如连接关闭保活），避免对象滞留
   wakeup_channel_.reset();  // 先从 poller 注销
   ::close(wakeup_fd_);
 }
@@ -43,6 +44,9 @@ void EventLoop::run() {
     std::vector<Channel*> active;
     poller_->poll(-1, active);
 
+    // 批次分发：回调可能关闭连接并销毁 Channel（tie 保活 + queue_in_loop
+    // 保活负责保证本批次内指针均有效），任务队列统一在批次结束后执行，
+    // 绝不在分发中途执行（否则会释放本批次后续仍要访问的 Channel）。
     for (Channel* ch : active) {
       ch->handle_events(ch->revents());
     }
@@ -64,6 +68,10 @@ void EventLoop::run_in_loop(Task task) {
     task();
     return;
   }
+  queue_in_loop(std::move(task));
+}
+
+void EventLoop::queue_in_loop(Task task) {
   {
     std::lock_guard<std::mutex> lock(task_mutex_);
     pending_tasks_.push_back(std::move(task));
@@ -98,11 +106,12 @@ void EventLoop::wakeup() {
 }
 
 void EventLoop::handle_wakeup() {
-  // 读空 eventfd 计数器，避免一直触发可读。
+  // 只读空 eventfd 计数器，避免一直触发可读。任务不在分发中途执行：
+  // 统一由 run() 在批次结束后 drain（分发中执行任务会销毁本批次
+  // 后续仍要访问的 Channel，见 run() 注释）。
   uint64_t value = 0;
   while (::read(wakeup_fd_, &value, sizeof(value)) > 0) {
   }
-  run_pending_tasks();
 }
 
 void EventLoop::run_pending_tasks() {

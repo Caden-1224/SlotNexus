@@ -33,52 +33,52 @@
 
 ```mermaid
 flowchart TB
-   Client["Voice Client<br/>麦克风 / WAV / 文本"]
+    Client["Voice Client<br/>麦克风 / WAV / 文本"]
 
-   subgraph Control["外部接入与控制面（已实现）"]
-       direction LR
-       Gateway["Edge Gateway<br/>主从 Reactor · TCP/NDJSON"]
-       Manager["Unit Manager<br/>work_id 分配 · 节点路由"]
-       Registry["TaskRegistry<br/>allocate / find / release"]
-       Gateway -->|"REQ/REP RPC<br/>deadline + 结构化错误"| Manager
-       Manager --- Registry
-   end
+    subgraph Control["外部接入与控制面（已实现）"]
+        direction LR
+        Gateway["Edge Gateway<br/>主从 Reactor · TCP/NDJSON"]
+        Manager["Unit Manager<br/>work_id 分配 · 节点路由"]
+        Registry["TaskRegistry<br/>allocate / find / release"]
+        Gateway -->|"REQ/REP RPC<br/>deadline + 结构化错误"| Manager
+        Manager --- Registry
+    end
 
-   subgraph Pipeline["会话编排与推理数据面"]
-       direction LR
-       Session["Session Node<br/>状态机 · cancel · generation<br/>已实现（Mock）"]
-       ASR["ASR Node<br/>Fake 已实现<br/>sherpa-onnx 待接入"]
-       RAG["RAG Node<br/>Fake 已实现<br/>JSONL + BM25 已实现"]
-       LLM["LLM Node<br/>Fake 已实现<br/>RKLLM 待接入"]
-       TTS["TTS Node<br/>Fake 已实现<br/>SummerTTS 待接入"]
-       Sink["Audio Sink<br/>WAV / ALSA<br/>板卡阶段"]
+    subgraph Pipeline["会话编排与推理数据面"]
+        direction LR
+        Session["Session Node<br/>状态机 · cancel · generation<br/>已实现（Mock）"]
+        ASR["ASR Node<br/>Fake 已实现<br/>sherpa-onnx 待接入"]
+        RAG["RAG Node<br/>Fake 已实现<br/>JSONL + BM25 已实现"]
+        LLM["LLM Node<br/>Fake 已实现<br/>RKLLM 待接入"]
+        TTS["TTS Node<br/>Fake 已实现<br/>SummerTTS 待接入"]
+        Sink["Audio Sink<br/>WAV / ALSA<br/>板卡阶段"]
 
-       Session -.->|"音频帧"| ASR
-       ASR -.->|"partial / final"| RAG
-       RAG -.->|"L2 / L3 + context"| LLM
-       RAG -.->|"L0 / L1 直答"| TTS
-       LLM -.->|"token / 句子"| TTS
-       TTS -.->|"PCM"| Sink
-   end
+        Session -.->|"音频帧"| ASR
+        ASR -.->|"partial / final"| RAG
+        RAG -.->|"L2 / L3 + context"| LLM
+        RAG -.->|"L0 / L1 直答"| TTS
+        LLM -.->|"token / 句子"| TTS
+        TTS -.->|"PCM"| Sink
+    end
 
-   Runtime["统一 Node Runtime（已实现）<br/>setup / inference / cancel / taskinfo / exit<br/>TaskChannel · Backend 契约"]
-   Foundation["共享中间件基础（已实现）<br/>MessageEnvelope · ZeroMQ Transport · epoll Network"]
+    Runtime["统一 Node Runtime（已实现）<br/>setup / inference / cancel / taskinfo / exit<br/>TaskChannel · Backend 契约"]
+    Foundation["共享中间件基础（已实现）<br/>MessageEnvelope · ZeroMQ Transport · epoll Network"]
 
-   Client -->|"TCP + NDJSON"| Gateway
-   Manager -.->|"统一任务生命周期"| Session
-   Manager -->|"setup / inference / cancel<br/>taskinfo / exit"| ASR
-   Manager -->|"统一 action 路由"| RAG
-   Manager -->|"统一 action 路由"| LLM
-   Manager -->|"统一 action 路由"| TTS
+    Client -->|"TCP + NDJSON"| Gateway
+    Manager -.->|"统一任务生命周期"| Session
+    Manager -->|"setup / inference / cancel<br/>taskinfo / exit"| ASR
+    Manager -->|"统一 action 路由"| RAG
+    Manager -->|"统一 action 路由"| LLM
+    Manager -->|"统一 action 路由"| TTS
 
-   Runtime -.-> Session
-   Runtime --- ASR
-   Runtime --- RAG
-   Runtime --- LLM
-   Runtime --- TTS
-   Foundation --- Gateway
-   Foundation --- Manager
-   Foundation --- Runtime
+    Runtime -.-> Session
+    Runtime --- ASR
+    Runtime --- RAG
+    Runtime --- LLM
+    Runtime --- TTS
+    Foundation --- Gateway
+    Foundation --- Manager
+    Foundation --- Runtime
 ```
 
 图中实线表示已落地的当前调用路径，虚线表示待板卡 Backend 接入的目标路径。当前 Gateway、Unit Manager、Node Runtime、五类 Fake 契约、JSONL/BM25 与 Session 编排（固定 WAV → Fake PCM 全链路）均已实现；真实硬件 Backend 尚未完成。
@@ -172,14 +172,14 @@ flowchart TB
 ```bash
 cmake --preset wsl-debug
 cmake --build --preset wsl-debug -j8
-ctest --preset wsl-debug        # 27 个测试，全部通过
+ctest --preset wsl-debug        # 28 个测试，全部通过
 ```
 
 无硬件依赖可用 `scripts/check_no_hw_deps.sh` 逐二进制验收（ldd 检查 rkllm / sherpa / onnx / asound 等链接）。
 
 ## 演示（Mock 全链路）
 
-五节点单 Manager 轮转路由（交付）：
+五节点单 Manager 轮转路由：
 
 ```bash
 scripts/demo_mock_chain.sh
@@ -187,7 +187,7 @@ scripts/demo_mock_chain.sh
 
 一键拉起五节点 + Manager + 网关，展示 work_id 轮转路由、逐节点推理输出、TTS 产出的 WAV 与 SIGTERM 优雅退出；日志与音频落在 `/tmp/voxorchestra-demo/`。
 
-Session 编排全链路（交付：固定 WAV → Fake PCM）：
+Session 编排全链路（固定 WAV → Fake PCM）：
 
 ```bash
 scripts/demo_mock_session.sh
@@ -202,7 +202,7 @@ python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"setup","request_id":
 # → {"version":1,"work_id":"w-0","type":"ack",...}
 
 python3 scripts/gateway_probe.py 9100 \
- '{"version":1,"type":"inference","work_id":"w-1","request_id":"r-1","payload":{"text":"3"}}'
+  '{"version":1,"type":"inference","work_id":"w-1","request_id":"r-1","payload":{"text":"3"}}'
 # → 逐帧 partial 汇总后的 final 文本
 ```
 
