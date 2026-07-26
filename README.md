@@ -145,7 +145,7 @@ flowchart TB
 | Linux / C++17 | 全链路实现语言：进程、线程、epoll 事件驱动 |
 | ZeroMQ | 控制面 RPC 与数据面流的通信底座 |
 | epoll 主从 Reactor | TCP 网关连接管理，连接生命周期一线程归属 |
-| CMake + CTest | 根级构建与测试（当前 20 个测试） |
+| CMake + CTest | 根级构建与测试（当前 29 个测试） |
 | Shell 脚本 | 演示、板卡体检与无硬件依赖验收 |
 
 **应用场景**：无公网的全离线部署（工业、车载、机器人等边缘环境）；医疗、金融等隐私敏感场景；端侧语音交互与边缘智能应用。
@@ -154,7 +154,7 @@ flowchart TB
 
 | 能力 | 状态 | 说明 |
 |---|---|---|
-| 仓库骨架、根级 CMake/CTest | ✅ | 空目录可复现构建，CTest 27/27 通过 |
+| 仓库骨架、根级 CMake/CTest | ✅ | 空目录可复现构建，CTest 29/29 通过 |
 | 统一消息信封 MessageEnvelope | ✅ | 版本化 JSON，1 MiB 上限，结构化错误码 |
 | ZMQ 多模式通信 | ✅ | RPC（deadline）/ PUB/SUB（订阅握手）/ PUSH/PULL，均含超时与退出测试 |
 | TCP 网关与 NDJSON 解帧 | ✅ | epoll 主从 Reactor，半包/粘包/超长帧/慢客户端处理 |
@@ -162,6 +162,7 @@ flowchart TB
 | 后端契约与确定性 Fake | ✅ | 五类接口 + 统一事件；ASR/RAG/LLM/TTS 以真实进程运行，TTS 产出 WAV |
 | JSONL/BM25 分级 RAG | ✅ | L0-L3 路由、文本规范化、Top-K 检索与单元测试已落地 |
 | Session 编排、取消与晚到过滤 | ✅ | 固定 WAV → Fake PCM 全链路；状态机（Idle→Listening→Routing→Thinking→Speaking）、有界文本/PCM 队列、generation 取消传播与晚到过滤；E2E + 故障注入测试覆盖 |
+| WSL Mock 冻结（M1 门禁） | ✅ | 50 轮 E2E 零跨流、进程/端口无残留、request_id 日志全链关联、干净构建排除旧缓存；故障注入回归（非法输入、超长帧、未知任务、挂起兜底超时、重复 cancel/exit）；证据见 `artifacts/mock-release/` |
 | 真实硬件后端（sherpa-onnx / RKLLM / SummerTTS / ALSA） | ⏳ 板卡阶段 | 默认构建关闭，仅 `VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON` 时接入 |
 | 泰山派 3M 全真实链路 | ⏳ | 上游模型与运行库基线验证 → 项目 Backend → 全链路，逐级验证 |
 
@@ -172,7 +173,7 @@ flowchart TB
 ```bash
 cmake --preset wsl-debug
 cmake --build --preset wsl-debug -j8
-ctest --preset wsl-debug        # 28 个测试，全部通过
+ctest --preset wsl-debug        # 29 个测试，全部通过
 ```
 
 无硬件依赖可用 `scripts/check_no_hw_deps.sh` 逐二进制验收（ldd 检查 rkllm / sherpa / onnx / asound 等链接）。
@@ -205,6 +206,15 @@ python3 scripts/gateway_probe.py 9100 \
   '{"version":1,"type":"inference","work_id":"w-1","request_id":"r-1","payload":{"text":"3"}}'
 # → 逐帧 partial 汇总后的 final 文本
 ```
+
+## 板端部署（Mock）
+
+泰山派 3M（RK3576，官方 Ubuntu 24.04 镜像）部署包见 `deploy/taishanpi3m/`：
+清单 `deploy-manifest.md`、板端构建脚本 `build.sh`（aarch64 原生构建 + 全量 CTest）、
+运行脚本 `run_mock_chain.sh`（三进程会话链 + 冒烟验证 + 优雅收尾）、板端配置
+`config/taishanpi3m/session.json`。包内不含模型与厂商 SDK（许可与体积原因，
+见部署清单"明确排除"）；真实硬件后端（sherpa-onnx / RKLLM / SummerTTS / ALSA）
+为板卡阶段逐级验证内容。
 
 ## 设计约定
 

@@ -1,0 +1,18 @@
+{
+  "router": {
+    "l0_keywords": ["停止", "取消", "暂停", "闭嘴", "stop", "cancel", "quit"],
+    "direct_threshold": 5.0,
+    "context_threshold": 1.0,
+    "top_k": 2
+  },
+  "knowledge": "data/knowledge/knowledge.jsonl",
+  "queues": {
+    "text_capacity": 8,
+    "pcm_capacity": 32,
+    "push_timeout_ms": 50
+  },
+  "output_dir": "session-out",
+  "stage_delay_ms": 0,
+  "tts_min_duration_ms": 1000,
+  "max_run_ms": 30000
+}

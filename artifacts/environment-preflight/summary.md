@@ -34,5 +34,5 @@
 
 - 三种 ZMQ 模式（REQ/REP、PUB/SUB、PUSH/PULL）测试；
 - MessageEnvelope 消息基线；
-- 官方 Debian 镜像 / 烧录工具 / RKLLM Demo/Runtime/模型的下载 manifest；
+- 官方 Ubuntu 24.04 镜像（板卡已烧录）/ 烧录工具 / RKLLM Demo/Runtime/模型的下载 manifest；
 - 板卡体检脚本待用户提供 SSH/ADB 后执行。
