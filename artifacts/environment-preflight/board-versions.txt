@@ -1,0 +1,64 @@
+# 泰山派 3M 板端版本矩阵（环境预检）
+# 采集时间：2026-08-02 12:19 CST（板卡 uptime 14 min）
+# 采集方式：scripts/check_taishanpi3m.sh 只读体检 + dpkg/pkg-config 精确查询
+# 原始体检记录：同目录 board-health-check.txt
+# 对照基准：同目录 versions.txt（WSL x86_64 开发机）
+
+== 板卡标识 ==
+板卡      泰山派 3M-RK3576 开发板（4G+64G）
+SoC       Rockchip RK3576，八核，NPU 最高 6 TOPS
+主机名    localhost
+架构      aarch64
+登录      用户 lckfb（SSH 公钥免密已部署；板卡内网 IP 不入库，见本机 LOCAL_RESOURCES）
+
+== 系统与内核 ==
+内核      Linux 6.1.99 #1 SMP Sat Jul 4 15:29:50 CST 2026 aarch64
+发行版    Ubuntu 24.04.4 LTS (Noble Numbat)
+BSP 构建  RK_BUILD_INFO root@ubuntu22 Sat Jul 4 17:35:54 CST 2026
+
+== CPU（big.LITTLE，8 核）==
+大核      4× Cortex-A72 @408-2208 MHz (r1p0)
+小核      4× Cortex-A53 @408-2016 MHz (r0p4)
+特性      fp asimd evtstrm aes pmull sha1 sha2 crc32 cpuid
+
+== 内存 / 磁盘 ==
+内存      3.8 GiB total / 2.5 GiB available（无 swap）
+rootfs    /dev/root 56G（可用 48G，已用 6.1G）
+oem       /dev/mmcblk0p6 104M（/oem）
+userdata  /dev/mmcblk0p7 944M（/userdata）
+
+== RKNPU ==
+内核驱动  已加载（dmesg: 27700000.npu, soc version=0, speed=5, avs=0）
+EM/OPP    OPP 400000/500000 标记 inefficient；nbuf [0x3fe80000,0x3ff80000) size 0x100000
+debugfs   /sys/kernel/debug/rknpu 未发现（无权限/未挂载）
+设备节点  /dev/rknpu* 未出现 ⚠ 接入 RKLLM 前需确认用户态访问路径
+GPU/显示  /dev/dri/card0（root:video）
+
+== ALSA 音频 ==
+card0     rockchip-es8388（ES8323 HiFi）—— capture + playback（板载麦克风 + 3.5mm 输出）
+card1     rockchip-hdmi（HDMI 音频）
+card2     rockchip-dp0（DisplayPort 音频）
+/dev/snd  controlC0/1/2；pcmC0D0c(录)/pcmC0D0p(放)；pcmC1D0c/p；pcmC2D0p；seq, timer
+
+== 工具链 ==
+gcc       13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1)
+g++       13.3.0 (同上)
+cmake     3.28.3
+python3   3.12.3
+openssh   9.6p1 (OpenSSL 3.0.13 30 Jan 2024)
+
+== 构建依赖（本次预检补装，sudo 免密）==
+libzmq3-dev        4.3.5-1build2   ✓（含 cppzmq-dev 4.10.0-1）
+nlohmann-json3-dev 3.11.3-1        ✓
+pkg-config         1.8.1-2build1   ✓
+build.sh 自检      通过（cmake/g++/libzmq 就绪）
+
+== 用户与权限 ==
+lckfb (uid=1000, gid=1000)
+组      audio video render sudo adm disk cdrom plugdev users netdev kvm input
+        → audio/video/render 组具备 /dev/snd 与 GPU/NPU 相关设备访问权
+
+== 待确认 / 风险 ==
+- /dev/rknpu* 设备节点未出现：RKLLM Runtime 通常经此节点 ioctl 访问 NPU；
+  接入前需确认 BSP 是否需加载 rknpu 用户态驱动 / udev 规则 / 节点别名。
+- 无 swap：大模型推理 RSS 需实测，关注 OOM 风险（仅 3.8 GiB）。

@@ -29,7 +29,17 @@ EventLoop::EventLoop() {
 }
 
 EventLoop::~EventLoop() {
-  run_pending_tasks();  // 释放队列中的保活引用（如连接关闭保活），避免对象滞留
+  // 正常路径下 run() 退出前已 drain 干净；此处兜底未经 run() 或仍有残留。
+  // 仅在 loop 线程内执行任务体——任务体（如 stop_in_loop → remove_channel）
+  // 依赖 loop 线程上下文，在析构线程跨线程执行会触发 assert 或访问已
+  // teardown 的 poller。非 loop 线程时只清空队列：析构各 task 即可释放其
+  // 捕获的保活引用（如连接关闭保活的 shared_ptr），不执行任务体逻辑。
+  if (is_in_loop_thread()) {
+    run_pending_tasks();
+  } else {
+    std::lock_guard<std::mutex> lock(task_mutex_);
+    pending_tasks_.clear();
+  }
   wakeup_channel_.reset();  // 先从 poller 注销
   ::close(wakeup_fd_);
 }
@@ -54,6 +64,13 @@ void EventLoop::run() {
   }
 
   running_.store(false);
+  // 退出前再 drain 一次：quit() 与本线程上一轮 run_pending_tasks 之间存在
+  // 窗口——quit() 之前入队的任务可能恰好错过最后一次批次执行（典型场景：
+  // 外部先 stop() 投递 stop_in_loop 紧接着 quit()，本线程可能在 swap 走旧
+  // 任务后才看到 quit_ 为真，直接退出，使新任务滞留到析构）。补 drain 保证
+  // 退出协议完整；此时仍在 loop 线程（thread_id_ 未变），任务体的
+  // assert_in_loop_thread / poller 访问均安全。
+  run_pending_tasks();
 }
 
 void EventLoop::quit() {

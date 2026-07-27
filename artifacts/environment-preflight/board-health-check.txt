@@ -1,0 +1,136 @@
+===== 泰山派 3M 只读体检 2026-07-26 04:23:22 UTC =====
+
+===== 系统与内核 =====
+Linux localhost 6.1.99 #1 SMP Sat Jul  4 15:29:50 CST 2026 aarch64 aarch64 aarch64 GNU/Linux
+PRETTY_NAME="Ubuntu 24.04.4 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.4 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+BUILD_INFO="root@ubuntu22 Sat Jul  4 17:35:35 CST 2026"
+ID_LIKE="ubuntu"
+RK_BUILD_INFO="root@ubuntu22 Sat Jul  4 17:35:54 CST 2026"
+
+===== CPU =====
+Architecture:                         aarch64
+CPU op-mode(s):                       32-bit, 64-bit
+Byte Order:                           Little Endian
+CPU(s):                               8
+On-line CPU(s) list:                  0-7
+Vendor ID:                            ARM
+Model name:                           Cortex-A53
+Model:                                4
+Thread(s) per core:                   1
+Core(s) per socket:                   4
+Socket(s):                            1
+Stepping:                             r0p4
+CPU(s) scaling MHz:                   80%
+CPU max MHz:                          2016.0000
+CPU min MHz:                          408.0000
+BogoMIPS:                             2000.00
+Flags:                                fp asimd evtstrm aes pmull sha1 sha2 crc32 cpuid
+Model name:                           Cortex-A72
+Model:                                0
+Thread(s) per core:                   1
+Core(s) per socket:                   4
+Socket(s):                            1
+Stepping:                             r1p0
+CPU(s) scaling MHz:                   64%
+CPU max MHz:                          2208.0000
+CPU min MHz:                          408.0000
+BogoMIPS:                             2000.00
+Flags:                                fp asimd evtstrm aes pmull sha1 sha2 crc32 cpuid
+Vulnerability Gather data sampling:   Not affected
+Vulnerability Itlb multihit:          Not affected
+Vulnerability L1tf:                   Not affected
+Vulnerability Mds:                    Not affected
+Vulnerability Meltdown:               Not affected
+Vulnerability Mmio stale data:        Not affected
+Vulnerability Reg file data sampling: Not affected
+Vulnerability Retbleed:               Not affected
+Vulnerability Spec rstack overflow:   Not affected
+Vulnerability Spec store bypass:      Not affected
+Vulnerability Spectre v1:             Mitigation; __user pointer sanitization
+Vulnerability Spectre v2:             Mitigation; CSV2, BHB
+Vulnerability Srbds:                  Not affected
+Vulnerability Tsx async abort:        Not affected
+
+===== 内存 =====
+               total        used        free      shared  buff/cache   available
+Mem:           3.8Gi       1.4Gi       259Mi        21Mi       2.2Gi       2.4Gi
+Swap:             0B          0B          0B
+
+===== 磁盘 =====
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/root        56G  6.6G   47G  13% /
+tmpfs           2.0G  4.0K  2.0G   1% /dev/shm
+tmpfs           780M  2.5M  777M   1% /run
+tmpfs           5.0M   16K  5.0M   1% /run/lock
+/dev/mmcblk0p6  104M   12M   84M  13% /oem
+/dev/mmcblk0p7  944M  296K  886M   1% /userdata
+tmpfs           390M  100K  390M   1% /run/user/120
+tmpfs           390M   88K  390M   1% /run/user/1000
+
+===== RKNPU（debugfs，可能不存在或需要 root） =====
+未发现 /sys/kernel/debug/rknpu（常见原因：未挂载 debugfs / 无权限 / 内核未启用节点）
+
+===== RKNPU（设备节点，可能不存在） =====
+未发现 /dev/rknpu* 设备节点
+total 0
+drwxr-xr-x   3 root root        180 Jun  5 23:36 .
+drwxr-xr-x  16 root root       5700 Jun  5 23:36 ..
+drwxr-xr-x   2 root root        160 Jun  5 23:36 by-path
+crw-rw----+  1 root video  226,   0 Jun  5 23:36 card0
+
+===== NPU 内核消息（最近相关行） =====
+[    5.456172] RKNPU 27700000.npu: EM: OPP:500000 is inefficient
+[    5.456178] RKNPU 27700000.npu: EM: OPP:400000 is inefficient
+[    5.456299] RKNPU 27700000.npu: EM: created perf domain
+[    5.456647] RKNPU 27700000.npu: l=15000 h=2147483647 hyst=5000 l_limit=0 h_limit=0 h_table=0
+[    5.458172] RKNPU 27700000.npu: RKNPU: nbuf region: [0x000000003fe80000, 0x000000003ff80000), nbuf size: 0x100000
+
+===== ALSA 设备（音频） =====
+**** List of PLAYBACK Hardware Devices ****
+card 0: rockchipes8388 [rockchip-es8388], device 0: dailink-multicodecs ES8323 HiFi-0 [dailink-multicodecs ES8323 HiFi-0]
+  Subdevices: 1/1
+  Subdevice #0: subdevice #0
+card 1: rockchiphdmi [rockchip-hdmi], device 0: rockchip-hdmi i2s-hifi-0 [rockchip-hdmi i2s-hifi-0]
+  Subdevices: 1/1
+  Subdevice #0: subdevice #0
+card 2: rockchipdp0 [rockchip-dp0], device 0: rockchip-dp0 spdif-hifi-0 [rockchip-dp0 spdif-hifi-0]
+  Subdevices: 1/1
+  Subdevice #0: subdevice #0
+**** List of CAPTURE Hardware Devices ****
+card 0: rockchipes8388 [rockchip-es8388], device 0: dailink-multicodecs ES8323 HiFi-0 [dailink-multicodecs ES8323 HiFi-0]
+  Subdevices: 1/1
+  Subdevice #0: subdevice #0
+card 1: rockchiphdmi [rockchip-hdmi], device 0: rockchip-hdmi i2s-hifi-0 [rockchip-hdmi i2s-hifi-0]
+  Subdevices: 1/1
+  Subdevice #0: subdevice #0
+total 0
+drwxr-xr-x   3 root root      260 Jun  5 23:36 .
+drwxr-xr-x  16 root root     5700 Jun  5 23:36 ..
+drwxr-xr-x   2 root root      100 Jun  5 23:36 by-path
+crw-rw----+  1 root audio 116,  4 Jun  5 23:36 controlC0
+crw-rw----+  1 root audio 116,  7 Jun  5 23:36 controlC1
+crw-rw----+  1 root audio 116,  9 Jun  5 23:36 controlC2
+crw-rw----+  1 root audio 116,  3 Jun  5 23:36 pcmC0D0c
+crw-rw----+  1 root audio 116,  2 Jun  5 23:36 pcmC0D0p
+crw-rw----+  1 root audio 116,  6 Jun  5 23:36 pcmC1D0c
+crw-rw----+  1 root audio 116,  5 Jun  5 23:36 pcmC1D0p
+crw-rw----+  1 root audio 116,  8 Jun  5 23:36 pcmC2D0p
+crw-rw----+  1 root audio 116,  1 Jun  5 23:36 seq
+crw-rw----+  1 root audio 116, 33 Jun  5 23:36 timer
+
+===== 系统负载与运行时长 =====
+ 12:23:22 up 18 min,  4 users,  load average: 0.69, 0.39, 0.27
+0.69 0.39 0.27 1/686 5718
+
+===== 体检结束：只记录事实，未做任何修改 =====
