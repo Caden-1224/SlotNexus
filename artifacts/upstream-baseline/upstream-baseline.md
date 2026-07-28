@@ -132,3 +132,41 @@ test_wavs/0.wav（10.05 s，中英混合日期句）：
 
 待优化（不阻塞）：small int8 模型对长句有错字（TODAYS / THE AFTER），需要时可换更大模型；
 RTF 压到 1 以下受限于 A72 内存带宽，线程数已饱和，需权衡 RSS 与模型档位。
+
+## SummerTTS Demo 门禁结果（2026-07-28，板端实测）
+
+源码：作者仓库 `tts/`（vits-based, MIT License，仅依赖 Eigen 3.4.0 自带，无外部 NN 运行时）。
+作者原版 `tts/CMakeLists.txt` 已是 ZMQ+ALSA+PortAudio 集成版（产物 `tts_server`），
+`test/main.cpp` 全量注释；为门禁构建纯推理冒烟程序。
+
+冒烟源码归档：`artifacts/upstream-baseline/tts_smoke.cpp` + `CMakeLists.smoke.txt`。
+板端构建产物：`~/upstream_tts/tts/build/tts_smoke`（18 MB）。`CMakeLists.smoke.txt`
+复刻作者 CMakeLists 的精确编译单元（glog/gflags/openfst 前端 + engipa/hz2py 文本前端 +
+nn_op 算子 + modules/models vits 实现），剥离 ZMQ/ALSA/PortAudio 链接，目标改为 `tts_smoke`。
+两处 GCC 13（板端 Ubuntu 24.04, g++ 13.3.0）适配，**不改上游源码**：
+
+- `pinyinmap.h` / `hanzi2phoneid.h` / `Hanz2Piny.h` 用 `uint16_t` 未自给自足 `<cstdint>`，
+  全局 `-include cstdint` 补齐。
+- `engipa/ipa.cpp`（定义全局 `const wchar_t *Ipa[]`）作者原 CMakeLists 漏入，链接报
+  `undefined reference to Ipa`，补入该单元即可。
+
+WAV 输出 44 字节头（RIFF/WAVE/fmt /PCM/16-bit/mono/16000 Hz/data），与 `SummerTtsBackend`
+目标产物格式一致（16 kHz 单声道 S16 PCM）。`file` 确认 `Microsoft PCM, 16 bit, mono 16000 Hz`。
+
+固定文本 `你好，这是语音合成测试。`（5 次取样）：
+
+| 项 | 值 |
+|---|---|
+| `dataLen` | 53248 samples |
+| 音频时长 | 3.328 s |
+| infer 耗时 | 1.87 ~ 2.08 s |
+| RTF | 0.562 / 0.619 / 0.620 / 0.601 / 0.626（热启动稳定 ~0.62）|
+| 模型 load（`ttsLoadModel` 读文件）| ~0.1 s |
+| 峰值 RSS（`/proc/<pid>/status::VmHWM`）| 407.9 MB 稳定 |
+
+中英混合文本 `Hello 你好，this is a mixed test 混合测试。`：dataLen=77056（4.816 s），
+infer=1.932 s，RTF=0.401；engipa（英文）与 hz2py（中文）两条文本前端路径并行均走通。
+
+结论：SummerTTS vits 链路可加载、可合成 16 kHz mono S16 PCM WAV，Demo 门禁通过，
+可进入 `SummerTtsBackend` 实现。RTF ~0.62 < 1（实时合成有余量）；峰值 RSS 407.9 MB，
+与 RKLLM（available ~2.5 GB）同驻需在 Backend 适配时复核内存预算。
