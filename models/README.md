@@ -4,7 +4,7 @@
 
 | 模型 | 用途 | 版本链（镜像/驱动/Runtime/模型） | 来源 | 校验 |
 |---|---|---|---|---|
-| （待补充） | | | | |
+| `single_speaker_fast.bin` | SummerTTS vits 单说话人合成（TTS 后端，板端） | Ubuntu 24.04 / 无 NPU（纯 Eigen 推理） | 作者仓库 `tts/`（获取方式见其 README，不记录下载链接） | 80050316 B，SHA256 `87b77481…4951c4`（与 `artifacts/upstream-baseline/` 一致） |
 
 规则：
 

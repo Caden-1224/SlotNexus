@@ -8,6 +8,7 @@
 |---|---|---|---|---|---|
 | nlohmann-json | 仓库 `third_party/nlohmann/json.hpp`（源自 nlohmann-json3-dev） | 3.10.5 | MIT | MessageEnvelope JSON 编解码 | 是（单头文件，许可头已保留） |
 | ZeroMQ（libzmq） | apt 包 libzmq3-dev / libzmq5 | 4.3.4 | MPL-2.0 | 控制面 RPC 与数据面流 | 否（系统包，动态链接） |
+| SummerTTS（vits） | 作者仓库 `tts/`（板端源码编译，不入库） | vits-based（2024-12-14 声明） | MIT | TTS 后端推理（`backends/summer_tts`） | 否（板端源码编译，仅 Eigen 依赖） |
 
 规则：
 

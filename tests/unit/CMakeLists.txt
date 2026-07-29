@@ -58,6 +58,19 @@ add_executable(fake_audio_sink_test fake_audio_sink_test.cpp)
 target_link_libraries(fake_audio_sink_test PRIVATE voxorchestra::fake_backends)
 add_test(NAME fake_audio_sink_test COMMAND fake_audio_sink_test)
 
+# SummerTTS 真实合成（板端；仅硬件后端构建时编译）：
+# 固定文本 → kPcm 帧 + kDone，dataLen 与门禁基线（53248）对齐。
+# 模型路径经 VOXORCHESTRA_TTS_MODEL 注入；未配置时测试跳过（返回 0）。
+set(VOXORCHESTRA_TTS_MODEL ""
+    CACHE PATH "SummerTTS 单元测试用模型路径（single_speaker_fast.bin）")
+if(VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS)
+  add_executable(summer_tts_test summer_tts_test.cpp)
+  target_link_libraries(summer_tts_test PRIVATE voxorchestra::summer_tts)
+  add_test(NAME summer_tts_test COMMAND summer_tts_test)
+  set_tests_properties(summer_tts_test PROPERTIES
+    ENVIRONMENT "VOXORCHESTRA_TTS_MODEL=${VOXORCHESTRA_TTS_MODEL}")
+endif()
+
 # 轻量 RAG：文本规范化、BM25 手算对照、JSONL 知识库与 L0-L3 路由。
 add_executable(rag_test rag_test.cpp)
 target_link_libraries(rag_test PRIVATE voxorchestra::rag)

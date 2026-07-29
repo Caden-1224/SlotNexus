@@ -13,6 +13,11 @@
   },
   "output_dir": "session-out",
   "stage_delay_ms": 0,
+  "tts": {
+    "backend": "summertts",
+    "model": "models/single_speaker_fast.bin",
+    "length_scale": 1.0
+  },
   "tts_min_duration_ms": 1000,
   "max_run_ms": 30000
 }

@@ -4,4 +4,4 @@
 
 | 组件 | 用途 | 获取来源 | 版本链说明 | 许可证 |
 |---|---|---|---|---|
-| （待补充） | | | | |
+| SummerTTS 源码（`tts/`） | TTS 后端推理（`backends/summer_tts`） | 作者仓库 `tts/`，板端 `~/upstream_tts/tts/`（含 src/ include/ eigen-3.4.0/） | 构建时经 `-DVOXORCHESTRA_SUMMERTTS_ROOT=<源码根>` 指向板端目录；依赖 Eigen 3.4.0 自带，无外部 NN 运行时 | MIT |
