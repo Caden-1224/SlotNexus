@@ -1,7 +1,9 @@
 // edge_gateway 可执行入口。
 //
 // 用法：edge_gateway [--port 9100] [--manager-url tcp://127.0.0.1:19100]
+//   [--forward-timeout-ms <ms>]（默认 3000；硬件后端模型加载可能数秒）
 // SIGINT/SIGTERM 优雅退出。
+#include <chrono>
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
@@ -43,16 +45,30 @@ std::string parse_manager_url(int argc, char** argv) {
   return url;
 }
 
+long parse_forward_timeout_ms(int argc, char** argv) {
+  long ms = 3000;
+  for (int i = 1; i < argc - 1; ++i) {
+    if (std::string(argv[i]) == "--forward-timeout-ms") {
+      ms = std::atol(argv[i + 1]);
+    }
+  }
+  return ms;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   const std::uint16_t port = parse_port(argc, argv);
   const std::string manager_url = parse_manager_url(argc, argv);
+  const long forward_timeout_ms = parse_forward_timeout_ms(argc, argv);
 
   voxorchestra::network::EventLoop loop;
   g_loop = &loop;
 
-  voxorchestra::gateway::EdgeGateway gateway(&loop, "127.0.0.1", port, manager_url);
+  voxorchestra::gateway::EdgeGateway gateway(&loop, "127.0.0.1", port,
+                                             manager_url,
+                                             std::chrono::milliseconds(
+                                                 forward_timeout_ms));
 
   std::signal(SIGINT, handle_signal);
   std::signal(SIGTERM, handle_signal);

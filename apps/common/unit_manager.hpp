@@ -7,6 +7,7 @@
 //   - exit 成功或节点失败时清理路由表并释放 work_id。
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -24,8 +25,12 @@ namespace voxorchestra::manager {
 class UnitManager {
  public:
   // node_endpoints：可用节点 RPC 端点列表（至少 1 个）。
+  // node_rpc_deadline：转发到节点的 RPC 等待上限（默认 3000 ms；硬件后端
+  // 模型加载可能数秒，经 CLI 调大）。
   UnitManager(zmq::context_t& ctx, std::vector<std::string> node_endpoints,
-              std::size_t max_tasks = 0);
+              std::size_t max_tasks = 0,
+              std::chrono::milliseconds node_rpc_deadline =
+                  std::chrono::milliseconds(3000));
   ~UnitManager() = default;
 
   UnitManager(const UnitManager&) = delete;
@@ -52,6 +57,7 @@ class UnitManager {
   std::vector<std::string> node_endpoints_;
   std::vector<std::unique_ptr<transport::RpcClient>> node_clients_;
   std::unordered_map<std::string, std::size_t> route_;  // work_id → 节点下标
+  std::chrono::milliseconds node_rpc_deadline_;
   std::size_t next_node_ = 0;
 };
 

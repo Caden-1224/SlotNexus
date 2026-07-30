@@ -8,22 +8,16 @@
 
 namespace voxorchestra::gateway {
 
-namespace {
-
-// 转发给 Manager 的 RPC 等待上限；超时回 manager_unreachable。
-constexpr std::chrono::milliseconds kForwardDeadline(3000);
-
-}  // namespace
-
 using protocol::MessageEnvelope;
 using protocol::MessageType;
 using protocol::ProtocolError;
 using protocol::ProtocolErrorCode;
 
 EdgeGateway::EdgeGateway(network::EventLoop* loop, const std::string& host,
-                         std::uint16_t port, const std::string& manager_endpoint)
+                         std::uint16_t port, const std::string& manager_endpoint,
+                         std::chrono::milliseconds forward_deadline)
     : loop_(loop), server_(loop, host, port),
-      manager_endpoint_(manager_endpoint) {
+      manager_endpoint_(manager_endpoint), forward_deadline_(forward_deadline) {
   server_.set_message_callback(
       [this](const std::shared_ptr<network::TcpConnection>& conn,
              const std::string& frame) { handle_message(conn, frame); });
@@ -121,7 +115,7 @@ void EdgeGateway::forward_to_manager(
     request = MessageEnvelope{};
   }
   try {
-    const std::string reply = manager_->call(frame, kForwardDeadline);
+    const std::string reply = manager_->call(frame, forward_deadline_);
     MessageEnvelope reply_env;
     try {
       reply_env = MessageEnvelope::from_json(reply);

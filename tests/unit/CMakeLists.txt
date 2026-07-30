@@ -58,6 +58,20 @@ add_executable(fake_audio_sink_test fake_audio_sink_test.cpp)
 target_link_libraries(fake_audio_sink_test PRIVATE voxorchestra::fake_backends)
 add_test(NAME fake_audio_sink_test COMMAND fake_audio_sink_test)
 
+# sherpa-onnx 真实识别（板端；仅硬件后端构建时编译）：
+# 固定 WAV（test_wavs/0.wav）→ kPartial 渐进 + kFinal，最终文本与门禁
+# 基线对齐。模型目录经 VOXORCHESTRA_ASR_MODEL 注入；未配置时跳过（返回 0）。
+set(VOXORCHESTRA_ASR_MODEL ""
+    CACHE PATH "sherpa-onnx ASR 单元测试用模型目录（含 test_wavs/0.wav）")
+if(VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS)
+  add_executable(sherpa_asr_test sherpa_asr_test.cpp)
+  target_link_libraries(sherpa_asr_test PRIVATE
+    voxorchestra::sherpa_asr voxorchestra::common)
+  add_test(NAME sherpa_asr_test COMMAND sherpa_asr_test)
+  set_tests_properties(sherpa_asr_test PROPERTIES
+    ENVIRONMENT "VOXORCHESTRA_ASR_MODEL=${VOXORCHESTRA_ASR_MODEL}")
+endif()
+
 # SummerTTS 真实合成（板端；仅硬件后端构建时编译）：
 # 固定文本 → kPcm 帧 + kDone，dataLen 与门禁基线（53248）对齐。
 # 模型路径经 VOXORCHESTRA_TTS_MODEL 注入；未配置时测试跳过（返回 0）。

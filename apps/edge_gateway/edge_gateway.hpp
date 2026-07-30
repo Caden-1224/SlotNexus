@@ -10,6 +10,7 @@
 //   5. 超长帧由连接层关闭（不可信客户端不回复）。
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -25,9 +26,13 @@ namespace voxorchestra::gateway {
 class EdgeGateway {
  public:
   // manager_endpoint：Unit Manager 的 RPC 端点。
+  // forward_deadline：转发给 Manager 的 RPC 等待上限（默认 3000 ms；
+  // 硬件后端模型加载可能数秒，经 CLI 调大）。
   EdgeGateway(network::EventLoop* loop, const std::string& host,
               std::uint16_t port,
-              const std::string& manager_endpoint = "tcp://127.0.0.1:19100");
+              const std::string& manager_endpoint = "tcp://127.0.0.1:19100",
+              std::chrono::milliseconds forward_deadline =
+                  std::chrono::milliseconds(3000));
   ~EdgeGateway();
 
   EdgeGateway(const EdgeGateway&) = delete;
@@ -52,6 +57,7 @@ class EdgeGateway {
   network::EventLoop* loop_;
   network::TcpServer server_;
   std::string manager_endpoint_;
+  std::chrono::milliseconds forward_deadline_;
   // zmq 对象与 loop 线程同生共死：创建于 start()（loop 线程），销毁于
   // stop() 投递的 loop 任务。zmq 不跨线程创建/销毁；若在 loop 线程上
   // 关闭 REQ socket，io 线程能及时处理 close，避免死端点重连轮询与

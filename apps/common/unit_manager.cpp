@@ -10,13 +10,6 @@
 
 namespace voxorchestra::manager {
 
-namespace {
-
-// 转发到节点的 RPC 等待上限。
-constexpr std::chrono::milliseconds kNodeRpcDeadline(3000);
-
-}  // namespace
-
 using protocol::MessageEnvelope;
 using protocol::MessageType;
 using protocol::ProtocolError;
@@ -25,9 +18,11 @@ using runtime::TaskChannel;
 
 UnitManager::UnitManager(zmq::context_t& ctx,
                          std::vector<std::string> node_endpoints,
-                         std::size_t max_tasks)
+                         std::size_t max_tasks,
+                         std::chrono::milliseconds node_rpc_deadline)
     : server_(ctx), registry_(max_tasks),
-      node_endpoints_(std::move(node_endpoints)) {
+      node_endpoints_(std::move(node_endpoints)),
+      node_rpc_deadline_(node_rpc_deadline) {
   for (const auto& endpoint : node_endpoints_) {
     auto client = std::make_unique<transport::RpcClient>(ctx);
     client->connect(endpoint);
@@ -126,7 +121,7 @@ MessageEnvelope UnitManager::forward(const MessageEnvelope& request,
                                      std::size_t node_index) {
   try {
     const std::string reply_json =
-        node_clients_[node_index]->call(request.to_json(), kNodeRpcDeadline);
+        node_clients_[node_index]->call(request.to_json(), node_rpc_deadline_);
     const MessageEnvelope reply = MessageEnvelope::from_json(reply_json);
     common::LogLine("mgr reply request_id=" + request.request_id() + " type=" +
                     protocol::message_type_to_string(reply.type()));
