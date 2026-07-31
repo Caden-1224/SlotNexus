@@ -72,6 +72,20 @@ if(VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS)
     ENVIRONMENT "VOXORCHESTRA_ASR_MODEL=${VOXORCHESTRA_ASR_MODEL}")
 endif()
 
+# RKLLM 真实生成（板端；仅硬件后端构建时编译）：
+# 固定 prompt（与门禁 smoke 同款）→ kToken 流 + 末事件 kDone，结构断言
+# + TTFT/tok/s 指标打印，输出与 smoke 对照记录进证据文档。
+# 模型路径经 VOXORCHESTRA_RKLLM_MODEL 注入；未配置时测试跳过（返回 0）。
+set(VOXORCHESTRA_RKLLM_MODEL ""
+    CACHE PATH "RKLLM 单元测试用模型路径（.rkllm）")
+if(VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS)
+  add_executable(rkllm_llm_test rkllm_llm_test.cpp)
+  target_link_libraries(rkllm_llm_test PRIVATE voxorchestra::rkllm)
+  add_test(NAME rkllm_llm_test COMMAND rkllm_llm_test)
+  set_tests_properties(rkllm_llm_test PROPERTIES
+    ENVIRONMENT "VOXORCHESTRA_RKLLM_MODEL=${VOXORCHESTRA_RKLLM_MODEL}")
+endif()
+
 # SummerTTS 真实合成（板端；仅硬件后端构建时编译）：
 # 固定文本 → kPcm 帧 + kDone，dataLen 与门禁基线（53248）对齐。
 # 模型路径经 VOXORCHESTRA_TTS_MODEL 注入；未配置时测试跳过（返回 0）。

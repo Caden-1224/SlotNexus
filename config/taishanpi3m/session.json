@@ -18,6 +18,12 @@
     "model": "models/sherpa-zipformer-bilingual-zh-en-2023-02-16",
     "num_threads": 4
   },
+  "llm": {
+    "backend": "rkllm",
+    "model": "models/DeepSeek-R1-Distill-Qwen-1.5B_w4a16_RK3576.rkllm",
+    "max_new_tokens": 100,
+    "max_context_len": 256
+  },
   "tts": {
     "backend": "summertts",
     "model": "models/single_speaker_fast.bin",

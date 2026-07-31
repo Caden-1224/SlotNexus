@@ -14,8 +14,11 @@ using protocol::ProtocolErrorCode;
 using runtime::TaskChannel;
 
 RuntimeNode::RuntimeNode(zmq::context_t& ctx,
-                         std::unique_ptr<runtime::TaskRuntime> runtime)
-    : server_(ctx), runtime_(std::move(runtime)) {}
+                         std::unique_ptr<runtime::TaskRuntime> runtime,
+                         std::chrono::milliseconds infer_timeout)
+    : server_(ctx),
+      runtime_(std::move(runtime)),
+      infer_timeout_(infer_timeout) {}
 
 void RuntimeNode::bind(const std::string& endpoint) { server_.bind(endpoint); }
 
@@ -48,10 +51,10 @@ std::string RuntimeNode::handle_request(const std::string& request_json) {
     }
     case MessageType::kInference: {
       std::string out;
-      // timeout=0 → 默认超时；返回 kTimeout/kCancelled 时 out 无产出。
+      // 0 → 默认超时；返回 kTimeout/kCancelled 时 out 无产出。
       const TaskChannel::Error err = runtime_->inference(
           request.work_id(), request.request_id(), app::ExtractText(request.payload()),
-          std::chrono::milliseconds(0), &out);
+          infer_timeout_, &out);
       if (err != TaskChannel::Error::kOk) {
         return app::BuildError(request, static_cast<int>(err),
                                runtime::to_string(err))

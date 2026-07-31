@@ -21,7 +21,11 @@ namespace voxorchestra::node {
 class RuntimeNode {
  public:
   // runtime：节点的任务运行时（含后端工厂）。
-  RuntimeNode(zmq::context_t& ctx, std::unique_ptr<runtime::TaskRuntime> runtime);
+  // infer_timeout：单次推理任务的节点内超时；0 表示默认
+  // （kDefaultInferenceTimeout 5000 ms）。硬件后端推理可达数十秒
+  // （RKLLM 板端 ~7 tok/s），需节点经 --infer-timeout-ms 调大。
+  RuntimeNode(zmq::context_t& ctx, std::unique_ptr<runtime::TaskRuntime> runtime,
+              std::chrono::milliseconds infer_timeout = std::chrono::milliseconds(0));
   ~RuntimeNode() = default;
 
   RuntimeNode(const RuntimeNode&) = delete;
@@ -41,6 +45,7 @@ class RuntimeNode {
 
   transport::RpcServer server_;
   std::unique_ptr<runtime::TaskRuntime> runtime_;
+  std::chrono::milliseconds infer_timeout_;
 };
 
 }  // namespace voxorchestra::node
