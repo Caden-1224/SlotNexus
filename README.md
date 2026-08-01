@@ -11,7 +11,7 @@
 - **多进程**：Gateway、Unit Manager、Session 与各模型节点独立进程运行，故障边界清晰，节点按需启停、可独立替换；
 - **通信与推理中间件**：ZMQ 多模式通信、TCP 网关、任务调度、Node 运行时与 Backend 契约全部独立实现，系统级依赖仅 ZeroMQ 与 nlohmann-json；
 - **全离线**：不依赖公网与云端，适用于无网络、隐私敏感的部署环境；
-- **大模型语音交互**：统一编排 ASR、本地 RAG、RKLLM 与 TTS，构建"语音输入 → 语音输出"全离线闭环（Mock 阶段五节点链路已跑通，真实链路板卡阶段逐级接入）。
+- **大模型语音交互**：统一编排 ASR、本地 RAG、RKLLM 与 TTS，构建"语音输入 → 语音输出"全离线闭环（Mock 五节点链路已跑通；四类真实硬件后端已接入并板端核验，全真实链路联调中）。
 
 系统以**单机多进程**为边界：不涉及跨主机集群、注册中心或故障转移；控制面 RPC（deadline + 结构化错误）与数据面异步流（有界、可取消）分离，外部客户端只访问 TCP 网关。
 
@@ -47,11 +47,11 @@ flowchart TB
     subgraph Pipeline["会话编排与推理数据面"]
         direction LR
         Session["Session Node<br/>状态机 · cancel · generation<br/>已实现（Mock）"]
-        ASR["ASR Node<br/>Fake 已实现<br/>sherpa-onnx 待接入"]
+        ASR["ASR Node<br/>Fake + sherpa-onnx<br/>均已接入"]
         RAG["RAG Node<br/>Fake 已实现<br/>JSONL + BM25 已实现"]
-        LLM["LLM Node<br/>Fake 已实现<br/>RKLLM 待接入"]
-        TTS["TTS Node<br/>Fake 已实现<br/>SummerTTS 待接入"]
-        Sink["Audio Sink<br/>WAV / ALSA<br/>板卡阶段"]
+        LLM["LLM Node<br/>Fake + RKLLM<br/>均已接入"]
+        TTS["TTS Node<br/>Fake + SummerTTS<br/>均已接入"]
+        Sink["Audio Sink<br/>WAV / ALSA<br/>已接入"]
 
         Session -.->|"音频帧"| ASR
         ASR -.->|"partial / final"| RAG
@@ -81,7 +81,7 @@ flowchart TB
     Foundation --- Runtime
 ```
 
-图中实线表示已落地的当前调用路径，虚线表示待板卡 Backend 接入的目标路径。当前 Gateway、Unit Manager、Node Runtime、五类 Fake 契约、JSONL/BM25 与 Session 编排（固定 WAV → Fake PCM 全链路）均已实现；真实硬件 Backend 尚未完成。
+图中实线表示已落地的当前调用路径。Gateway、Unit Manager、Node Runtime、五类 Fake 契约、JSONL/BM25 与 Session 编排（固定 WAV → Fake PCM 全链路）均已实现；五类真实硬件 Backend（sherpa-onnx / RKLLM / SummerTTS / ALSA）已接入并板端核验，数据面虚线为待联调的全真实链路目标路径。
 
 ### 三个平面
 
@@ -130,10 +130,10 @@ flowchart TB
 
 ### 5. 语音交互链路：ASR → 分级 RAG → LLM → TTS
 
-- **ASR**：流式识别，逐帧 partial、末帧 final（板卡阶段接入流式 Zipformer 识别框架；当前为确定性 Fake）；
+- **ASR**：流式识别，逐帧 partial、末帧 final；sherpa-onnx 流式 Zipformer 已接入（Fake 默认）；
 - **分级 RAG**：L0 紧急控制（规则命中，绕过 LLM）/ L1 高置信事实直答 / L2 复杂问题带上下文 / L3 闲聊不注入伪知识；JSONL 知识库、BM25 检索与 Session 编排已接入完整链路（阈值在 `config/mock/session.json` 实测标定）；
-- **LLM**：DeepSeek-R1-Distill-Qwen-1.5B W4A16 预转换模型作为首个上游基线（板卡阶段），流式 token 回调与取消过滤；
-- **TTS**：离线语音合成，消息/音频队列消除卡顿，当前输出 WAV 文件，板卡阶段接入声卡输出；
+- **LLM**：DeepSeek-R1-Distill-Qwen-1.5B W4A16 预转换模型作为首个上游基线，RKLLM 后端已接入（板端流式 token、取消过滤）；
+- **TTS**：离线语音合成，消息/音频队列消除卡顿；SummerTTS 后端与 WAV / ALSA 输出均已接入；
 - **会话编排**：Idle → Listening → Routing → Thinking → Speaking 状态机与 generation 晚到过滤为当前开发阶段目标（见状态表）；已落地部分为节点级协作式取消与超时。
 
 > 性能指标（时延、吞吐、内存占用）只以板卡实测为准，实测数据与方法记录于 `artifacts/`。
@@ -163,8 +163,8 @@ flowchart TB
 | JSONL/BM25 分级 RAG | ✅ | L0-L3 路由、文本规范化、Top-K 检索与单元测试已落地 |
 | Session 编排、取消与晚到过滤 | ✅ | 固定 WAV → Fake PCM 全链路；状态机（Idle→Listening→Routing→Thinking→Speaking）、有界文本/PCM 队列、generation 取消传播与晚到过滤；E2E + 故障注入测试覆盖 |
 | WSL Mock 冻结（M1 门禁） | ✅ | 50 轮 E2E 零跨流、进程/端口无残留、request_id 日志全链关联、干净构建排除旧缓存；故障注入回归（非法输入、超长帧、未知任务、挂起兜底超时、重复 cancel/exit）；证据见 `artifacts/mock-release/` |
-| 真实硬件后端（sherpa-onnx / RKLLM / SummerTTS / ALSA） | ⏳ 板卡阶段 | 默认构建关闭，仅 `VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON` 时接入 |
-| 泰山派 3M 全真实链路 | ⏳ | 上游模型与运行库基线验证 → 项目 Backend → 全链路，逐级验证 |
+| 真实硬件后端（sherpa-onnx / RKLLM / SummerTTS / ALSA） | ✅ | 已接入并板端核验；默认构建关闭，仅 `VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON` 时构建（证据见 `artifacts/{asr,llm,tts,audio}-integration/`） |
+| 泰山派 3M 全真实链路 | ⏳ 联调中 | 上游基线 ✅ → 项目 Backend ✅ → 全链路（ASR→RAG→LLM→TTS→ALSA 端到端）逐级联调 |
 
 ## 快速开始
 
@@ -194,7 +194,7 @@ Session 编排全链路（固定 WAV → Fake PCM）：
 scripts/demo_mock_session.sh
 ```
 
-一键拉起 session_node + Manager + 网关，展示四类路由（L0 控制 / L1 直答 / L2 带上下文 / L3 闲聊）、固定 WAV 完整链路、taskinfo 队列统计与 SIGTERM 优雅退出；输出 1 秒 WAV 落在 `/tmp/voxorchestra-session/`（Fake TTS 为 500 Hz 测试音，实际内容见各请求 `final_text`，真实语音板卡阶段接入）。
+一键拉起 session_node + Manager + 网关，展示四类路由（L0 控制 / L1 直答 / L2 带上下文 / L3 闲聊）、固定 WAV 完整链路、taskinfo 队列统计与 SIGTERM 优雅退出；输出 1 秒 WAV 落在 `/tmp/voxorchestra-session/`（Fake TTS 为 500 Hz 测试音，实际内容见各请求 `final_text`，真实语音 SummerTTS 已接入）。
 
 单条协议交互（手动探测）：
 
@@ -214,7 +214,7 @@ python3 scripts/gateway_probe.py 9100 \
 运行脚本 `run_mock_chain.sh`（三进程会话链 + 冒烟验证 + 优雅收尾）、板端配置
 `config/taishanpi3m/session.json`。包内不含模型与厂商 SDK（许可与体积原因，
 见部署清单"明确排除"）；真实硬件后端（sherpa-onnx / RKLLM / SummerTTS / ALSA）
-为板卡阶段逐级验证内容。
+已板端核验，全链路联调中。
 
 ## 设计约定
 

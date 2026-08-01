@@ -34,12 +34,17 @@
 ES8323 codec 在 5644800 Hz MCLK 下**不支持 22050 / 11025 Hz**
 （`snd_pcm_dai_hw_params` 返回 -EINVAL，dmesg 有记录）。实测支持率：
 
-| 采样率 | 8000 | 11025 | 22050 | 24000 | 32000 | 44100 | 48000 |
-|---|---|---|---|---|---|---|---|
-| plughw:0,0 | OK | FAIL | FAIL | OK | OK | OK | OK |
+| 采样率 | 8000 | 11025 | 16000 | 22050 | 24000 | 32000 | 44100 | 48000 |
+|---|---|---|---|---|---|---|---|---|
+| plughw:0,0 | OK | FAIL | OK | FAIL | OK | OK | OK | OK |
 
-SummerTTS 输出率为 22050（上游 VITS 模型率）。处理方案（对齐上游
-AlsaPlay 的重采样职责）：
+SummerTTS 输出率为 **16000 Hz**（中文模型 single_speaker_fast.bin，标贝
+语料；与契约 kSampleRateHz 一致）。板端对合成 WAV（固定文本 dataLen=53248）
+做浊音段自相关测音高：中位周期 75 样本 → @16000 为 F0≈213 Hz（年轻女声
+正常），@22050 为 294 Hz（异常偏高），据此裁定 16 kHz 为真。早期误记为
+22050（LJ Speech/VITS 经典率，本项目英文模型才是 22050），已订正。
+
+处理方案（对齐上游 AlsaPlay 的重采样职责）：
 
 1. `open()` 候选率阶梯：requested → 16000 → 44100 → 48000 → 8000，
    每档重开句柄，以 `snd_pcm_hw_params` 成功为准（rate_near 在 PCM 层
@@ -48,10 +53,14 @@ AlsaPlay 的重采样职责）：
    ~30 行，无第三方依赖；上游用带限 sinc，语音场景线性插值足够）；
 3. 实际率经 `actual_sample_rate()` 上报（tts_node 返回 JSON）。
 
+板端探针实测（sink_probe，requested→actual）：default 16000→16000 直通；
+plughw:0,0 16000→16000 原生支持、**不触发重采样**。故 SummerTTS 内容在两
+设备均为 16000 直通播放；回退+重采样路径仅为 codec 不支持的输入率兜底
+（如 22050 在 plughw:0,0 回退 16000，单测 test_sink_rate_fallback 覆盖之）。
+
 调试中发现的第二个坑：**plug 设备（default）的 `snd_pcm_hw_params_any`
 返回 1（非负非 0）**，首版用 `== 0` 判定导致 default 整档误判失败；
-改为 errno 惯例（负数才失败），default/plughw 双设备通过。板端
-`default` 直通 22050（plug 层转换），`plughw:0,0` 走 16000 回退 + 重采样。
+改为 errno 惯例（负数才失败），default/plughw 双设备通过。
 
 ## 单元测试（alsa_audio_test，板端）
 
@@ -87,12 +96,17 @@ tts-node-summertts.md 的 WAV 基线同文本）：
 
 | 项 | plughw:0,0 路由 | default 路由 |
 |---|---|---|
-| 返回 payload.text | `{"device":"plughw:0,0","pcm_bytes":106496,"sample_rate":16000}` | `{"device":"default","pcm_bytes":106496,"sample_rate":22050}` |
+| 返回 payload.text | `{"device":"plughw:0,0","pcm_bytes":106496,"sample_rate":16000}` | `{"device":"default","pcm_bytes":106496,"sample_rate":16000}` |
 | pcm_bytes | 106496 = 53248 × 2，与基线 WAV（tts_86e69f32.wav）逐字节一致 | 同左 |
-| 实际采样率 | 16000（ES8323 不支持 22050，回退 + 重采样）| 22050（plug 层直通）|
-| 播放时长（drain） | 2.42 s（22050 数据重采样至 16000，时长不变）| 2.41 s（原生）|
-| 总耗时（含合成 ~1.8 s）| 3.14 s | 4.55 s |
-| 听感 | 待人工补验（见下）| 同左 |
+| 实际采样率 | 16000（ES8323 原生支持，直通不重采样）| 16000（直通）|
+| 播放时长（drain） | ≈3.33 s（= dataLen 53248 / 16000，正确时长）| ≈3.33 s |
+| 听感 | 待人工补验（板载无扬声器，见下；速率已由 F0 实测客观确认）| 同左 |
+
+> 速率订正说明：早期在 22050 误判下记录为 default `sample_rate=22050`、
+> drain 2.41 s，plughw 回退 16000、drain 2.42 s（"22050 数据重采样至 16000
+> 时长不变"——但内容实为 16 kHz，2.41 s 是把 16 kHz 内容按 22050 播的加速
+> 时长，错）。经 F0 实测裁定 16 kHz 后订正；actual_sample_rate 经 sink_probe
+> 实测确认两设备均 16000 直通。
 
 > 听感说明：泰山派 3M 无板载扬声器（官方 wiki 确认仅 3.5 mm 接口 + 板载
 > 麦克风），验收当时无 3.5 mm 设备。客观佐证已齐：drain 完成（snd_pcm_drain
@@ -140,8 +154,9 @@ CTest 29/29 全绿（不增不减），`scripts/check_no_hw_deps.sh` 通过
 AlsaAudioSink 与 FakeAudioSink 生命周期语义逐项对齐（open/write/close
 幂等、未 open 空操作、析构自动 close、drain 语义），tts_node
 `--sink alsa` 板端全链路：固定文本合成 → ES8323 播放路径 drain 完成，
-pcm_bytes 与既有 WAV 基线逐字节一致；22050 输出率在 ES8323 不支持时
-自动回退 16000 + 线性重采样（保音高保时长）；录音格式/量级与历史
-基线一致；内存与基线同量级。听感待人工补验（无 3.5 mm 设备，HDMI
-路径已实测可播）。可进入会话流水线真机联调
+pcm_bytes 与既有 WAV 基线逐字节一致；SummerTTS 输出率 16000（F0 实测
+裁定，早期误记 22050 已订正）在 ES8323 原生支持、直通播放（无需回退
+重采样）；录音格式/量级与历史基线一致；内存与基线同量级。听感待人工
+补验（无 3.5 mm 设备，HDMI 路径已实测可播；采样率已由 F0 客观确认，
+听感仅余主观音质）。可进入会话流水线真机联调
 （AlsaAudioSource → 会话输入，i_audio_source 契约按需定义）。

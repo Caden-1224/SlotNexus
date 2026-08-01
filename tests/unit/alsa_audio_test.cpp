@@ -76,9 +76,10 @@ void test_sink_lifecycle(const std::string& device) {
   std::printf("  [ok] sink 生命周期（实际采样率 %d Hz，1 s×2 播放）\n", actual);
 }
 
-// 22050 Hz 请求（SummerTTS 输出率）必须能打开：default 等设备直通；
-// ES8323（plughw:0,0）不支持 22050 时走 open() 的候选率阶梯回退 +
-// 线性重采样。实际率打印供证据记录（不硬编码——硬件约束见板端实测）。
+// 非原生率回退：22050 是 ES8323（plughw:0,0）不支持的输入率（default
+// 经 plug 层直通），用于覆盖 open() 的候选率阶梯回退 + 线性重采样路径
+// （内容率 16000 在两设备均原生支持、不触发回退，故另用 22050 锻炼该
+// 路径）。实际率打印供证据记录（不硬编码——硬件约束见板端实测）。
 void test_sink_rate_fallback(const std::string& device) {
   eas::AlsaAudioSink sink(device, 22050);
   if (!sink.open()) {

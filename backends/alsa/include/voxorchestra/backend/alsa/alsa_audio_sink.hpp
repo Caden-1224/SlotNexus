@@ -14,17 +14,18 @@
 //  close 幂等（重复调用 → true）    | 同左
 //  析构自动 close（异常路径安全）   | 同左
 //
-// 采样率：构造注入 PCM 输入率（tts_node 传 SummerTTS 22050；上游 VITS 模型
-// 输出率，WAV 头硬编码 16 kHz 是 FakeAudioSink 的已知简化）。open 时
-// snd_pcm_hw_params_set_rate_near 兜底取硬件就近值；板端 ES8323 codec 在
-// 5644800 Hz MCLK 下不支持 22050/11025（内核 -EINVAL，实测 8000/24000/
-// 32000/44100/48000 可用），open 依次回退候选率并做线性重采样保证
-// 音高/时长正确（对齐上游 AlsaPlay 的 resampler 职责），
-// actual_sample_rate() 返回硬件实际值。
+// 采样率：构造注入 PCM 输入率（tts_node 传合成端输出率 = 16000，与契约
+// kSampleRateHz 一致；SummerTTS 中文模型 single_speaker_fast.bin 经板端
+// F0 实测确认为 16 kHz——非 LJ Speech/VITS 常见的 22050，英文模型才是）。
+// open 时 snd_pcm_hw_params_set_rate_near 兜底取硬件就近值；板端 ES8323
+// codec 在 5644800 Hz MCLK 下不支持 22050/11025（内核 -EINVAL，实测
+// 8000/16000/24000/32000/44100/48000 可用），输入率被硬件拒绝时 open
+// 依次回退候选率并做线性重采样保证音高/时长正确（对齐上游 AlsaPlay 的
+// resampler 职责），actual_sample_rate() 返回硬件实际值。
 //
 // 设备名由构造注入（产品代码不写死本机设备）：tts_node --sink-device
-// 默认 "default"（plug 层自带率转换，22050 直接支持），板端显式
-// plughw:0,0（ES8323）亦可（走回退 + 重采样路径）。
+// 默认 "default"，板端显式 plughw:0,0（ES8323）。16000 在两设备均原生
+// 支持、直通不重采样；回退+重采样路径仅为 codec 不支持的输入率兜底。
 #pragma once
 
 #include <memory>
@@ -38,7 +39,7 @@ namespace voxorchestra::backend::alsa {
 class AlsaAudioSink final : public IAudioSink {
 public:
  // device：ALSA PCM 设备名（"default" / "plughw:0,0"）。
- // sample_rate：PCM 输入采样率（SummerTTS 22050 / Fake 16k）。
+ // sample_rate：PCM 输入采样率（SummerTTS 16k / Fake 16k，契约 kSampleRateHz）。
  // 注意：本类只做播放，不做重采样；若采样率与硬件能力不一致，
  // rate_near 就近取值并记录，调用方按 actual_sample_rate() 解释数据。
  AlsaAudioSink(std::string device, int sample_rate);

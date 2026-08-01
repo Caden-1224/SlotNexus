@@ -15,8 +15,9 @@
 //     文件），返回 {"wav_path": ..., "pcm_bytes": N}；
 //   - --sink alsa：改走 AlsaAudioSink（板端声卡实时播放，不落盘），
 //     返回 {"device": ..., "pcm_bytes": N, "sample_rate": 实际值}。
-//     sink 采样率 = 合成端输出率：summertts = 22050（上游 VITS 模型率，
-//     FakeAudioSink 的 16 kHz WAV 头是 Mock 侧已知简化）；fake = 16 kHz。
+//     sink 采样率 = 合成端输出率 = 契约 kSampleRateHz（16 kHz mono S16）：
+//     SummerTTS 中文模型（single_speaker_fast.bin，标贝语料）与 Fake 同为
+//     16 kHz（板端 F0 实测 ~213 Hz，年轻女声正常，证实非 22050）。
 //     --sink-device 默认 "default"，板端显式 plughw:0,0（ES8323）；
 //     x86 默认构建在 --sink alsa 时拒绝启动（VOXORCHESTRA_HAS_ALSA 门控）。
 //
@@ -270,12 +271,11 @@ int main(int argc, char** argv) {
     return std::make_unique<voxorchestra::backend::fake::FakeTtsBackend>();
   };
 
-  // sink 采样率 = 合成端实际输出率：summertts = 22050（上游 VITS 模型率；
-  // FakeAudioSink 的 16 kHz WAV 头是 Mock 侧已知简化，播放必须以真实率
-  // 驱动声卡）；fake = 16 kHz（与 kSampleRateHz 一致）。
-  const int sink_sample_rate = (backend_name == "summertts")
-                                   ? 22050
-                                   : voxorchestra::backend::kSampleRateHz;
+  // sink 采样率 = 合成端实际输出率。SummerTTS 中文模型为 16 kHz（与 fake
+  // 一致，契约 kSampleRateHz）；ALSA sink 在 ES8323 不支持该率时自动候选率
+  // 回退 + 线性重采样（保音高保时长），WAV 路径 FakeAudioSink 同写 16 kHz 头。
+  // （早期误用 22050——LJ Speech/VITS 经典率，中文模型非此；板端 F0 实测订正。）
+  const int sink_sample_rate = voxorchestra::backend::kSampleRateHz;
 
   // 启动时确保输出目录存在（仅 WAV 输出侧；alsa 模式不落盘）。
   if (sink_name == "wav") {
