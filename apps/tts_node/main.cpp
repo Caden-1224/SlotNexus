@@ -1,17 +1,24 @@
-// tts_node 可执行入口：语音合成节点（WAV 输出）。
+// tts_node 可执行入口：语音合成节点（WAV 输出 / ALSA 声卡播放）。
 //
 // 用法：tts_node [--listen tcp://127.0.0.1:19204] [--output-dir <目录>]
 //                [--config <session.json>] [--backend fake|summertts]
 //                [--model <模型路径>] [--length-scale <倍率>]
+//                [--sink wav|alsa] [--sink-device <设备名>]
 // 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204。
 //
 // Node 外壳（RuntimeNode + TaskRuntime）只依赖接口；本文件实现 IBackend
-// 适配器，把流式 ITtsBackend 的 PCM 帧写入 FakeAudioSink（WAV 文件）：
+// 适配器，把流式 ITtsBackend 的 PCM 帧写入输出目标（sink）：
 //   - Mock 负载约定：客户端发 {"text": "<文本>"}；RuntimeNode 已提取 text
 //     字段，适配器收到纯文本；
-//   - 文件名 = <output-dir>/tts_<FNV-1a 文本哈希>.wav（确定性，相同文本
-//     覆盖同名文件）；
-//   - 返回 payload.text = JSON 字符串：{"wav_path": ..., "pcm_bytes": N}。
+//   - --sink wav（默认）：写入 FakeAudioSink（WAV 文件），文件名 =
+//     <output-dir>/tts_<FNV-1a 文本哈希>.wav（确定性，相同文本覆盖同名
+//     文件），返回 {"wav_path": ..., "pcm_bytes": N}；
+//   - --sink alsa：改走 AlsaAudioSink（板端声卡实时播放，不落盘），
+//     返回 {"device": ..., "pcm_bytes": N, "sample_rate": 实际值}。
+//     sink 采样率 = 合成端输出率：summertts = 22050（上游 VITS 模型率，
+//     FakeAudioSink 的 16 kHz WAV 头是 Mock 侧已知简化）；fake = 16 kHz。
+//     --sink-device 默认 "default"，板端显式 plughw:0,0（ES8323）；
+//     x86 默认构建在 --sink alsa 时拒绝启动（VOXORCHESTRA_HAS_ALSA 门控）。
 //
 // 后端经工厂注入：--backend fake（默认，x86/Mock 回归基线）或 summertts
 // （板端真实 vits，需 VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON 构建）。
@@ -42,6 +49,9 @@
 #ifdef VOXORCHESTRA_HAS_SUMMERTTS
 #include "voxorchestra/backend/summer_tts/summer_tts_backend.hpp"
 #endif
+#ifdef VOXORCHESTRA_HAS_ALSA
+#include "voxorchestra/backend/alsa/alsa_audio_sink.hpp"
+#endif
 #include "voxorchestra/runtime/ibackend.hpp"
 #include "runtime_node.hpp"
 
@@ -59,13 +69,20 @@ std::string TextHash(const std::string& s) {
   return buf;
 }
 
-// IBackend 适配器：合成 → 收集 PCM 块 → 写入 WAV 文件。
+// IBackend 适配器：合成 → 收集 PCM 块 → 写入输出目标（WAV 文件 / ALSA 声卡）。
 class TtsNodeBackend final : public voxorchestra::runtime::IBackend {
  public:
   // tts：后端实例（工厂注入，Fake / SummerTTS 可替换）。
+  // sink_name / sink_device：输出目标（wav / alsa，设备名）；alsa 模式
+  // 不写文件，sink_sample_rate = 合成端输出率（见 main() 注释）。
   TtsNodeBackend(std::unique_ptr<voxorchestra::backend::ITtsBackend> tts,
-                 std::string output_dir)
-      : tts_(std::move(tts)), output_dir_(std::move(output_dir)) {}
+                 std::string output_dir, std::string sink_name,
+                 std::string sink_device, int sink_sample_rate)
+      : tts_(std::move(tts)),
+        output_dir_(std::move(output_dir)),
+        sink_name_(std::move(sink_name)),
+        sink_device_(std::move(sink_device)),
+        sink_sample_rate_(sink_sample_rate) {}
 
   voxorchestra::runtime::BackendResult infer(
       const std::string& payload,
@@ -83,6 +100,9 @@ class TtsNodeBackend final : public voxorchestra::runtime::IBackend {
     });
     tts_->synthesize(payload);
 
+    if (sink_name_ == "alsa") {
+      return play_alsa(chunks);
+    }
     const std::string wav_path = output_dir_ + "/tts_" + TextHash(payload) + ".wav";
     voxorchestra::backend::fake::FakeAudioSink sink(wav_path);
     bool ok = sink.open();
@@ -103,8 +123,41 @@ class TtsNodeBackend final : public voxorchestra::runtime::IBackend {
   }
 
  private:
+  // ALSA 播放：AlsaAudioSink 实时写出，不落盘；返回实际采样率
+  // （rate_near 兜底值，见 AlsaAudioSink 类头注释）。
+  voxorchestra::runtime::BackendResult play_alsa(
+      const std::vector<std::vector<int16_t>>& chunks) {
+#ifdef VOXORCHESTRA_HAS_ALSA
+    voxorchestra::backend::alsa::AlsaAudioSink sink(sink_device_,
+                                                    sink_sample_rate_);
+    bool ok = sink.open();
+    std::size_t pcm_bytes = 0;
+    if (ok) {
+      for (const auto& chunk : chunks) {
+        ok = sink.write_pcm(chunk) && ok;
+        pcm_bytes += chunk.size() * sizeof(int16_t);
+      }
+      ok = sink.close() && ok;
+    }
+    nlohmann::json result = {{"device", sink_device_},
+                             {"pcm_bytes", pcm_bytes},
+                             {"sample_rate", sink.actual_sample_rate()}};
+    if (!ok) {
+      result["error"] = "ALSA 播放失败";
+    }
+    return {voxorchestra::runtime::BackendResult::Code::kOk, result.dump()};
+#else
+    (void)chunks;
+    return {voxorchestra::runtime::BackendResult::Code::kOk,
+            R"({"error":"当前构建未启用 ALSA sink"})"};
+#endif
+  }
+
   std::unique_ptr<voxorchestra::backend::ITtsBackend> tts_;
   std::string output_dir_;
+  std::string sink_name_;
+  std::string sink_device_;
+  int sink_sample_rate_;
 };
 
 volatile std::sig_atomic_t g_stop = 0;
@@ -127,6 +180,8 @@ int main(int argc, char** argv) {
   std::string backend_name = "fake";  // 默认 Fake（x86/Mock 回归基线）
   std::string model_path;             // summertts 后端必填
   float length_scale = 1.0f;          // 语速倍率（门禁基线 1.0）
+  std::string sink_name = "wav";      // 输出目标：wav（默认）/ alsa
+  std::string sink_device = "default";  // alsa 设备名（板端 plughw:0,0）
 
   // 先读配置文件（--config 的 tts 段），命令行参数随后覆盖。
   for (int i = 1; i < argc - 1; ++i) {
@@ -145,6 +200,8 @@ int main(int argc, char** argv) {
         backend_name = t.value("backend", backend_name);
         model_path = t.value("model", model_path);
         length_scale = t.value("length_scale", length_scale);
+        sink_name = t.value("sink", sink_name);            // 可选，缺省 wav
+        sink_device = t.value("sink_device", sink_device);
       }
     }
   }
@@ -159,6 +216,10 @@ int main(int argc, char** argv) {
       model_path = argv[i + 1];
     } else if (std::string(argv[i]) == "--length-scale") {
       length_scale = parse_float(argv[i + 1], 1.0f);
+    } else if (std::string(argv[i]) == "--sink") {
+      sink_name = argv[i + 1];
+    } else if (std::string(argv[i]) == "--sink-device") {
+      sink_device = argv[i + 1];
     }
   }
   if (backend_name != "fake" && backend_name != "summertts") {
@@ -174,6 +235,19 @@ int main(int argc, char** argv) {
 #else
   if (backend_name == "summertts") {
     std::cerr << "当前构建未启用 SummerTTS 后端（需 "
+                 "-DVOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON）" << std::endl;
+    return 1;
+  }
+#endif
+  if (sink_name != "wav" && sink_name != "alsa") {
+    std::cerr << "未知 sink: " << sink_name << "（支持 wav / alsa）"
+              << std::endl;
+    return 1;
+  }
+#ifdef VOXORCHESTRA_HAS_ALSA
+#else
+  if (sink_name == "alsa") {
+    std::cerr << "当前构建未启用 ALSA sink（需 "
                  "-DVOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON）" << std::endl;
     return 1;
   }
@@ -196,12 +270,21 @@ int main(int argc, char** argv) {
     return std::make_unique<voxorchestra::backend::fake::FakeTtsBackend>();
   };
 
-  // 启动时确保输出目录存在（Mock 输出侧）。
-  std::error_code ec;
-  std::filesystem::create_directories(output_dir, ec);
-  if (ec) {
-    std::cerr << "tts_node 无法创建输出目录: " << output_dir << std::endl;
-    return 1;
+  // sink 采样率 = 合成端实际输出率：summertts = 22050（上游 VITS 模型率；
+  // FakeAudioSink 的 16 kHz WAV 头是 Mock 侧已知简化，播放必须以真实率
+  // 驱动声卡）；fake = 16 kHz（与 kSampleRateHz 一致）。
+  const int sink_sample_rate = (backend_name == "summertts")
+                                   ? 22050
+                                   : voxorchestra::backend::kSampleRateHz;
+
+  // 启动时确保输出目录存在（仅 WAV 输出侧；alsa 模式不落盘）。
+  if (sink_name == "wav") {
+    std::error_code ec;
+    std::filesystem::create_directories(output_dir, ec);
+    if (ec) {
+      std::cerr << "tts_node 无法创建输出目录: " << output_dir << std::endl;
+      return 1;
+    }
   }
 
   std::signal(SIGINT, handle_signal);
@@ -209,8 +292,10 @@ int main(int argc, char** argv) {
 
   zmq::context_t ctx(1);
   auto runtime = std::make_unique<voxorchestra::runtime::TaskRuntime>(
-      [make_tts, output_dir] {
-        return std::make_shared<TtsNodeBackend>(make_tts(), output_dir);
+      [make_tts, output_dir, sink_name, sink_device, sink_sample_rate] {
+        return std::make_shared<TtsNodeBackend>(make_tts(), output_dir,
+                                                sink_name, sink_device,
+                                                sink_sample_rate);
       });
   voxorchestra::node::RuntimeNode node(ctx, std::move(runtime));
   try {
@@ -219,7 +304,13 @@ int main(int argc, char** argv) {
     if (backend_name == "summertts") {
       std::cout << "，模型 " << model_path << "，语速 " << length_scale;
     }
-    std::cout << "，输出目录 " << output_dir << "）" << std::endl;
+    std::cout << "，sink " << sink_name;
+    if (sink_name == "alsa") {
+      std::cout << "（" << sink_device << "，" << sink_sample_rate << " Hz）";
+    } else {
+      std::cout << "，输出目录 " << output_dir;
+    }
+    std::cout << "）" << std::endl;
   } catch (const std::exception& e) {
     std::cerr << "tts_node 启动失败: " << e.what() << std::endl;
     return 1;

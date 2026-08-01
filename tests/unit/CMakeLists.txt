@@ -99,6 +99,20 @@ if(VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS)
     ENVIRONMENT "VOXORCHESTRA_TTS_MODEL=${VOXORCHESTRA_TTS_MODEL}")
 endif()
 
+# ALSA 音频（板端真实声卡；仅硬件后端构建时编译）：
+# sink 生命周期/drain 语义 + source 帧长/RMS。设备名经
+# VOXORCHESTRA_ALSA_DEVICE 注入（未配置默认 "default"）；无模型 env，
+# open 失败记录并跳过（板端无声卡时不能挂死）。
+set(VOXORCHESTRA_ALSA_DEVICE ""
+    CACHE STRING "ALSA 单元测试用设备名（默认 default）")
+if(VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS)
+  add_executable(alsa_audio_test alsa_audio_test.cpp)
+  target_link_libraries(alsa_audio_test PRIVATE voxorchestra::alsa)
+  add_test(NAME alsa_audio_test COMMAND alsa_audio_test)
+  set_tests_properties(alsa_audio_test PROPERTIES
+    ENVIRONMENT "VOXORCHESTRA_ALSA_DEVICE=${VOXORCHESTRA_ALSA_DEVICE}")
+endif()
+
 # 轻量 RAG：文本规范化、BM25 手算对照、JSONL 知识库与 L0-L3 路由。
 add_executable(rag_test rag_test.cpp)
 target_link_libraries(rag_test PRIVATE voxorchestra::rag)

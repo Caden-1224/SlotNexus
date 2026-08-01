@@ -19,8 +19,9 @@ add_subdirectory(fake)
 
 if(VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS)
  # 硬件后端按天接入：sherpa_onnx/ rkllm/
- # summer_tts（，已接入）/ alsa。
+ # summer_tts/ alsa（，已接入）。
  add_subdirectory(sherpa_onnx)
  add_subdirectory(rkllm)
  add_subdirectory(summer_tts)
+ add_subdirectory(alsa)
 endif()
