@@ -51,8 +51,8 @@ python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"inference","work_id"
 echo "-- asr（19201）：3 帧音频 -> 逐帧 partial 汇总"
 python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"inference","work_id":"w-1","request_id":"r-asr","payload":{"text":"3"}}' \
   | python3 -c "import sys,json; r=json.load(sys.stdin); print(r['request_id'], '->', r['payload'].get('text','(error)'))"
-echo "-- rag（19202）：查询 -> Top-2 知识块"
-python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"inference","work_id":"w-2","request_id":"r-rag","payload":{"text":"VoxOrchestra 是什么"}}' \
+echo "-- rag（19202）：查询 -> L0-L3 路由证据（级别/Top-2 知识块/直答或提示词）"
+python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"inference","work_id":"w-2","request_id":"r-rag","payload":{"text":"多进程架构怎么实现"}}' \
   | python3 -c "import sys,json; r=json.load(sys.stdin); print(r['request_id'], '->', r['payload'].get('text','(error)'))"
 echo "-- llm（19203）：prompt -> 逐词 token 回显"
 python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"inference","work_id":"w-3","request_id":"r-llm","payload":{"text":"你好 世界 VoxOrchestra"}}' \

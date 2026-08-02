@@ -41,9 +41,12 @@ struct RouterConfig {
   std::vector<std::string> l0_keywords = {"停止", "取消", "暂停", "闭嘴",
                                           "stop", "cancel", "quit"};
   // Top-1 得分达到该值 → L1 直答（绕过 LLM）。
-  double direct_threshold = 5.0;
+  // 默认值 4.5 由 data/knowledge/rag_test_set.jsonl 实测标定
+  // （L1 期望集 top1 下界 5.22，见 artifacts/rag-baseline/calibration.md）。
+  double direct_threshold = 4.5;
   // Top-1 得分达到该值（但未达 direct_threshold）→ L2 带上下文。
-  double context_threshold = 1.5;
+  // 默认值 2.0 标定同上（L2 期望集下界 2.98，L3 噪声上界 1.687）。
+  double context_threshold = 2.0;
   // L2 注入 LLM 的上下文块数。
   std::size_t top_k = 2;
 };

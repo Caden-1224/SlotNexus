@@ -118,6 +118,11 @@ add_executable(rag_test rag_test.cpp)
 target_link_libraries(rag_test PRIVATE voxorchestra::rag)
 add_test(NAME rag_test COMMAND rag_test)
 
+# RAG 固定测试集：21 条查询逐条断言路由级别（知识库与阈值配套冻结）。
+add_executable(rag_testset_test rag_testset_test.cpp)
+target_link_libraries(rag_testset_test PRIVATE voxorchestra::rag)
+add_test(NAME rag_testset_test COMMAND rag_testset_test)
+
 # 有界队列：容量、满队列行为（拒绝/超时/阻塞）、关闭、清空、峰值与并发。
 add_executable(bounded_queue_test bounded_queue_test.cpp)
 target_link_libraries(bounded_queue_test PRIVATE voxorchestra::common)

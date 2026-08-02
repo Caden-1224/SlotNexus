@@ -1,8 +1,8 @@
 {
   "router": {
     "l0_keywords": ["停止", "取消", "暂停", "闭嘴", "stop", "cancel", "quit"],
-    "direct_threshold": 5.0,
-    "context_threshold": 1.0,
+    "direct_threshold": 4.5,
+    "context_threshold": 2.0,
     "top_k": 2
   },
   "knowledge": "data/knowledge/knowledge.jsonl",

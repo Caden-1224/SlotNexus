@@ -1,0 +1,158 @@
+{
+  "cases": [
+    {
+      "actual": "l0",
+      "expect": "l0",
+      "note": "控制词命中 L0，绕过检索",
+      "query": "停止播放",
+      "top1_score": 0.0
+    },
+    {
+      "actual": "l0",
+      "expect": "l0",
+      "note": "控制词命中 L0",
+      "query": "暂停一下",
+      "top1_score": 0.0
+    },
+    {
+      "actual": "l0",
+      "expect": "l0",
+      "note": "控制词命中 L0",
+      "query": "闭嘴",
+      "top1_score": 0.0
+    },
+    {
+      "actual": "l0",
+      "expect": "l0",
+      "note": "英文控制词命中 L0",
+      "query": "stop the music",
+      "top1_score": 0.0
+    },
+    {
+      "actual": "l0",
+      "expect": "l0",
+      "note": "已知边界：L0 关键词为子串匹配，含\"取消\"即触发；固化现状并记录，不属本次修正范围",
+      "query": "取消后旧数据怎么处理",
+      "top1_score": 0.0
+    },
+    {
+      "actual": "l1",
+      "expect": "l1",
+      "note": "top1=8.44 命中 k-arch，事实直答",
+      "query": "多进程架构怎么实现",
+      "top1_score": 8.435779045329825
+    },
+    {
+      "actual": "l1",
+      "expect": "l1",
+      "note": "top1=9.94 命中 k-rag",
+      "query": "RAG 路由分为哪几层",
+      "top1_score": 9.941486593788678
+    },
+    {
+      "actual": "l1",
+      "expect": "l1",
+      "note": "top1=7.65 命中 k-audio",
+      "query": "音频格式是什么",
+      "top1_score": 7.650818681777276
+    },
+    {
+      "actual": "l1",
+      "expect": "l1",
+      "note": "top1=6.75 命中 k-queue",
+      "query": "队列满了怎么办",
+      "top1_score": 6.751486899460726
+    },
+    {
+      "actual": "l1",
+      "expect": "l1",
+      "note": "top1=8.64 命中 k-voxorchestra",
+      "query": "端侧全离线是什么意思",
+      "top1_score": 8.64023585065395
+    },
+    {
+      "actual": "l1",
+      "expect": "l1",
+      "note": "top1=6.96 命中 k-backend",
+      "query": "Backend 为什么可替换",
+      "top1_score": 6.958289200885649
+    },
+    {
+      "actual": "l2",
+      "expect": "l2",
+      "note": "top1=3.77 部分命中，带上下文走 LLM",
+      "query": "Node Runtime 做什么",
+      "top1_score": 3.7721251983748525
+    },
+    {
+      "actual": "l2",
+      "expect": "l2",
+      "note": "top1=3.77 部分命中（同分查询确定性）",
+      "query": "Node Runtime 是什么",
+      "top1_score": 3.7721251983748525
+    },
+    {
+      "actual": "l2",
+      "expect": "l2",
+      "note": "top1=3.43 部分命中",
+      "query": "VoxOrchestra 的架构是怎样的",
+      "top1_score": 3.4281331000904505
+    },
+    {
+      "actual": "l2",
+      "expect": "l2",
+      "note": "top1=3.03 部分命中",
+      "query": "generation 有什么用",
+      "top1_score": 3.0335045211406944
+    },
+    {
+      "actual": "l2",
+      "expect": "l2",
+      "note": "top1=2.98 部分命中",
+      "query": "Backend 是什么",
+      "top1_score": 2.983197392903028
+    },
+    {
+      "actual": "l3",
+      "expect": "l3",
+      "note": "无命中，纯 LLM",
+      "query": "今天天气怎么样",
+      "top1_score": 0.0
+    },
+    {
+      "actual": "l3",
+      "expect": "l3",
+      "note": "噪声命中 k-arch 1.687，context=2.0 挡回，不注入伪知识",
+      "query": "讲个笑话",
+      "top1_score": 1.687155809065965
+    },
+    {
+      "actual": "l3",
+      "expect": "l3",
+      "note": "噪声命中 k-audio 1.086",
+      "query": "帮我写一首诗",
+      "top1_score": 1.0855880561389095
+    },
+    {
+      "actual": "l3",
+      "expect": "l3",
+      "note": "无命中",
+      "query": "你好",
+      "top1_score": 0.0
+    },
+    {
+      "actual": "l3",
+      "expect": "l3",
+      "note": "无命中",
+      "query": "what time is it",
+      "top1_score": 0.0
+    }
+  ],
+  "context_threshold": 2.0,
+  "direct_threshold": 4.5,
+  "failures": 0,
+  "knowledge": "/home/caden/work/voxorchestra-runtime/data/knowledge/knowledge.jsonl",
+  "passed": 21,
+  "testset": "/home/caden/work/voxorchestra-runtime/data/knowledge/rag_test_set.jsonl",
+  "total": 21
+}

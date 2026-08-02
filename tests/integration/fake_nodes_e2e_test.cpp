@@ -243,7 +243,9 @@ void test_fake_nodes_e2e(const char* argv0) {
  ChildProc echo_node, asr_node, rag_node, llm_node, tts_node, manager, gateway;
  CHECK(echo_node.spawn(base + "/" + kEchoNodeExe, {"echo_node"}));
  CHECK(asr_node.spawn(base + "/" + kAsrNodeExe, {"asr_node"}));
- CHECK(rag_node.spawn(base + "/" + kRagNodeExe, {"rag_node"}));
+ CHECK(rag_node.spawn(base + "/" + kRagNodeExe,
+                      {"rag_node", "--knowledge",
+                       base + "/../../../data/knowledge/knowledge.jsonl"}));
  CHECK(llm_node.spawn(base + "/" + kLlmNodeExe, {"llm_node"}));
  const std::string tts_dir = base + "/tts-e2e-out";
  std::filesystem::remove_all(tts_dir);
@@ -288,17 +290,21 @@ void test_fake_nodes_e2e(const char* argv0) {
        "第1帧(320) 第2帧(320) 第3帧(320)");
 
  CHECK(exchange(c, MakeRequest(MessageType::kInference, "w-2", "r-rag",
-                               {{"text", "VoxOrchestra 是什么"}}),
+                               {{"text", "多进程架构怎么实现"}}),
                 reply, 3000ms));
  CHECK(reply.type() == MessageType::kAck);
  CHECK(reply.request_id() == "r-rag");
  {
-   const auto chunks =
+   // 真实 BM25 路由：L1 直答，Top-K=2 且得分降序（证据格式与级别一致）。
+   const auto resp =
        nlohmann::json::parse(reply.payload().value("text", std::string()));
-   CHECK(chunks.is_array() && chunks.size() == 2);  // 默认 Top-K=2
-   CHECK(chunks[0]["id"] == "k-voxorchestra");
-   CHECK(chunks[1]["id"] == "k-arch");
-   CHECK(chunks[0]["score"].get<double>() >= chunks[1]["score"].get<double>());
+   CHECK(resp["level"] == "l1");
+   CHECK(resp["chunks"].is_array() && resp["chunks"].size() == 2);
+   CHECK(resp["chunks"][0]["id"] == "k-arch");
+   CHECK(resp["chunks"][0]["score"].get<double>() >=
+         resp["chunks"][1]["score"].get<double>());
+   CHECK(!resp["answer"].get<std::string>().empty());
+   CHECK(resp["prompt"].get<std::string>().empty());
  }
 
  CHECK(exchange(c, MakeRequest(MessageType::kInference, "w-3", "r-llm",

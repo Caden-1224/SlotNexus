@@ -1,0 +1,25 @@
+# VoxOrchestra RAG 固定测试集（21 条，四类路径）。
+# 期望路径由实测 BM25 得分分布标定（见 artifacts/rag-baseline/calibration.md）：
+#   direct=4.5（L1 实测下界 5.22）、context=2.0（L3 噪声上界 1.687）。
+# 知识库固定为 data/knowledge/knowledge.jsonl，二者配套冻结，改动需重新标定。
+{"query": "停止播放", "expect": "l0", "note": "控制词命中 L0，绕过检索"}
+{"query": "暂停一下", "expect": "l0", "note": "控制词命中 L0"}
+{"query": "闭嘴", "expect": "l0", "note": "控制词命中 L0"}
+{"query": "stop the music", "expect": "l0", "note": "英文控制词命中 L0"}
+{"query": "取消后旧数据怎么处理", "expect": "l0", "note": "已知边界：L0 关键词为子串匹配，含\"取消\"即触发；固化现状并记录，不属本次修正范围"}
+{"query": "多进程架构怎么实现", "expect": "l1", "note": "top1=8.44 命中 k-arch，事实直答"}
+{"query": "RAG 路由分为哪几层", "expect": "l1", "note": "top1=9.94 命中 k-rag"}
+{"query": "音频格式是什么", "expect": "l1", "note": "top1=7.65 命中 k-audio"}
+{"query": "队列满了怎么办", "expect": "l1", "note": "top1=6.75 命中 k-queue"}
+{"query": "端侧全离线是什么意思", "expect": "l1", "note": "top1=8.64 命中 k-voxorchestra"}
+{"query": "Backend 为什么可替换", "expect": "l1", "note": "top1=6.96 命中 k-backend"}
+{"query": "Node Runtime 做什么", "expect": "l2", "note": "top1=3.77 部分命中，带上下文走 LLM"}
+{"query": "Node Runtime 是什么", "expect": "l2", "note": "top1=3.77 部分命中（同分查询确定性）"}
+{"query": "VoxOrchestra 的架构是怎样的", "expect": "l2", "note": "top1=3.43 部分命中"}
+{"query": "generation 有什么用", "expect": "l2", "note": "top1=3.03 部分命中"}
+{"query": "Backend 是什么", "expect": "l2", "note": "top1=2.98 部分命中"}
+{"query": "今天天气怎么样", "expect": "l3", "note": "无命中，纯 LLM"}
+{"query": "讲个笑话", "expect": "l3", "note": "噪声命中 k-arch 1.687，context=2.0 挡回，不注入伪知识"}
+{"query": "帮我写一首诗", "expect": "l3", "note": "噪声命中 k-audio 1.086"}
+{"query": "你好", "expect": "l3", "note": "无命中"}
+{"query": "what time is it", "expect": "l3", "note": "无命中"}
