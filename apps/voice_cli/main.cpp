@@ -81,11 +81,21 @@ public:
            int err = 0;
            socklen_t len = sizeof(err);
            ::getsockopt(fd_, SOL_SOCKET, SO_ERROR, &err, &len);
-           if (err == 0) {
+           if (err != 0) {
+             break;  // 连接被拒/不可达，立即失败
+           }
+           // SO_ERROR==0 仍可能是 RST 未到协议栈的竞态窗口；
+           // getpeername 只对已建立连接成功，作为权威确认。
+           struct sockaddr_storage peer;
+           socklen_t plen = sizeof(peer);
+           if (::getpeername(fd_,
+                             reinterpret_cast<struct sockaddr*>(&peer),
+                             &plen) == 0) {
              ::fcntl(fd_, F_SETFL, 0);  // 恢复阻塞
              ::freeaddrinfo(res);
              return true;
            }
+           break;  // SO_ERROR=0 但连接未建立：视为失败
          } else if (r < 0 && errno != EINTR) {
            break;
          }
@@ -166,28 +176,39 @@ private:
 
 // 单条请求：构造信封 → 发送 → 读响应（带超时）。
 // 返回 false 表示连接/超时失败（非协议错误，协议错误在响应 error 信封中）。
+// silent=true 时失败不打印（尽力而为的请求如 cancel 使用）。
 bool exchange(TcpConn& c, const MessageEnvelope& req,
-             std::chrono::milliseconds timeout, MessageEnvelope& reply) {
+             std::chrono::milliseconds timeout, MessageEnvelope& reply,
+             bool silent = false) {
  if (!c.send_line(req.to_json())) {
-   std::cerr << "发送失败（连接已断开？）" << std::endl;
+   if (!silent) {
+     std::cerr << "发送失败（连接已断开？）" << std::endl;
+   }
    return false;
  }
  std::string line;
  if (!c.recv_line(line, timeout)) {
-   std::cerr << "等待响应超时（" << timeout.count() << " ms）或连接关闭"
-             << std::endl;
+   if (!silent) {
+     std::cerr << "等待响应超时（" << timeout.count() << " ms）或连接关闭"
+               << std::endl;
+   }
    return false;
  }
  try {
    reply = MessageEnvelope::from_json(line);
    return true;
  } catch (const ProtocolError& e) {
-   std::cerr << "响应解析失败: " << e.what() << std::endl;
+   if (!silent) {
+     std::cerr << "响应解析失败: " << e.what() << std::endl;
+   }
    return false;
  }
 }
 
 // 发送 cancel（独立连接，网关按 work_id 路由）。
+// cancel 为尽力而为请求：网关同步转发下晚到取消无确认是预期行为
+// （取消排在在途推理之后，见 demo_mock_session.sh 的已知限制说明），
+// 因此静默失败，不打扰主流程输出。
 bool send_cancel(const std::string& host, std::uint16_t port,
                 const std::string& work_id, const std::string& request_id,
                 std::chrono::milliseconds timeout) {
@@ -200,7 +221,7 @@ bool send_cancel(const std::string& host, std::uint16_t port,
  req.set_work_id(work_id);
  req.set_request_id(request_id);
  MessageEnvelope reply;
- return exchange(c, req, timeout, reply);
+ return exchange(c, req, timeout, reply, /*silent=*/true);
 }
 
 // 人类可读摘要（非 --json 模式）。
@@ -322,8 +343,10 @@ int main(int argc, char** argv) {
  setup.set_type(MessageType::kSetup);
  setup.set_request_id("cli-setup-1");
  MessageEnvelope reply;
- if (!exchange(conn, setup, timeout, reply) ||
-     reply.type() != MessageType::kAck) {
+ if (!exchange(conn, setup, timeout, reply)) {
+   return 1;  // exchange 内部已打印具体错误
+ }
+ if (reply.type() != MessageType::kAck) {
    if (!json_output) {
      print_summary("setup", reply);
    }
@@ -392,12 +415,15 @@ int main(int argc, char** argv) {
  exit_req.set_request_id("cli-exit-1");
  MessageEnvelope exit_reply;
  const bool exit_ok = exchange(conn, exit_req, timeout, exit_reply);
- if (json_output && exit_ok) {
+ if (!exit_ok) {
+   return 1;  // exchange 内部已打印具体错误
+ }
+ if (json_output) {
    std::cout << exit_reply.to_json() << std::endl;
  } else {
    print_summary("exit", exit_reply);
  }
- if (exit_ok && exit_reply.type() == MessageType::kError) {
+ if (exit_reply.type() == MessageType::kError) {
    return 1;
  }
  // 取消是预期路径（联调用），不算失败。
