@@ -46,7 +46,8 @@ class RagNodeBackend final : public voxorchestra::runtime::IBackend {
   voxorchestra::runtime::BackendResult infer(
       const std::string& payload,
       std::chrono::steady_clock::time_point /*deadline*/,
-      const std::atomic<bool>& cancelled) override {
+      const std::atomic<bool>& cancelled,
+      const voxorchestra::runtime::EventSink& /*events*/) override {
     if (cancelled.load()) {
       return {voxorchestra::runtime::BackendResult::Code::kCancelled, {}};
     }

@@ -8,7 +8,9 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <string>
+#include <unordered_map>
 
 #include <zmq.hpp>
 
@@ -29,12 +31,16 @@ class EventPublisher {
   void bind(const std::string& data_endpoint,
             const std::string& sync_endpoint);
   void wait_subscriber_ready(std::chrono::milliseconds timeout);
+  // 发布一条事件。index 语义：e.index >= 0 时按调用方指定；< 0（默认，
+  // 如后端事件映射）时按 <work_id>/<request_id> 流自动从 0 递增。
+  // 自动递增的状态在发布端维护（单线程使用，与推理线程一致）。
   void publish(const DataplaneEvent& e, const std::string& work_id,
                const std::string& request_id);
   void close();  // 幂等
 
  private:
   transport::PubSocket pub_;
+  std::unordered_map<std::string, int64_t> next_index_;
 };
 
 // 订阅端：可订阅多条事件流（每次 subscribe 一个 (work_id, request_id)）。

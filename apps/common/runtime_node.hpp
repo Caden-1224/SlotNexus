@@ -13,6 +13,7 @@
 
 #include <zmq.hpp>
 
+#include "voxorchestra/dataplane/event_channel.hpp"
 #include "voxorchestra/runtime/task_runtime.hpp"
 #include "voxorchestra/transport/rpc.hpp"
 
@@ -24,8 +25,12 @@ class RuntimeNode {
   // infer_timeout：单次推理任务的节点内超时；0 表示默认
   // （kDefaultInferenceTimeout 5000 ms）。硬件后端推理可达数十秒
   // （RKLLM 板端 ~7 tok/s），需节点经 --infer-timeout-ms 调大。
+  // events：可选数据面事件发布器（节点启动时绑定端点并注入）。
+  // 非空时推理过程中的流式后端事件（partial/token/PCM）实时发布到
+  // 数据面，主题 <work_id>/<request_id>/；空则无事件出口（行为不变）。
   RuntimeNode(zmq::context_t& ctx, std::unique_ptr<runtime::TaskRuntime> runtime,
-              std::chrono::milliseconds infer_timeout = std::chrono::milliseconds(0));
+              std::chrono::milliseconds infer_timeout = std::chrono::milliseconds(0),
+              std::shared_ptr<dataplane::EventPublisher> events = nullptr);
   ~RuntimeNode() = default;
 
   RuntimeNode(const RuntimeNode&) = delete;
@@ -46,6 +51,7 @@ class RuntimeNode {
   transport::RpcServer server_;
   std::unique_ptr<runtime::TaskRuntime> runtime_;
   std::chrono::milliseconds infer_timeout_;
+  std::shared_ptr<dataplane::EventPublisher> events_;
 };
 
 }  // namespace voxorchestra::node

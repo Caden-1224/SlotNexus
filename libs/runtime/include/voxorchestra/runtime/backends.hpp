@@ -16,7 +16,8 @@ class EchoBackend final : public IBackend {
  public:
   BackendResult infer(const std::string& payload,
                       std::chrono::steady_clock::time_point /*deadline*/,
-                      const std::atomic<bool>& /*cancelled*/) override {
+                      const std::atomic<bool>& /*cancelled*/,
+                      const EventSink& /*events*/) override {
     return {BackendResult::Code::kOk, "echo:" + payload};
   }
 };
@@ -29,7 +30,8 @@ class DelayBackend final : public IBackend {
 
   BackendResult infer(const std::string& payload,
                       std::chrono::steady_clock::time_point deadline,
-                      const std::atomic<bool>& cancelled) override {
+                      const std::atomic<bool>& cancelled,
+                      const EventSink& /*events*/) override {
     constexpr std::chrono::milliseconds kSlice(10);
     const auto start = std::chrono::steady_clock::now();
     for (;;) {

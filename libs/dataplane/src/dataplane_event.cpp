@@ -1,6 +1,7 @@
 // 数据面事件编解码实现：payload JSON 互转 + PCM 二进制 base64 编解码。
 #include "voxorchestra/dataplane/dataplane_event.hpp"
 
+#include <cstring>
 #include <utility>
 
 namespace voxorchestra::dataplane {
@@ -115,6 +116,20 @@ DataplaneEvent dataplane_event_from_envelope(
   e.index = env.index();
   e.finish = env.finish();
   return e;
+}
+
+DataplaneEvent dataplane_event_from_backend(const backend::BackendEvent& e) {
+  DataplaneEvent out;
+  out.kind = backend::to_string(e.kind);
+  out.text = e.text;
+  // kFinal / kDone 是各自事件流的终止事件：映射为流尾标记（finish=true），
+  // 消费者据此判断一条流结束（与消息信封的 finish 语义一致）。
+  out.finish = (e.kind == backend::BackendEvent::Kind::kFinal ||
+                e.kind == backend::BackendEvent::Kind::kDone);
+  // int16 采样 → 字节（内存序，小端平台与 WAV/ALSA 一致）。
+  out.pcm.resize(e.pcm.size() * sizeof(int16_t));
+  std::memcpy(out.pcm.data(), e.pcm.data(), out.pcm.size());
+  return out;
 }
 
 }  // namespace voxorchestra::dataplane

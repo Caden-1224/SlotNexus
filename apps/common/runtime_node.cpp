@@ -13,12 +13,14 @@ using protocol::ProtocolError;
 using protocol::ProtocolErrorCode;
 using runtime::TaskChannel;
 
-RuntimeNode::RuntimeNode(zmq::context_t& ctx,
-                         std::unique_ptr<runtime::TaskRuntime> runtime,
-                         std::chrono::milliseconds infer_timeout)
+RuntimeNode::RuntimeNode(
+    zmq::context_t& ctx, std::unique_ptr<runtime::TaskRuntime> runtime,
+    std::chrono::milliseconds infer_timeout,
+    std::shared_ptr<dataplane::EventPublisher> events)
     : server_(ctx),
       runtime_(std::move(runtime)),
-      infer_timeout_(infer_timeout) {}
+      infer_timeout_(infer_timeout),
+      events_(std::move(events)) {}
 
 void RuntimeNode::bind(const std::string& endpoint) { server_.bind(endpoint); }
 
@@ -51,10 +53,21 @@ std::string RuntimeNode::handle_request(const std::string& request_json) {
     }
     case MessageType::kInference: {
       std::string out;
+      // 事件出口：把后端流式事件实时发布到数据面（主题 work_id/request_id）。
+      // 无发布器时 sink 为空，后端事件被忽略（行为与之前一致）。
+      runtime::EventSink sink;
+      if (events_) {
+        sink = [this, work_id = request.work_id(),
+                request_id = request.request_id()](
+                   const backend::BackendEvent& e) {
+          events_->publish(dataplane::dataplane_event_from_backend(e), work_id,
+                           request_id);
+        };
+      }
       // 0 → 默认超时；返回 kTimeout/kCancelled 时 out 无产出。
       const TaskChannel::Error err = runtime_->inference(
           request.work_id(), request.request_id(), app::ExtractText(request.payload()),
-          infer_timeout_, &out);
+          infer_timeout_, &out, sink);
       if (err != TaskChannel::Error::kOk) {
         return app::BuildError(request, static_cast<int>(err),
                                runtime::to_string(err))

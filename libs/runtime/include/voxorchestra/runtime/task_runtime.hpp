@@ -47,7 +47,8 @@ class TaskRuntime {
                                const std::string& request_id,
                                const std::string& payload,
                                std::chrono::milliseconds timeout,
-                               std::string* out_text);
+                               std::string* out_text,
+                               const EventSink& events = {});
   TaskChannel::Error cancel(const std::string& work_id, const std::string& request_id);
   TaskChannel::Error exit(const std::string& work_id);
 

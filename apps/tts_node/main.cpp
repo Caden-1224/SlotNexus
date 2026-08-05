@@ -88,17 +88,22 @@ class TtsNodeBackend final : public voxorchestra::runtime::IBackend {
   voxorchestra::runtime::BackendResult infer(
       const std::string& payload,
       std::chrono::steady_clock::time_point /*deadline*/,
-      const std::atomic<bool>& cancelled) override {
+      const std::atomic<bool>& cancelled,
+      const voxorchestra::runtime::EventSink& events) override {
     if (cancelled.load()) {
       tts_->cancel();
       return {voxorchestra::runtime::BackendResult::Code::kCancelled, {}};
     }
     std::vector<std::vector<int16_t>> chunks;
-    tts_->set_event_callback([&chunks](const voxorchestra::backend::BackendEvent& e) {
-      if (e.kind == voxorchestra::backend::BackendEvent::Kind::kPcm) {
-        chunks.push_back(e.pcm);
-      }
-    });
+    tts_->set_event_callback(
+        [&chunks, &events](const voxorchestra::backend::BackendEvent& e) {
+          if (e.kind == voxorchestra::backend::BackendEvent::Kind::kPcm) {
+            chunks.push_back(e.pcm);
+          }
+          if (events) {
+            events(e);  // PCM 帧实时转发数据面
+          }
+        });
     tts_->synthesize(payload);
 
     if (sink_name_ == "alsa") {
@@ -183,6 +188,8 @@ int main(int argc, char** argv) {
   float length_scale = 1.0f;          // 语速倍率（门禁基线 1.0）
   std::string sink_name = "wav";      // 输出目标：wav（默认）/ alsa
   std::string sink_device = "default";  // alsa 设备名（板端 plughw:0,0）
+  std::string events_endpoint;        // 数据面事件 PUB 端点（可选）
+  std::string events_sync;            // 配套握手端点
 
   // 先读配置文件（--config 的 tts 段），命令行参数随后覆盖。
   for (int i = 1; i < argc - 1; ++i) {
@@ -221,7 +228,15 @@ int main(int argc, char** argv) {
       sink_name = argv[i + 1];
     } else if (std::string(argv[i]) == "--sink-device") {
       sink_device = argv[i + 1];
+    } else if (std::string(argv[i]) == "--events") {
+      events_endpoint = argv[i + 1];
+    } else if (std::string(argv[i]) == "--events-sync") {
+      events_sync = argv[i + 1];
     }
+  }
+  if (events_endpoint.empty() != events_sync.empty()) {
+    std::cerr << "--events 与 --events-sync 须成对指定" << std::endl;
+    return 1;
   }
   if (backend_name != "fake" && backend_name != "summertts") {
     std::cerr << "未知后端: " << backend_name
@@ -297,7 +312,15 @@ int main(int argc, char** argv) {
                                                 sink_name, sink_device,
                                                 sink_sample_rate);
       });
-  voxorchestra::node::RuntimeNode node(ctx, std::move(runtime));
+  // 数据面事件出口：--events 指定时绑定发布端点并注入节点外壳，
+  // 推理中的 PCM 帧实时发布（订阅者先行握手，节点侧不阻塞等待）。
+  std::shared_ptr<voxorchestra::dataplane::EventPublisher> event_pub;
+  if (!events_endpoint.empty()) {
+    event_pub = std::make_shared<voxorchestra::dataplane::EventPublisher>(ctx);
+    event_pub->bind(events_endpoint, events_sync);
+  }
+  voxorchestra::node::RuntimeNode node(ctx, std::move(runtime),
+                                       std::chrono::milliseconds(0), event_pub);
   try {
     node.bind(listen);
     std::cout << "tts_node 监听 " << listen << "（" << backend_name << " 后端";

@@ -26,7 +26,8 @@ TaskChannel::Error TaskChannel::setup(const std::string& /*request_id*/,
 TaskChannel::Error TaskChannel::inference(const std::string& request_id,
                                           const std::string& payload,
                                           std::chrono::milliseconds timeout,
-                                          std::string* out_text) {
+                                          std::string* out_text,
+                                          const EventSink& events) {
   if (timeout.count() <= 0) {
     timeout = kDefaultInferenceTimeout;
   }
@@ -47,7 +48,8 @@ TaskChannel::Error TaskChannel::inference(const std::string& request_id,
     cancel_flag_.store(false);
   }
 
-  const BackendResult result = backend_->infer(payload, deadline, cancel_flag_);
+  const BackendResult result =
+      backend_->infer(payload, deadline, cancel_flag_, events);
 
   std::lock_guard<std::mutex> lock(mutex_);
   ++inference_count_;

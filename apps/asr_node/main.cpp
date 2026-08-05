@@ -63,11 +63,12 @@ class AsrNodeBackend final : public voxorchestra::runtime::IBackend {
   voxorchestra::runtime::BackendResult infer(
       const std::string& payload,
       std::chrono::steady_clock::time_point deadline,
-      const std::atomic<bool>& cancelled) override {
+      const std::atomic<bool>& cancelled,
+      const voxorchestra::runtime::EventSink& events) override {
     if (backend_name_ == "sherpa_onnx") {
-      return run_wav(payload, deadline, cancelled);
+      return run_wav(payload, deadline, cancelled, events);
     }
-    return run_mock(payload, deadline, cancelled);
+    return run_mock(payload, deadline, cancelled, events);
   }
 
  private:
@@ -75,7 +76,8 @@ class AsrNodeBackend final : public voxorchestra::runtime::IBackend {
   voxorchestra::runtime::BackendResult run_mock(
       const std::string& payload,
       std::chrono::steady_clock::time_point deadline,
-      const std::atomic<bool>& cancelled) {
+      const std::atomic<bool>& cancelled,
+      const voxorchestra::runtime::EventSink& events) {
     int frames = 1;
     try {
       frames = std::stoi(payload);
@@ -87,11 +89,15 @@ class AsrNodeBackend final : public voxorchestra::runtime::IBackend {
     }
 
     std::string final_text;
-    asr_->set_event_callback([&final_text](const voxorchestra::backend::BackendEvent& e) {
-      if (e.kind == voxorchestra::backend::BackendEvent::Kind::kFinal) {
-        final_text = e.text;
-      }
-    });
+    asr_->set_event_callback(
+        [&final_text, &events](const voxorchestra::backend::BackendEvent& e) {
+          if (e.kind == voxorchestra::backend::BackendEvent::Kind::kFinal) {
+            final_text = e.text;
+          }
+          if (events) {
+            events(e);  // partial/final 实时转发数据面
+          }
+        });
 
     for (int i = 0; i < frames; ++i) {
       if (cancelled.load()) {
@@ -114,7 +120,8 @@ class AsrNodeBackend final : public voxorchestra::runtime::IBackend {
   voxorchestra::runtime::BackendResult run_wav(
       const std::string& payload,
       std::chrono::steady_clock::time_point deadline,
-      const std::atomic<bool>& cancelled) {
+      const std::atomic<bool>& cancelled,
+      const voxorchestra::runtime::EventSink& events) {
     std::string wav_path = payload;
     if (wav_path.empty()) {
       return {voxorchestra::runtime::BackendResult::Code::kOk,
@@ -138,11 +145,15 @@ class AsrNodeBackend final : public voxorchestra::runtime::IBackend {
     }
 
     std::string final_text;
-    asr_->set_event_callback([&final_text](const voxorchestra::backend::BackendEvent& e) {
-      if (e.kind == voxorchestra::backend::BackendEvent::Kind::kFinal) {
-        final_text = e.text;
-      }
-    });
+    asr_->set_event_callback(
+        [&final_text, &events](const voxorchestra::backend::BackendEvent& e) {
+          if (e.kind == voxorchestra::backend::BackendEvent::Kind::kFinal) {
+            final_text = e.text;
+          }
+          if (events) {
+            events(e);  // partial/final 实时转发数据面
+          }
+        });
     const auto& samples = r.info.samples;
     std::size_t offset = 0;
     while (offset < samples.size()) {
@@ -190,6 +201,8 @@ int main(int argc, char** argv) {
   std::string model_path;             // sherpa_onnx 后端必填（模型目录）
   int num_threads = 4;                // ONNX Runtime 线程数（门禁基线 4）
   std::string fixture_dir;            // 相对 WAV 路径解析根
+  std::string events_endpoint;        // 数据面事件 PUB 端点（可选）
+  std::string events_sync;            // 配套握手端点
 
   // 先读配置文件（--config 的 asr 段），命令行参数随后覆盖。
   for (int i = 1; i < argc - 1; ++i) {
@@ -223,7 +236,15 @@ int main(int argc, char** argv) {
       num_threads = parse_int(argv[i + 1], num_threads);
     } else if (std::string(argv[i]) == "--fixture-dir") {
       fixture_dir = argv[i + 1];
+    } else if (std::string(argv[i]) == "--events") {
+      events_endpoint = argv[i + 1];
+    } else if (std::string(argv[i]) == "--events-sync") {
+      events_sync = argv[i + 1];
     }
+  }
+  if (events_endpoint.empty() != events_sync.empty()) {
+    std::cerr << "--events 与 --events-sync 须成对指定" << std::endl;
+    return 1;
   }
   if (backend_name != "fake" && backend_name != "sherpa_onnx") {
     std::cerr << "未知后端: " << backend_name
@@ -269,7 +290,15 @@ int main(int argc, char** argv) {
         return std::make_shared<AsrNodeBackend>(make_asr(), backend_name,
                                                 fixture_dir);
       });
-  voxorchestra::node::RuntimeNode node(ctx, std::move(runtime));
+  // 数据面事件出口：--events 指定时绑定发布端点并注入节点外壳，
+  // 识别中间/最终文本实时发布（订阅者先行握手，节点侧不阻塞等待）。
+  std::shared_ptr<voxorchestra::dataplane::EventPublisher> event_pub;
+  if (!events_endpoint.empty()) {
+    event_pub = std::make_shared<voxorchestra::dataplane::EventPublisher>(ctx);
+    event_pub->bind(events_endpoint, events_sync);
+  }
+  voxorchestra::node::RuntimeNode node(ctx, std::move(runtime),
+                                       std::chrono::milliseconds(0), event_pub);
   try {
     node.bind(listen);
     std::cout << "asr_node 监听 " << listen << "（" << backend_name << " 后端";

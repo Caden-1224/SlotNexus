@@ -16,6 +16,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "voxorchestra/backend/backend_event.hpp"
 #include "voxorchestra/protocol/message_envelope.hpp"
 
 namespace voxorchestra::dataplane {
@@ -49,5 +50,10 @@ protocol::MessageEnvelope dataplane_event_to_envelope(
     const std::string& request_id);
 DataplaneEvent dataplane_event_from_envelope(
     const protocol::MessageEnvelope& env);
+
+// 后端事件 → 数据面事件：kind 走 backend::to_string（"partial" 等，与
+// kKind 常量一致），PCM int16 采样按内存字节序转为字节（小端平台与
+// WAV/ALSA 约定一致）。供节点适配器把流式后端事件转出数据面。
+DataplaneEvent dataplane_event_from_backend(const backend::BackendEvent& e);
 
 }  // namespace voxorchestra::dataplane

@@ -7,6 +7,7 @@ add_library(voxorchestra::app_common ALIAS voxorchestra_app_common)
 
 target_include_directories(voxorchestra_app_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(voxorchestra_app_common PUBLIC
-  voxorchestra::transport voxorchestra::protocol voxorchestra::runtime voxorchestra::task_registry
+  voxorchestra::transport voxorchestra::protocol voxorchestra::runtime
+  voxorchestra::task_registry voxorchestra::dataplane
 )
 target_compile_features(voxorchestra_app_common PUBLIC cxx_std_17)

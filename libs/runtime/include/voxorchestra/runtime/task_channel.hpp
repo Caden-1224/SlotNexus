@@ -56,8 +56,10 @@ class TaskChannel {
   // kReady → kBusy → kReady。单流：kBusy 时再次发起返回 kBusy；
   // 未 setup 返回 kBadState。timeout 为 0 时使用默认超时；
   // out_text 非空且成功时回填推理结果。
+  // events 为推理过程的事件出口（流式后端中间事件），原样透传后端。
   Error inference(const std::string& request_id, const std::string& payload,
-                  std::chrono::milliseconds timeout, std::string* out_text);
+                  std::chrono::milliseconds timeout, std::string* out_text,
+                  const EventSink& events = {});
 
   // 取消在途请求（协作式，后端尽快响应后回到 kReady）；
   // kReady 时为空操作返回 kOk。

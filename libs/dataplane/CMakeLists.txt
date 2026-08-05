@@ -9,8 +9,10 @@ add_library(voxorchestra::dataplane ALIAS voxorchestra_dataplane)
 target_include_directories(voxorchestra_dataplane PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+# voxorchestra::backend 为纯头契约库（BackendEvent），无条件构建。
 target_link_libraries(voxorchestra_dataplane PUBLIC
   voxorchestra::transport
   voxorchestra::protocol
+  voxorchestra::backend
 )
 target_compile_features(voxorchestra_dataplane PUBLIC cxx_std_17)

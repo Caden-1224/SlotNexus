@@ -70,7 +70,8 @@ TaskChannel::Error TaskRuntime::inference(const std::string& work_id,
                                           const std::string& request_id,
                                           const std::string& payload,
                                           std::chrono::milliseconds timeout,
-                                          std::string* out_text) {
+                                          std::string* out_text,
+                                          const EventSink& events) {
   std::shared_ptr<TaskChannel> channel;
   {
     std::lock_guard<std::mutex> lock(map_mutex_);
@@ -80,7 +81,7 @@ TaskChannel::Error TaskRuntime::inference(const std::string& work_id,
     }
   }
   // 解锁后调用：长时间推理不阻塞其他任务的 setup/cancel/exit。
-  return channel->inference(request_id, payload, timeout, out_text);
+  return channel->inference(request_id, payload, timeout, out_text, events);
 }
 
 TaskChannel::Error TaskRuntime::cancel(const std::string& work_id,

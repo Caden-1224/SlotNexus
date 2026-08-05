@@ -9,5 +9,8 @@ add_library(voxorchestra::runtime ALIAS voxorchestra_runtime)
 target_include_directories(voxorchestra_runtime PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
-target_link_libraries(voxorchestra_runtime PUBLIC voxorchestra::task_registry)
+# voxorchestra::backend 为纯头契约库（BackendEvent），无条件构建。
+target_link_libraries(voxorchestra_runtime PUBLIC
+  voxorchestra::backend voxorchestra::task_registry
+)
 target_compile_features(voxorchestra_runtime PUBLIC cxx_std_17)

@@ -26,8 +26,17 @@ void EventPublisher::wait_subscriber_ready(std::chrono::milliseconds timeout) {
 void EventPublisher::publish(const DataplaneEvent& e,
                              const std::string& work_id,
                              const std::string& request_id) {
-  pub_.publish(make_topic(work_id, request_id),
-               dataplane_event_to_envelope(e, work_id, request_id).to_json());
+  const std::string topic = make_topic(work_id, request_id);
+  int64_t index = e.index;
+  if (index < 0) {
+    // 调用方未指定序号（后端事件映射的默认形态）：按流自动递增。
+    index = next_index_[topic];
+    next_index_[topic] = index + 1;
+  }
+  DataplaneEvent ev = e;
+  ev.index = index;
+  pub_.publish(topic,
+               dataplane_event_to_envelope(ev, work_id, request_id).to_json());
 }
 
 void EventPublisher::close() { pub_.close(); }

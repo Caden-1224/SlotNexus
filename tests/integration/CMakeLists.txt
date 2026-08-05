@@ -15,6 +15,11 @@ add_executable(dataplane_test dataplane_test.cpp)
 target_link_libraries(dataplane_test PRIVATE voxorchestra::dataplane)
 add_test(NAME dataplane_test COMMAND dataplane_test)
 
+# 节点数据面事件发布：spawn 真实 asr/llm/tts 节点（fake 后端）订阅事件流。
+add_executable(node_events_test node_events_test.cpp)
+target_link_libraries(node_events_test PRIVATE voxorchestra::dataplane voxorchestra::transport)
+add_test(NAME node_events_test COMMAND node_events_test)
+
 add_executable(tcp_server_test tcp_server_test.cpp)
 target_link_libraries(tcp_server_test PRIVATE voxorchestra::network)
 add_test(NAME tcp_server_test COMMAND tcp_server_test)

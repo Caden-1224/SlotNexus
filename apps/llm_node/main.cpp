@@ -60,26 +60,33 @@ class LlmNodeBackend final : public voxorchestra::runtime::IBackend {
   voxorchestra::runtime::BackendResult infer(
       const std::string& payload,
       std::chrono::steady_clock::time_point deadline,
-      const std::atomic<bool>& cancelled) override {
+      const std::atomic<bool>& cancelled,
+      const voxorchestra::runtime::EventSink& events) override {
     if (cancelled.load()) {
       llm_->cancel();
       return {voxorchestra::runtime::BackendResult::Code::kCancelled, {}};
     }
     if (backend_name_ == "rkllm") {
-      return run_rkllm(payload, deadline, cancelled);
+      return run_rkllm(payload, deadline, cancelled, events);
     }
-    return run_fake(payload);
+    return run_fake(payload, events);
   }
 
  private:
   // Mock 约定：payload 为提取后的纯文本 prompt，同步生成（Fake 瞬时）。
-  voxorchestra::runtime::BackendResult run_fake(const std::string& payload) {
+  voxorchestra::runtime::BackendResult run_fake(
+      const std::string& payload,
+      const voxorchestra::runtime::EventSink& events) {
     std::string final_text;
-    llm_->set_event_callback([&final_text](const voxorchestra::backend::BackendEvent& e) {
-      if (e.kind == voxorchestra::backend::BackendEvent::Kind::kDone) {
-        final_text = e.text;
-      }
-    });
+    llm_->set_event_callback(
+        [&final_text, &events](const voxorchestra::backend::BackendEvent& e) {
+          if (e.kind == voxorchestra::backend::BackendEvent::Kind::kDone) {
+            final_text = e.text;
+          }
+          if (events) {
+            events(e);  // token/done 实时转发数据面
+          }
+        });
     llm_->generate(payload);
     return {voxorchestra::runtime::BackendResult::Code::kOk, std::move(final_text)};
   }
@@ -90,13 +97,18 @@ class LlmNodeBackend final : public voxorchestra::runtime::IBackend {
   voxorchestra::runtime::BackendResult run_rkllm(
       const std::string& payload,
       std::chrono::steady_clock::time_point deadline,
-      const std::atomic<bool>& cancelled) {
+      const std::atomic<bool>& cancelled,
+      const voxorchestra::runtime::EventSink& events) {
     std::string final_text;
-    llm_->set_event_callback([&final_text](const voxorchestra::backend::BackendEvent& e) {
-      if (e.kind == voxorchestra::backend::BackendEvent::Kind::kDone) {
-        final_text = e.text;
-      }
-    });
+    llm_->set_event_callback(
+        [&final_text, &events](const voxorchestra::backend::BackendEvent& e) {
+          if (e.kind == voxorchestra::backend::BackendEvent::Kind::kDone) {
+            final_text = e.text;
+          }
+          if (events) {
+            events(e);  // token/done 实时转发数据面
+          }
+        });
     std::atomic<bool> gen_done{false};
     std::thread worker([this, &payload, &final_text, &gen_done] {
       llm_->generate(payload);
@@ -144,6 +156,8 @@ int main(int argc, char** argv) {
   int max_new_tokens = 100;           // 采样参数（教程参考值，板端实测校准）
   int max_context_len = 256;
   int infer_timeout_ms = 0;           // 节点内推理超时；0 = 默认 5000 ms
+  std::string events_endpoint;        // 数据面事件 PUB 端点（可选）
+  std::string events_sync;            // 配套握手端点
 
   // 先读配置文件（--config 的 llm 段），命令行参数随后覆盖。
   for (int i = 1; i < argc - 1; ++i) {
@@ -179,7 +193,15 @@ int main(int argc, char** argv) {
       max_context_len = parse_int(argv[i + 1], max_context_len);
     } else if (std::string(argv[i]) == "--infer-timeout-ms") {
       infer_timeout_ms = parse_int(argv[i + 1], infer_timeout_ms);
+    } else if (std::string(argv[i]) == "--events") {
+      events_endpoint = argv[i + 1];
+    } else if (std::string(argv[i]) == "--events-sync") {
+      events_sync = argv[i + 1];
     }
+  }
+  if (events_endpoint.empty() != events_sync.empty()) {
+    std::cerr << "--events 与 --events-sync 须成对指定" << std::endl;
+    return 1;
   }
   if (backend_name != "fake" && backend_name != "rkllm") {
     std::cerr << "未知后端: " << backend_name
@@ -224,9 +246,16 @@ int main(int argc, char** argv) {
       [make_llm, backend_name] {
         return std::make_shared<LlmNodeBackend>(make_llm(), backend_name);
       });
+  // 数据面事件出口：--events 指定时绑定发布端点并注入节点外壳，
+  // 生成 token/done 实时发布（订阅者先行握手，节点侧不阻塞等待）。
+  std::shared_ptr<voxorchestra::dataplane::EventPublisher> event_pub;
+  if (!events_endpoint.empty()) {
+    event_pub = std::make_shared<voxorchestra::dataplane::EventPublisher>(ctx);
+    event_pub->bind(events_endpoint, events_sync);
+  }
   voxorchestra::node::RuntimeNode node(
       ctx, std::move(runtime),
-      std::chrono::milliseconds(infer_timeout_ms));
+      std::chrono::milliseconds(infer_timeout_ms), event_pub);
   try {
     node.bind(listen);
     std::cout << "llm_node 监听 " << listen << "（" << backend_name << " 后端";
