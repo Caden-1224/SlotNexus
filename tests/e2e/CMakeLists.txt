@@ -19,6 +19,8 @@ add_test(NAME session_rounds_test COMMAND session_rounds_test)
 # spawn 的节点二进制须随测试目标一起构建（add_test 不构建子进程可执行）。
 add_executable(session_net_e2e_test session_net_e2e_test.cpp)
 target_link_libraries(session_net_e2e_test PRIVATE
+  voxorchestra::backend
+  voxorchestra::common
   voxorchestra::protocol
   voxorchestra::transport
 )

@@ -74,10 +74,12 @@ std::unique_ptr<voxorchestra::backend::IAsrBackend> MakeAsrBackend(
     zmq::context_t& ctx, const SessionNodeConfig& cfg,
     const std::string& work_id) {
   if (cfg.backend == "net") {
-    return std::make_unique<voxorchestra::backend::net::NetAsrBackend>(
-        ctx, voxorchestra::backend::net::NetBackendConfig{
-                 cfg.asr_ep.rpc, cfg.asr_ep.events, cfg.asr_ep.sync, work_id,
-                 cfg.net_setup_timeout, cfg.net_rpc_timeout});
+    voxorchestra::backend::net::NetBackendConfig c{
+        cfg.asr_ep.rpc, cfg.asr_ep.events, cfg.asr_ep.sync, work_id,
+        cfg.net_setup_timeout, cfg.net_rpc_timeout};
+    c.asr_audio_uplink = cfg.asr_audio_uplink;
+    return std::make_unique<voxorchestra::backend::net::NetAsrBackend>(ctx,
+                                                                       c);
   }
   return std::make_unique<voxorchestra::backend::fake::FakeAsrBackend>();
 }

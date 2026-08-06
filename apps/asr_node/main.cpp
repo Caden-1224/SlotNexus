@@ -40,9 +40,13 @@
 #ifdef VOXORCHESTRA_HAS_SHERTA_ONNX
 #include "voxorchestra/backend/sherpa_onnx/sherpa_asr_backend.hpp"
 #endif
+#include "voxorchestra/common/base64.hpp"
 #include "voxorchestra/common/wav_reader.hpp"
 #include "voxorchestra/runtime/ibackend.hpp"
 #include "runtime_node.hpp"
+
+#include <algorithm>
+#include <cstring>
 
 namespace {
 
@@ -65,6 +69,11 @@ class AsrNodeBackend final : public voxorchestra::runtime::IBackend {
       std::chrono::steady_clock::time_point deadline,
       const std::atomic<bool>& cancelled,
       const voxorchestra::runtime::EventSink& events) override {
+    // 音频上行（net 会话真实负载）：会话侧把整段 PCM 编码上行。任何后端
+    // 都先识别前缀（解码失败返回错误文本）；WAV 路径模式仅限节点直连。
+    if (payload.rfind(voxorchestra::backend::kAsrPcmPayloadPrefix, 0) == 0) {
+      return run_pcm(payload, deadline, cancelled, events);
+    }
     if (backend_name_ == "sherpa_onnx") {
       return run_wav(payload, deadline, cancelled, events);
     }
@@ -87,7 +96,14 @@ class AsrNodeBackend final : public voxorchestra::runtime::IBackend {
     } catch (...) {
       frames = 1;
     }
+    return run_mock_frames(frames, deadline, cancelled, events);
+  }
 
+  // 帧数约定：合成 frames 帧确定性音频喂入，返回 kFinal 文本。
+  voxorchestra::runtime::BackendResult run_mock_frames(
+      int frames, std::chrono::steady_clock::time_point deadline,
+      const std::atomic<bool>& cancelled,
+      const voxorchestra::runtime::EventSink& events) {
     std::string final_text;
     asr_->set_event_callback(
         [&final_text, &events](const voxorchestra::backend::BackendEvent& e) {
@@ -113,6 +129,40 @@ class AsrNodeBackend final : public voxorchestra::runtime::IBackend {
                        i + 1 == frames);
     }
     return {voxorchestra::runtime::BackendResult::Code::kOk, std::move(final_text)};
+  }
+
+  // 音频上行约定：payload = "pcm64:<base64(16kHz/16bit/单声道 PCM)>"。
+  // 解码后按后端解释：fake 按 20 ms 帧折算帧数（与帧数约定同语义，
+  // 保证 Mock E2E 可测）；sherpa_onnx 直接分块喂真实后端。解码失败返回
+  // 错误文本（与 run_wav 的负载错误约定一致）。
+  voxorchestra::runtime::BackendResult run_pcm(
+      const std::string& payload,
+      std::chrono::steady_clock::time_point deadline,
+      const std::atomic<bool>& cancelled,
+      const voxorchestra::runtime::EventSink& events) {
+    const std::string b64 = payload.substr(
+        std::strlen(voxorchestra::backend::kAsrPcmPayloadPrefix));
+    std::vector<std::uint8_t> bytes;
+    try {
+      bytes = voxorchestra::common::base64_decode(b64);
+    } catch (const std::exception& e) {
+      return {voxorchestra::runtime::BackendResult::Code::kOk,
+              "{\"error\":\"PCM 负载解码失败: " + std::string(e.what()) + "\"}"};
+    }
+    if (bytes.empty() || bytes.size() % 2 != 0) {
+      return {voxorchestra::runtime::BackendResult::Code::kOk,
+              "{\"error\":\"PCM 负载字节数非法（需 16-bit 采样的偶数长度）\"}"};
+    }
+    std::vector<int16_t> samples(bytes.size() / 2);
+    std::memcpy(samples.data(), bytes.data(), bytes.size());
+    if (backend_name_ == "sherpa_onnx") {
+      return feed_samples(samples, deadline, cancelled, events);
+    }
+    const std::size_t frames = std::max<std::size_t>(
+        1, (samples.size() + voxorchestra::backend::kFrameSamples - 1) /
+               voxorchestra::backend::kFrameSamples);
+    return run_mock_frames(static_cast<int>(frames), deadline, cancelled,
+                           events);
   }
 
   // 真实约定：payload 为 WAV 文件路径（相对路径按 fixture_dir 解析）。
@@ -143,7 +193,16 @@ class AsrNodeBackend final : public voxorchestra::runtime::IBackend {
                   " Hz/" + std::to_string(r.info.channels) + "ch/" +
                   std::to_string(r.info.bits) + "bit（需要 16000/1/16）\"}"};
     }
+    return feed_samples(r.info.samples, deadline, cancelled, events);
+  }
 
+  // 分块喂入样本（20 ms 帧，末帧 is_last）；协作式检查取消/超时。
+  // 真实后端（sherpa_onnx）识别由会话侧累积的整段音频。
+  voxorchestra::runtime::BackendResult feed_samples(
+      const std::vector<int16_t>& samples,
+      std::chrono::steady_clock::time_point deadline,
+      const std::atomic<bool>& cancelled,
+      const voxorchestra::runtime::EventSink& events) {
     std::string final_text;
     asr_->set_event_callback(
         [&final_text, &events](const voxorchestra::backend::BackendEvent& e) {
@@ -154,7 +213,6 @@ class AsrNodeBackend final : public voxorchestra::runtime::IBackend {
             events(e);  // partial/final 实时转发数据面
           }
         });
-    const auto& samples = r.info.samples;
     std::size_t offset = 0;
     while (offset < samples.size()) {
       if (cancelled.load()) {

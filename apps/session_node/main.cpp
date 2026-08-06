@@ -116,8 +116,20 @@ int main(int argc, char** argv) {
        std::chrono::milliseconds(file_cfg.value("tts_min_duration_ms", 0));
    config.max_run =
        std::chrono::milliseconds(file_cfg.value("max_run_ms", 30000));
+   if (file_cfg.contains("net")) {
+     const auto& net_cfg = file_cfg["net"];
+     config.asr_audio_uplink =
+         net_cfg.value("asr_audio_uplink", config.asr_audio_uplink);
+   }
  } else {
    return 1;
+ }
+
+ // 布尔开关先独立扫描（无取值参数，避免与成对解析错位）。
+ for (int i = 1; i < argc; ++i) {
+   if (std::string(argv[i]) == "--asr-uplink") {
+     config.asr_audio_uplink = true;
+   }
  }
 
  // 命令行覆盖。
@@ -227,7 +239,10 @@ int main(int argc, char** argv) {
              << "/" << config.pcm_capacity << "）" << std::endl;
    if (config.backend == "net") {
      std::cout << "  asr 节点 " << config.asr_ep.rpc << "（事件 "
-               << config.asr_ep.events << "）" << std::endl;
+               << config.asr_ep.events << (config.asr_audio_uplink
+                                               ? "，音频上行真实负载"
+                                               : "，帧数约定 Mock 负载")
+               << "）" << std::endl;
      std::cout << "  llm 节点 " << config.llm_ep.rpc << "（事件 "
                << config.llm_ep.events << "）" << std::endl;
      std::cout << "  tts 节点 " << config.tts_ep.rpc << "（事件 "

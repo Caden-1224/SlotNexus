@@ -11,6 +11,7 @@ target_include_directories(voxorchestra_net_backends PUBLIC
 )
 target_link_libraries(voxorchestra_net_backends PUBLIC
   voxorchestra::backend
+  voxorchestra::common
   voxorchestra::dataplane
   voxorchestra::transport
   voxorchestra::protocol

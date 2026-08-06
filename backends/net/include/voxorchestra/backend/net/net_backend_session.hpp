@@ -42,6 +42,10 @@ struct NetBackendConfig {
   std::chrono::milliseconds setup_timeout{5000};     // setup RPC 等待
   std::chrono::milliseconds rpc_timeout{30000};      // 单次推理等待上限
   std::chrono::milliseconds subscribe_settle{100};   // 订阅传播等待（回环余量）
+  // ASR 音频上行（真实负载模式）：会话侧把累积 PCM 上行到 asr 节点，
+  // 由节点真实后端（sherpa_onnx）识别；false 时为 Mock 帧数约定
+  // （{"text": "<帧数>"}，与 fake 节点一致）。仅 NetAsrBackend 使用。
+  bool asr_audio_uplink = false;
 };
 
 // 一次推理的驱动会话（三个网络后端共享；非线程安全，仅驱动线程使用，
@@ -74,6 +78,9 @@ class NetBackendSession {
   // 子请求 id：按阶段独立递增（ASR 的 "a0"/"a1"、LLM 的 "l0"、TTS 的
   // "t0"/"t1"...），保证事件流主题唯一。供 IAsrBackend 等实现调用。
   std::string next_request_id(const std::string& stage);
+
+  // 构造注入的配置（只读，供后端实现查询负载模式等）。
+  const NetBackendConfig& config() const { return config_; }
 
  private:
   zmq::context_t& ctx_;

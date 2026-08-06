@@ -64,6 +64,9 @@ struct SessionNodeConfig {
                          "tcp://127.0.0.1:19223"};
  std::chrono::milliseconds net_setup_timeout{5000};   // 节点 setup RPC 等待
  std::chrono::milliseconds net_rpc_timeout{30000};    // 节点推理等待上限
+ // net 模式 ASR 真实负载：音频上行（PCM base64 上行到 asr 节点，由节点
+ // 真实后端识别）；false 时为 Mock 帧数约定（fake 节点，回归基线）。
+ bool asr_audio_uplink = false;
 };
 
 class SessionNode {
