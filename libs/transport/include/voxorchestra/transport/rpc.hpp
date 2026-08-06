@@ -32,6 +32,17 @@ class RpcClient {
   // 通道已关闭抛 kClosed；发送/接收失败抛 kSendFailed/kRecvFailed。
   std::string call(const std::string& request, std::chrono::milliseconds deadline);
 
+  // 异步两段式调用：call_async 发送请求后立即返回（REQ 进入等待响应阶段），
+  // poll_response 在 timeout 内等待响应（收到返回 true；超时返回 false，
+  // 状态机保持有效，调用方可轮询其他事件源后再调用）。
+  // 用途：推理请求（长耗时）与数据面事件流并行消费——请求发出后，
+  // 事件经 SUB 实时回放，响应确认推理完成。
+  // 注意：call_async 后必须 poll_response 至成功（或 close），期间不可再次
+  // call_async（REQ 状态机不允许重发）。发送失败抛 kSendFailed/kRecvFailed；
+  // 通道已关闭抛 kClosed。
+  void call_async(const std::string& request);
+  bool poll_response(std::string& response, std::chrono::milliseconds timeout);
+
   void close();  // 幂等；关闭后 call() 抛 kClosed
 
  private:

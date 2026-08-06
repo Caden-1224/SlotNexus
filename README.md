@@ -145,7 +145,7 @@ flowchart TB
 | Linux / C++17 | 全链路实现语言：进程、线程、epoll 事件驱动 |
 | ZeroMQ | 控制面 RPC 与数据面流的通信底座 |
 | epoll 主从 Reactor | TCP 网关连接管理，连接生命周期一线程归属 |
-| CMake + CTest | 根级构建与测试（当前 29 个测试） |
+| CMake + CTest | 根级构建与测试（当前 33 个测试） |
 | Shell 脚本 | 演示、板卡体检与无硬件依赖验收 |
 
 **应用场景**：无公网的全离线部署（工业、车载、机器人等边缘环境）；医疗、金融等隐私敏感场景；端侧语音交互与边缘智能应用。
@@ -154,7 +154,7 @@ flowchart TB
 
 | 能力 | 状态 | 说明 |
 |---|---|---|
-| 仓库骨架、根级 CMake/CTest | ✅ | 空目录可复现构建，CTest 29/29 通过 |
+| 仓库骨架、根级 CMake/CTest | ✅ | 空目录可复现构建，CTest 33/33 通过 |
 | 统一消息信封 MessageEnvelope | ✅ | 版本化 JSON，1 MiB 上限，结构化错误码 |
 | ZMQ 多模式通信 | ✅ | RPC（deadline）/ PUB/SUB（订阅握手）/ PUSH/PULL，均含超时与退出测试 |
 | TCP 网关与 NDJSON 解帧 | ✅ | epoll 主从 Reactor，半包/粘包/超长帧/慢客户端处理 |
@@ -164,7 +164,11 @@ flowchart TB
 | Session 编排、取消与晚到过滤 | ✅ | 固定 WAV → Fake PCM 全链路；状态机（Idle→Listening→Routing→Thinking→Speaking）、有界文本/PCM 队列、generation 取消传播与晚到过滤；E2E + 故障注入测试覆盖 |
 | WSL Mock 冻结（M1 门禁） | ✅ | 50 轮 E2E 零跨流、进程/端口无残留、request_id 日志全链关联、干净构建排除旧缓存；故障注入回归（非法输入、超长帧、未知任务、挂起兜底超时、重复 cancel/exit）；证据见 `artifacts/mock-release/` |
 | 真实硬件后端（sherpa-onnx / RKLLM / SummerTTS / ALSA） | ✅ | 已接入并板端核验；默认构建关闭，仅 `VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON` 时构建（证据见 `artifacts/{asr,llm,tts,audio}-integration/`） |
-| 泰山派 3M 全真实链路 | ⏳ 联调中 | 上游基线 ✅ → 项目 Backend ✅ → 全链路（ASR→RAG→LLM→TTS→ALSA 端到端）逐级联调 |
+| rag_node 真实 BM25 路由 | ✅ | 节点内 KnowledgeStore + Bm25Index + Router（L0-L3 阈值/关键词参数化），21 条测试集冻结路由决策；与 embedded 路由同源实现 |
+| voice_cli 客户端 | ✅ | 现场语音交互入口：TCP NDJSON 直连网关，setup/inference/cancel/taskinfo/exit 全协议；非阻塞 connect 以 getpeername 权威确认（RST 竞态防御）、失败路径不打印空信封摘要、晚到取消静默（同步转发已知限制） |
+| 数据面异步流（控制面/数据面分离） | ✅ | 统一信封 `type=event` 承载流式后端事件（partial/final/token/done/pcm，PCM base64）；主题 `<work_id>/<request_id>/` 前缀精确过滤；EventPublisher/EventSubscriber 订阅握手（slow joiner 防御）；asr/llm/tts 节点推理中实时发布（--events/--events-sync，缺省不发布） |
+| 会话侧网络后端（session_node --backend net） | ✅ | NetAsr/NetLlm/NetTts 与本地 Fake 同契约：控制面 RPC 上行（setup/inference/cancel）+ 数据面事件订阅回放；RpcClient 异步两段式（call_async/poll_response）、事件流 finish 与 RPC 响应双信号判定完成、取消/超时后 REQ 状态机重建；默认 embedded 保持 M1 基线；数据面全链路 E2E（四类路由+固定 WAV+取消传播，33/33 回归） |
+| 泰山派 3M 全真实链路 | ⏳ 联调中 | 上游基线 ✅ → 项目 Backend ✅ → 全链路（ASR→RAG→LLM→TTS→ALSA 端到端）逐级联调；net 模式为真机节点切换就绪（节点换真实后端即可复用） |
 
 ## 快速开始
 
@@ -173,7 +177,7 @@ flowchart TB
 ```bash
 cmake --preset wsl-debug
 cmake --build --preset wsl-debug -j8
-ctest --preset wsl-debug        # 29 个测试，全部通过
+ctest --preset wsl-debug        # 33 个测试，全部通过
 ```
 
 无硬件依赖可用 `scripts/check_no_hw_deps.sh` 逐二进制验收（ldd 检查 rkllm / sherpa / onnx / asound 等链接）。
@@ -229,8 +233,8 @@ python3 scripts/gateway_probe.py 9100 \
 ## 项目结构
 
 ```text
-libs/        通用库：common / protocol / transport / network / task_registry / runtime / rag / session
-backends/    可替换实现：fake（默认）/ sherpa_onnx / rkllm / summer_tts / alsa
+libs/        通用库：common / protocol / transport / network / task_registry / runtime / rag / session / dataplane（数据面事件通道）
+backends/    可替换实现：fake（默认）/ net（远端节点代理）/ sherpa_onnx / rkllm / summer_tts / alsa
 apps/        独立进程：edge_gateway / unit_manager / session_node / asr_node / rag_node / llm_node / tts_node / voice_cli
 tests/       unit / contract / integration / e2e / fault
 deploy/      部署：docker / systemd / taishanpi3m

@@ -220,35 +220,41 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
     // ---------- 3. 合成与写出阶段（Speaking，两个工作线程）----------
     if (result.error.empty() && !cancelled_.load() && !timed_out()) {
       // TTS 工作线程：句子 → 合成 → PCM 帧入有界队列。
+      // 异常防护：网络后端（节点不可达/超时）可能抛异常，线程内未捕获
+      // 会 terminate 整个进程——捕获后记录错误，主线程收尾据此判失败。
       tts_thread = std::thread([&] {
-        std::string sentence;
-        for (;;) {
-          const auto r = text_queue.pop_timeout(sentence, kPollInterval);
-          if (r == QueueResult::kClosed) {
-            return;  // 生产结束且已排空
-          }
-          if (r != QueueResult::kOk) {
-            continue;  // 空窗口，继续等待
-          }
-          if (!is_active()) {
-            continue;  // 取消后滞留句子：丢弃
-          }
-          tts_.set_event_callback([&](const BackendEvent& e) {
+        try {
+          std::string sentence;
+          for (;;) {
+            const auto r = text_queue.pop_timeout(sentence, kPollInterval);
+            if (r == QueueResult::kClosed) {
+              return;  // 生产结束且已排空
+            }
+            if (r != QueueResult::kOk) {
+              continue;  // 空窗口，继续等待
+            }
             if (!is_active()) {
-              return;  // 取消后 TTS 的晚到 PCM：丢弃
+              continue;  // 取消后滞留句子：丢弃
             }
-            if (e.kind == BackendEvent::Kind::kPcm) {
-              const auto pr =
-                  pcm_queue.push_timeout(e.pcm, config_.queue_push_timeout);
-              if (pr == QueueResult::kFull) {
-                ++result.dropped_pcm_frames;  // 满队列超时丢弃（明确行为）
+            tts_.set_event_callback([&](const BackendEvent& e) {
+              if (!is_active()) {
+                return;  // 取消后 TTS 的晚到 PCM：丢弃
               }
+              if (e.kind == BackendEvent::Kind::kPcm) {
+                const auto pr =
+                    pcm_queue.push_timeout(e.pcm, config_.queue_push_timeout);
+                if (pr == QueueResult::kFull) {
+                  ++result.dropped_pcm_frames;  // 满队列超时丢弃（明确行为）
+                }
+              }
+            });
+            tts_.synthesize(sentence);
+            if (config_.stage_delay.count() > 0) {
+              std::this_thread::sleep_for(config_.stage_delay);
             }
-          });
-          tts_.synthesize(sentence);
-          if (config_.stage_delay.count() > 0) {
-            std::this_thread::sleep_for(config_.stage_delay);
           }
+        } catch (const std::exception& e) {
+          result.error = std::string("TTS 阶段异常: ") + e.what();
         }
       });
       // 写出工作线程：PCM 帧 → sink（取消后滞留帧不写出）。

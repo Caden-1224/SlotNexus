@@ -97,6 +97,46 @@ std::string RpcClient::call(const std::string& request,
   return reply.to_string();
 }
 
+void RpcClient::call_async(const std::string& request) {
+  throw_if_closed();
+  if (!connected_ || !socket_) {
+    throw TransportError(TransportErrorCode::kRecvFailed,
+                         "RpcClient 未 connect");
+  }
+  try {
+    socket_->send(zmq::buffer(request), zmq::send_flags::none);
+  } catch (zmq::error_t& e) {
+    throw make_error(e);
+  }
+  // 发送后 REQ 进入等待响应阶段：后续 poll_response 消费响应。
+}
+
+bool RpcClient::poll_response(std::string& response,
+                              std::chrono::milliseconds timeout) {
+  throw_if_closed();
+  if (!connected_ || !socket_) {
+    throw TransportError(TransportErrorCode::kRecvFailed,
+                         "RpcClient 未 connect");
+  }
+  if (timeout < std::chrono::milliseconds::zero()) {
+    timeout = std::chrono::milliseconds::zero();
+  }
+  socket_->set(zmq::sockopt::rcvtimeo, static_cast<int>(timeout.count()));
+  zmq::message_t reply;
+  bool received = false;
+  try {
+    received = socket_->recv(reply, zmq::recv_flags::none).has_value();
+  } catch (zmq::error_t& e) {
+    throw make_error(e);
+  }
+  if (!received) {
+    // 超时：REQ 仍在等待响应阶段，状态机有效，可再次 poll_response。
+    return false;
+  }
+  response = reply.to_string();
+  return true;
+}
+
 void RpcClient::close() {
   if (closed_) {
     return;

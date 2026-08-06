@@ -10,6 +10,12 @@
 #include "voxorchestra/backend/fake/fake_asr_backend.hpp"
 #include "voxorchestra/backend/fake/fake_llm_backend.hpp"
 #include "voxorchestra/backend/fake/fake_tts_backend.hpp"
+#include "voxorchestra/backend/i_asr_backend.hpp"
+#include "voxorchestra/backend/i_llm_backend.hpp"
+#include "voxorchestra/backend/i_tts_backend.hpp"
+#include "voxorchestra/backend/net/net_asr_backend.hpp"
+#include "voxorchestra/backend/net/net_llm_backend.hpp"
+#include "voxorchestra/backend/net/net_tts_backend.hpp"
 #include "voxorchestra/common/log.hpp"
 #include "voxorchestra/protocol/message_envelope.hpp"
 #include "voxorchestra/rag/knowledge_store.hpp"
@@ -47,17 +53,58 @@ nlohmann::json ResultStats(const PipelineResult& r) {
 
 }  // namespace
 
-// 一个会话实例：后端归本实例所有，管线只依赖接口引用。
+// 一个会话实例：后端归本实例所有（embedded=Fake / net=节点代理，见
+// MakeAsrBackend 等），管线只依赖接口引用。
 struct SessionNode::Session {
-  voxorchestra::backend::fake::FakeAsrBackend asr;
-  voxorchestra::backend::fake::FakeLlmBackend llm;
-  voxorchestra::backend::fake::FakeTtsBackend tts;
+  std::unique_ptr<voxorchestra::backend::IAsrBackend> asr;
+  std::unique_ptr<voxorchestra::backend::ILlmBackend> llm;
+  std::unique_ptr<voxorchestra::backend::ITtsBackend> tts;
   std::unique_ptr<session::SessionPipeline> pipeline;
   std::atomic<bool> busy{false};
   std::mutex last_mutex;
   session::PipelineResult last_result;
   std::string last_request_id;
 };
+
+// 后端工厂：按配置模式创建 asr/llm/tts 后端。
+//  - embedded：本地 Fake（确定性，M1 基线）；
+//  - net：远端节点代理（work_id 与节点任务一致；构造时同步 setup 节点，
+//    失败抛异常 → 会话 setup 失败，客户端早失败早清楚）。
+std::unique_ptr<voxorchestra::backend::IAsrBackend> MakeAsrBackend(
+    zmq::context_t& ctx, const SessionNodeConfig& cfg,
+    const std::string& work_id) {
+  if (cfg.backend == "net") {
+    return std::make_unique<voxorchestra::backend::net::NetAsrBackend>(
+        ctx, voxorchestra::backend::net::NetBackendConfig{
+                 cfg.asr_ep.rpc, cfg.asr_ep.events, cfg.asr_ep.sync, work_id,
+                 cfg.net_setup_timeout, cfg.net_rpc_timeout});
+  }
+  return std::make_unique<voxorchestra::backend::fake::FakeAsrBackend>();
+}
+
+std::unique_ptr<voxorchestra::backend::ILlmBackend> MakeLlmBackend(
+    zmq::context_t& ctx, const SessionNodeConfig& cfg,
+    const std::string& work_id) {
+  if (cfg.backend == "net") {
+    return std::make_unique<voxorchestra::backend::net::NetLlmBackend>(
+        ctx, voxorchestra::backend::net::NetBackendConfig{
+                 cfg.llm_ep.rpc, cfg.llm_ep.events, cfg.llm_ep.sync, work_id,
+                 cfg.net_setup_timeout, cfg.net_rpc_timeout});
+  }
+  return std::make_unique<voxorchestra::backend::fake::FakeLlmBackend>();
+}
+
+std::unique_ptr<voxorchestra::backend::ITtsBackend> MakeTtsBackend(
+    zmq::context_t& ctx, const SessionNodeConfig& cfg,
+    const std::string& work_id) {
+  if (cfg.backend == "net") {
+    return std::make_unique<voxorchestra::backend::net::NetTtsBackend>(
+        ctx, voxorchestra::backend::net::NetBackendConfig{
+                 cfg.tts_ep.rpc, cfg.tts_ep.events, cfg.tts_ep.sync, work_id,
+                 cfg.net_setup_timeout, cfg.net_rpc_timeout});
+  }
+  return std::make_unique<voxorchestra::backend::fake::FakeTtsBackend>();
+}
 
 SessionNode::SessionNode(zmq::context_t& ctx, SessionNodeConfig config)
     : ctx_(ctx), config_(std::move(config)) {
@@ -219,11 +266,23 @@ void SessionNode::handle_request(const std::string& identity,
           return;
         }
         s = std::make_shared<Session>();
+        // 后端创建（net 模式含节点 setup RPC）；失败 → 会话 setup 失败。
+        // 错误码 4 = 后端不可用（节点未启动/连接超时）。
+        try {
+          s->asr = MakeAsrBackend(ctx_, config_, request.work_id());
+          s->llm = MakeLlmBackend(ctx_, config_, request.work_id());
+          s->tts = MakeTtsBackend(ctx_, config_, request.work_id());
+        } catch (const std::exception& e) {
+          log_err(request, std::string("backend_unavailable: ") + e.what());
+          send_reply(build_error(request, 4,
+                                 "后端不可用: " + std::string(e.what())));
+          return;
+        }
         s->pipeline = std::make_unique<session::SessionPipeline>(
             PipelineConfig{config_.text_capacity, config_.pcm_capacity,
                            config_.push_timeout, config_.stage_delay,
                            config_.output_dir, config_.tts_min_duration},
-            *router_, s->asr, s->llm, s->tts,
+            *router_, *s->asr, *s->llm, *s->tts,
             [](const std::string& path) {
               return std::make_unique<voxorchestra::backend::fake::FakeAudioSink>(
                   path);
@@ -423,6 +482,7 @@ void SessionNode::run_inference(const std::string& identity,
                   " status=" + status + " route=" + result.route +
                   " tokens=" + std::to_string(result.token_count) +
                   " pcm=" + std::to_string(result.pcm_frames) +
+                  (result.error.empty() ? "" : " error=" + result.error) +
                   (result.wav_path.empty()
                        ? ""
                        : " wav=" + result.wav_path));

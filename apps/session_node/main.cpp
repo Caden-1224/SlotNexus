@@ -7,13 +7,19 @@
 //                   [--context-threshold <v>] [--top-k <N>]
 //                   [--text-capacity <N>] [--pcm-capacity <N>]
 //                   [--push-timeout-ms <N>] [--stage-delay-ms <N>]
+//                   [--backend embedded|net]
+//                   [--asr-endpoint <RPC>] [--asr-events <PUB>]
+//                   [--asr-events-sync <SYNC>]（llm/tts 同理）
+//                   [--net-setup-timeout-ms <N>] [--net-rpc-timeout-ms <N>]
 // 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204 /
-//             session 19210。
+//             session 19210；数据面事件 asr 19211 / llm 19212 / tts 19213
+//             （握手 19221/19222/19223，与节点 --events/--events-sync 对应）。
 //
 // 进程拓扑：client -> TCP gateway -> unit_manager -> session_node(19210)。
-// 每个 work_id 一个会话：Fake ASR/LLM/TTS + 真实 BM25 L0-L3 路由 +
-// 有界队列 + generation 取消过滤；inference 在工作线程运行，期间
-// cancel/taskinfo/exit 可并发到达。SIGINT/SIGTERM 优雅退出（退出码 0）。
+// 每个 work_id 一个会话：ASR/LLM/TTS（embedded=Fake 本地 / net=远端节点
+// 代理）+ 真实 BM25 L0-L3 路由 + 有界队列 + generation 取消过滤；
+// inference 在工作线程运行，期间 cancel/taskinfo/exit 可并发到达。
+// SIGINT/SIGTERM 优雅退出（退出码 0）。
 #include <csignal>
 #include <cstdlib>
 #include <fstream>
@@ -155,7 +161,55 @@ int main(int argc, char** argv) {
          std::chrono::milliseconds(parse_int(val.c_str(), 0));
    } else if (arg == "--max-run-ms") {
      config.max_run = std::chrono::milliseconds(parse_int(val.c_str(), 30000));
+   } else if (arg == "--backend") {
+     config.backend = val;
+   } else if (arg == "--asr-endpoint") {
+     config.asr_ep.rpc = val;
+   } else if (arg == "--asr-events") {
+     config.asr_ep.events = val;
+   } else if (arg == "--asr-events-sync") {
+     config.asr_ep.sync = val;
+   } else if (arg == "--llm-endpoint") {
+     config.llm_ep.rpc = val;
+   } else if (arg == "--llm-events") {
+     config.llm_ep.events = val;
+   } else if (arg == "--llm-events-sync") {
+     config.llm_ep.sync = val;
+   } else if (arg == "--tts-endpoint") {
+     config.tts_ep.rpc = val;
+   } else if (arg == "--tts-events") {
+     config.tts_ep.events = val;
+   } else if (arg == "--tts-events-sync") {
+     config.tts_ep.sync = val;
+   } else if (arg == "--net-setup-timeout-ms") {
+     config.net_setup_timeout =
+         std::chrono::milliseconds(parse_int(val.c_str(), 5000));
+   } else if (arg == "--net-rpc-timeout-ms") {
+     config.net_rpc_timeout =
+         std::chrono::milliseconds(parse_int(val.c_str(), 30000));
    }
+ }
+ // net 模式校验：后端合法 + 事件端点成对（缺 events 或 sync 其一报错）。
+ if (config.backend != "embedded" && config.backend != "net") {
+   std::cerr << "未知后端模式: " << config.backend
+             << "（支持 embedded / net）" << std::endl;
+   return 1;
+ }
+ const auto check_events_pair = [](const char* name,
+                                   const std::string& events,
+                                   const std::string& sync) {
+   if (events.empty() != sync.empty()) {
+     std::cerr << name << " 的 --events 与 --events-sync 须成对指定"
+               << std::endl;
+     return false;
+   }
+   return true;
+ };
+ if (config.backend == "net" &&
+     (!check_events_pair("asr", config.asr_ep.events, config.asr_ep.sync) ||
+      !check_events_pair("llm", config.llm_ep.events, config.llm_ep.sync) ||
+      !check_events_pair("tts", config.tts_ep.events, config.tts_ep.sync))) {
+   return 1;
  }
 
  std::signal(SIGINT, handle_signal);
@@ -165,12 +219,20 @@ int main(int argc, char** argv) {
  voxorchestra::app::SessionNode node(ctx, config);
  try {
    node.bind();
-   std::cout << "session_node 监听 " << config.listen << "（知识库 "
-             << config.knowledge_path << "，direct="
+   std::cout << "session_node 监听 " << config.listen << "（" << config.backend
+             << " 后端，知识库 " << config.knowledge_path << "，direct="
              << config.router.direct_threshold << " context="
              << config.router.context_threshold << " top-k="
              << config.router.top_k << "，队列 " << config.text_capacity
              << "/" << config.pcm_capacity << "）" << std::endl;
+   if (config.backend == "net") {
+     std::cout << "  asr 节点 " << config.asr_ep.rpc << "（事件 "
+               << config.asr_ep.events << "）" << std::endl;
+     std::cout << "  llm 节点 " << config.llm_ep.rpc << "（事件 "
+               << config.llm_ep.events << "）" << std::endl;
+     std::cout << "  tts 节点 " << config.tts_ep.rpc << "（事件 "
+               << config.tts_ep.events << "）" << std::endl;
+   }
  } catch (const std::exception& e) {
    std::cerr << "session_node 启动失败: " << e.what() << std::endl;
    return 1;

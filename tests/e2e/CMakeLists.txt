@@ -14,3 +14,15 @@ target_link_libraries(session_rounds_test PRIVATE
   voxorchestra::transport
 )
 add_test(NAME session_rounds_test COMMAND session_rounds_test)
+
+# 数据面全链路：session_node --backend net + 三节点（fake + 事件出口）。
+# spawn 的节点二进制须随测试目标一起构建（add_test 不构建子进程可执行）。
+add_executable(session_net_e2e_test session_net_e2e_test.cpp)
+target_link_libraries(session_net_e2e_test PRIVATE
+  voxorchestra::protocol
+  voxorchestra::transport
+)
+add_dependencies(session_net_e2e_test
+  session_node asr_node llm_node tts_node
+)
+add_test(NAME session_net_e2e_test COMMAND session_net_e2e_test)

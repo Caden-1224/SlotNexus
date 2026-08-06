@@ -17,6 +17,9 @@ target_compile_features(voxorchestra_backend INTERFACE cxx_std_17)
 # Fake 模拟实现（确定性输出，用于测试协议与编排，默认构建）。
 add_subdirectory(fake)
 
+# 数据面网络后端（远端节点代理，默认构建，依赖 dataplane/transport）。
+add_subdirectory(net)
+
 if(VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS)
  # 硬件后端按天接入：sherpa_onnx/ rkllm/
  # summer_tts/ alsa（，已接入）。

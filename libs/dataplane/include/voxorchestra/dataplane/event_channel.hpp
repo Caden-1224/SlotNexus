@@ -58,6 +58,12 @@ class EventSubscriber {
   // 接收并解码一条事件；超时或通道关闭返回 false；
   // 消息不是合法事件（类型不符/缺字段/非法 base64）抛 ProtocolError。
   bool recv(DataplaneEvent& e, std::chrono::milliseconds timeout);
+
+  // 接收事件并返回其来源主题（<work_id>/<request_id>/）。
+  // 订阅端可据此精确过滤：本订阅者可能持有多条流的订阅（会话侧网络后端
+  // 每轮推理订阅新主题），取消/超时后旧流残留事件仍会到达，按主题丢弃。
+  bool recv_with_topic(DataplaneEvent& e, std::string& topic,
+                       std::chrono::milliseconds timeout);
   void close();  // 幂等
 
  private:

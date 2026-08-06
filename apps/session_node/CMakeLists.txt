@@ -9,6 +9,7 @@ target_link_libraries(session_node_lib PRIVATE
   voxorchestra::session
   voxorchestra::rag
   voxorchestra::fake_backends
+  voxorchestra::net_backends
   voxorchestra::protocol
 )
 
@@ -19,5 +20,6 @@ target_link_libraries(session_node PRIVATE
   voxorchestra::session
   voxorchestra::rag
   voxorchestra::fake_backends
+  voxorchestra::net_backends
   voxorchestra::protocol
 )

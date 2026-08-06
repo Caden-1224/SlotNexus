@@ -57,6 +57,11 @@ void EventSubscriber::notify_ready(const std::string& sync_endpoint) {
 bool EventSubscriber::recv(DataplaneEvent& e,
                            std::chrono::milliseconds timeout) {
   std::string topic;
+  return recv_with_topic(e, topic, timeout);
+}
+
+bool EventSubscriber::recv_with_topic(DataplaneEvent& e, std::string& topic,
+                                      std::chrono::milliseconds timeout) {
   std::string payload;
   if (!sub_.recv(topic, payload, timeout)) {
     return false;
