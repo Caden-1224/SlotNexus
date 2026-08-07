@@ -2,7 +2,8 @@
 //
 // 用法：asr_node [--listen tcp://127.0.0.1:19201] [--config <session.json>]
 //                [--backend fake|sherpa_onnx] [--model <模型目录>]
-//                [--num-threads <n>] [--fixture-dir <目录>]
+//                [--num-threads <n>] [--infer-timeout-ms <ms>]
+//                [--fixture-dir <目录>]
 // 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204。
 //
 // Node 外壳（RuntimeNode + TaskRuntime）只依赖接口；本文件实现 IBackend
@@ -258,6 +259,7 @@ int main(int argc, char** argv) {
   std::string backend_name = "fake";  // 默认 Fake（x86/Mock 回归基线）
   std::string model_path;             // sherpa_onnx 后端必填（模型目录）
   int num_threads = 4;                // ONNX Runtime 线程数（门禁基线 4）
+  int infer_timeout_ms = 0;           // 节点内推理超时；0 = 默认 5000 ms
   std::string fixture_dir;            // 相对 WAV 路径解析根
   std::string events_endpoint;        // 数据面事件 PUB 端点（可选）
   std::string events_sync;            // 配套握手端点
@@ -292,6 +294,8 @@ int main(int argc, char** argv) {
       model_path = argv[i + 1];
     } else if (std::string(argv[i]) == "--num-threads") {
       num_threads = parse_int(argv[i + 1], num_threads);
+    } else if (std::string(argv[i]) == "--infer-timeout-ms") {
+      infer_timeout_ms = parse_int(argv[i + 1], infer_timeout_ms);
     } else if (std::string(argv[i]) == "--fixture-dir") {
       fixture_dir = argv[i + 1];
     } else if (std::string(argv[i]) == "--events") {
@@ -356,7 +360,8 @@ int main(int argc, char** argv) {
     event_pub->bind(events_endpoint, events_sync);
   }
   voxorchestra::node::RuntimeNode node(ctx, std::move(runtime),
-                                       std::chrono::milliseconds(0), event_pub);
+                                       std::chrono::milliseconds(infer_timeout_ms),
+                                       event_pub);
   try {
     node.bind(listen);
     std::cout << "asr_node 监听 " << listen << "（" << backend_name << " 后端";

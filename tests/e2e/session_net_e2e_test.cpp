@@ -560,6 +560,50 @@ void test_session_net_uplink_e2e(const std::string& e2e_dir,
  std::cout << "  [ok] SIGTERM 四进程全部优雅退出（退出码 0）" << std::endl;
 }
 
+// 节点推理超时参数化验证：--infer-timeout-ms 生效（asr/tts 节点补齐后
+// 与 llm 节点一致）。极短超时 + 大帧数负载 → 节点按参数返回 kError；
+// 默认参数节点的正常完成由既有用例覆盖。
+void test_node_infer_timeout(const std::string& e2e_dir,
+                            const std::string& root) {
+ const std::string apps = e2e_dir + "/../../apps";
+ const std::string out_dir = e2e_dir + "/node-infer-timeout-out";
+ std::filesystem::remove_all(out_dir);
+ const std::string log_dir = out_dir + "/logs";
+ std::filesystem::create_directories(log_dir);
+
+ constexpr const char* kTAsrRpc = "tcp://127.0.0.1:19571";
+ ChildProc asr_node;
+ // 1 ms 节点内推理超时：10 万帧确定性合成必然命中（默认 5000 ms 下
+ // 同样负载由大超时正常完成，见既有用例）。
+ CHECK(asr_node.spawn(apps + "/asr_node/asr_node",
+                      {"asr_node", "--listen", kTAsrRpc,
+                       "--infer-timeout-ms", "1"},
+                      log_dir + "/asr_node.log"));
+ std::this_thread::sleep_for(300ms);
+ CHECK(asr_node.alive());
+
+ zmq::context_t ctx(1);
+ ZmqReqClient cn(ctx);
+ cn.connect(kTAsrRpc);
+ MessageEnvelope reply;
+ CHECK(cn.call(MakeRequest(MessageType::kSetup, "w-t", "s-t"), reply, 5000ms));
+ CHECK(reply.type() == MessageType::kAck);
+ CHECK(cn.call(MakeRequest(MessageType::kInference, "w-t", "r-t-1",
+                           {{"text", "100000"}}),
+               reply, 5000ms));
+ CHECK(reply.type() == MessageType::kError);  // 超时 → 节点错误信封
+ std::cout << "  [ok] 节点 --infer-timeout-ms 生效：1 ms 超时 + 大帧数负载"
+           << " 返回 kError" << std::endl;
+ CHECK(cn.call(MakeRequest(MessageType::kExit, "w-t", "e-t"), reply, 3000ms));
+ CHECK(reply.type() == MessageType::kAck);
+
+ asr_node.kill();
+ int code = -1;
+ CHECK(asr_node.wait_for(5000ms, &code));
+ CHECK(code == 0);
+ std::cout << "  [ok] SIGTERM 节点优雅退出（退出码 0）" << std::endl;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -574,6 +618,7 @@ int main(int argc, char** argv) {
  std::cout << "session_net_e2e_test:" << std::endl;
  test_session_net_e2e(e2e_dir, root);
  test_session_net_uplink_e2e(e2e_dir, root);
+ test_node_infer_timeout(e2e_dir, root);
 
  if (g_failures == 0) {
    std::cout << "session_net_e2e_test 全部通过" << std::endl;

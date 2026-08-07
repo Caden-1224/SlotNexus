@@ -4,6 +4,7 @@
 //                [--config <session.json>] [--backend fake|summertts]
 //                [--model <模型路径>] [--length-scale <倍率>]
 //                [--sink wav|alsa] [--sink-device <设备名>]
+//                [--infer-timeout-ms <ms>]
 // 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204。
 //
 // Node 外壳（RuntimeNode + TaskRuntime）只依赖接口；本文件实现 IBackend
@@ -178,6 +179,14 @@ float parse_float(const char* s, float fallback) {
   }
 }
 
+int parse_int(const char* s, int fallback) {
+  try {
+    return std::stoi(s);
+  } catch (...) {
+    return fallback;
+  }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -188,6 +197,7 @@ int main(int argc, char** argv) {
   float length_scale = 1.0f;          // 语速倍率（门禁基线 1.0）
   std::string sink_name = "wav";      // 输出目标：wav（默认）/ alsa
   std::string sink_device = "default";  // alsa 设备名（板端 plughw:0,0）
+  int infer_timeout_ms = 0;           // 节点内推理超时；0 = 默认 5000 ms
   std::string events_endpoint;        // 数据面事件 PUB 端点（可选）
   std::string events_sync;            // 配套握手端点
 
@@ -228,6 +238,8 @@ int main(int argc, char** argv) {
       sink_name = argv[i + 1];
     } else if (std::string(argv[i]) == "--sink-device") {
       sink_device = argv[i + 1];
+    } else if (std::string(argv[i]) == "--infer-timeout-ms") {
+      infer_timeout_ms = parse_int(argv[i + 1], infer_timeout_ms);
     } else if (std::string(argv[i]) == "--events") {
       events_endpoint = argv[i + 1];
     } else if (std::string(argv[i]) == "--events-sync") {
@@ -320,7 +332,8 @@ int main(int argc, char** argv) {
     event_pub->bind(events_endpoint, events_sync);
   }
   voxorchestra::node::RuntimeNode node(ctx, std::move(runtime),
-                                       std::chrono::milliseconds(0), event_pub);
+                                       std::chrono::milliseconds(infer_timeout_ms),
+                                       event_pub);
   try {
     node.bind(listen);
     std::cout << "tts_node 监听 " << listen << "（" << backend_name << " 后端";
