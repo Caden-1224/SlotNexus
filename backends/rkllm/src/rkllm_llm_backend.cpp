@@ -42,11 +42,26 @@ constexpr int kEnabledCpusMask = CPU0 | CPU2;
 // 泵循环取消响应粒度：cancelled 置位后最多约 20 ms 内停发。
 constexpr std::chrono::milliseconds kPumpWaitMs(20);
 
-// DeepSeek-R1-Distill 对话模板（与 smoke 一致，全角｜定界符）。
-// 全角｜= U+FF5C = UTF-8 EF BD 9C；用字面量拼接断开，避免 \x9C 后跟
-// hex 字符被贪婪解析成越界的 \x9CA 等。
-constexpr char kPromptPrefix[] = "\xEF\xBD\x9C" "User" "\xEF\xBD\x9C";
-constexpr char kPromptPostfix[] = "\xEF\xBD\x9C" "Assistant" "\xEF\xBD\x9C";
+// DeepSeek-R1 输出含 <think>…</think> 思考段；下游消费（TTS 朗读）需要
+// 的只是正式回答。取最后一个 "</think>" 之后的内容（trim 前导空白）；
+// 思考段未闭合（token 预算耗尽）时回退原文，保证有内容可读。
+constexpr char kThinkEndTag[] = "</think>";
+constexpr std::size_t kThinkEndTagLen = sizeof(kThinkEndTag) - 1;
+
+// DeepSeek-R1 输出含 <think>…</think> 思考段；下游消费（TTS 朗读）需要
+// 的只是正式回答。取最后一个 "</think>" 之后的内容（trim 前导空白）；
+// 思考段未闭合（token 预算耗尽）时回退原文，保证有内容可读。
+std::string StripThink(const std::string& s) {
+  const std::size_t pos = s.rfind(kThinkEndTag);
+  if (pos == std::string::npos) {
+    return s;
+  }
+  std::size_t start = pos + kThinkEndTagLen;
+  while (start < s.size() && (s[start] == ' ' || s[start] == '\n')) {
+    ++start;
+  }
+  return s.substr(start);
+}
 
 }  // namespace
 
@@ -87,8 +102,10 @@ struct RkllmBackend::Impl {
                                ": " + model_path);
     }
     handle = h;
-    // 对话模板：与 smoke 一致的 DeepSeek-R1-Distill 定界符。
-    rkllm_set_chat_template(handle, "", kPromptPrefix, kPromptPostfix);
+    // 对话模板用模型自带（.rkllm 导出时打包，DeepSeek-R1-Distill 为
+    // ｜User｜…｜Assistant｜<think>\n）。早期覆盖为纯 ｜User｜/｜Assistant｜
+    // 会在生成时反复输出模板符号（实测：100 token 全是 "｜ User ｜｜
+    // Assistant ｜"），勿再覆盖。
   }
 
   ~Impl() {
@@ -129,6 +146,9 @@ struct RkllmBackend::Impl {
             std::string* accumulated) {
     accumulated->clear();
     std::string pending_waiting;  // WAITING 状态携带的 UTF-8 半字符
+    // R1 思考段过滤（每轮 generate 独立状态）：见 NORMAL 分支注释。
+    std::string think_buf;
+    bool think_done = false;
     for (;;) {
       std::unique_lock<std::mutex> lk(mu);
       cv.wait_for(lk, kPumpWaitMs,
@@ -152,12 +172,33 @@ struct RkllmBackend::Impl {
           std::string text = pending_waiting + item.text;
           pending_waiting.clear();
           *accumulated += text;
+          if (!think_done) {
+            // R1 思考段：缓冲中找闭合标记；闭合前丢弃（不投递下游）。
+            // 跨 token 的 "</think>" 由累积缓冲天然拼接（累积用 rfind
+            // 保守防思考内容里出现字面量的误判）。
+            think_buf += text;
+            const std::size_t pos = think_buf.rfind(kThinkEndTag);
+            if (pos == std::string::npos) {
+              continue;
+            }
+            // 闭合：之后的内容才是回答，投递（可能为空，等后续 token）。
+            think_done = true;
+            text = think_buf.substr(pos + kThinkEndTagLen);
+            if (text.empty()) {
+              continue;
+            }
+          }
           if (cb) {
             cb({BackendEvent::Kind::kToken, text, {}});
           }
         } else {
           // FINISH / ERROR：本次 run 终止（generate 统一补 kDone）。
           *accumulated += pending_waiting;
+          if (!think_done && !think_buf.empty() && cb) {
+            // 思考段未闭合（token 预算耗尽）：回退投递缓冲内容，保证
+            // 下游有输出可读（与 StripThink 的未闭合回退语义一致）。
+            cb({BackendEvent::Kind::kToken, think_buf, {}});
+          }
           return true;
         }
       }
@@ -224,7 +265,8 @@ void RkllmBackend::generate(const std::string& prompt) {
   const bool normal_end = impl_->pump(gen, cb, &full);
   impl_->running.store(false);
   if (normal_end) {
-    cb({BackendEvent::Kind::kDone, std::move(full), {}});
+    // kDone 携带正式回答：剥离 R1 思考段（思考过程不朗读，见 StripThink）。
+    cb({BackendEvent::Kind::kDone, StripThink(std::move(full)), {}});
   }
 }
 

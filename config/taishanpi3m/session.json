@@ -21,7 +21,7 @@
   "llm": {
     "backend": "rkllm",
     "model": "models/DeepSeek-R1-Distill-Qwen-1.5B_w4a16_RK3576.rkllm",
-    "max_new_tokens": 100,
+    "max_new_tokens": 300,
     "max_context_len": 256
   },
   "tts": {
@@ -30,5 +30,5 @@
     "length_scale": 1.0
   },
   "tts_min_duration_ms": 1000,
-  "max_run_ms": 30000
+  "max_run_ms": 180000
 }
