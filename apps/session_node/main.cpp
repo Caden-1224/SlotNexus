@@ -11,6 +11,9 @@
 //                   [--asr-endpoint <RPC>] [--asr-events <PUB>]
 //                   [--asr-events-sync <SYNC>]（llm/tts 同理）
 //                   [--net-setup-timeout-ms <N>] [--net-rpc-timeout-ms <N>]
+//                   [--record-device <设备>] [--record-ms <N>]
+//                   （mode=alsa 现场麦克风输入：录音设备与时长，默认
+//                   default/3000；需 VOXORCHESTRA_HAS_ALSA 构建）
 // 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204 /
 //             session 19210；数据面事件 asr 19211 / llm 19212 / tts 19213
 //             （握手 19221/19222/19223，与节点 --events/--events-sync 对应）。
@@ -173,6 +176,11 @@ int main(int argc, char** argv) {
          std::chrono::milliseconds(parse_int(val.c_str(), 0));
    } else if (arg == "--max-run-ms") {
      config.max_run = std::chrono::milliseconds(parse_int(val.c_str(), 30000));
+   } else if (arg == "--record-device") {
+     config.record_device = val;
+   } else if (arg == "--record-ms") {
+     config.record_duration =
+         std::chrono::milliseconds(parse_int(val.c_str(), 3000));
    } else if (arg == "--backend") {
      config.backend = val;
    } else if (arg == "--asr-endpoint") {

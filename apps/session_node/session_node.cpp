@@ -13,6 +13,9 @@
 #include "voxorchestra/backend/i_asr_backend.hpp"
 #include "voxorchestra/backend/i_llm_backend.hpp"
 #include "voxorchestra/backend/i_tts_backend.hpp"
+#ifdef VOXORCHESTRA_HAS_ALSA
+#include "voxorchestra/backend/alsa/alsa_audio_source.hpp"
+#endif
 #include "voxorchestra/backend/net/net_asr_backend.hpp"
 #include "voxorchestra/backend/net/net_llm_backend.hpp"
 #include "voxorchestra/backend/net/net_tts_backend.hpp"
@@ -319,7 +322,8 @@ void SessionNode::handle_request(const std::string& identity,
         send_reply(build_error(request, 3, "会话忙碌（单流）"));  // kBusy
         return;
       }
-      // 解析输入：{"mode": "text"|"wav", "text": "...", "wav": "voice.wav"}。
+      // 解析输入：{"mode": "text"|"wav"|"alsa", ...}。alsa = 现场麦克风
+      // 录音（--record-device / --record-ms），样本随管线 kMic 输入。
       PipelineInput input;
       const auto& payload = request.payload();
       const std::string mode = payload.value("mode", "text");
@@ -334,6 +338,39 @@ void SessionNode::handle_request(const std::string& identity,
           wav = config_.fixture_dir + "/" + wav;
         }
         input.wav_path = wav;
+      } else if (mode == "alsa") {
+#ifdef VOXORCHESTRA_HAS_ALSA
+        input.mode = PipelineInput::Mode::kMic;
+        // 阻塞采集 record_duration 时长：20 ms 帧轮询读取，XRUN 空帧
+        // 重试本帧（AlsaAudioSource 契约）。录音中不可取消（单流模型，
+        // 请求在途即占用会话），时长由 --record-ms 控制。
+        voxorchestra::backend::alsa::AlsaAudioSource mic(
+            config_.record_device, voxorchestra::backend::kSampleRateHz);
+        if (!mic.open()) {
+          log_err(request, "mic_open_failed");
+          send_reply(build_error(request, 3,
+                                 "录音设备打开失败: " + config_.record_device));
+          return;
+        }
+        const int total_frames = std::max(
+            1, static_cast<int>(config_.record_duration.count()) / 20);
+        input.audio.reserve(static_cast<std::size_t>(total_frames) *
+                            voxorchestra::backend::kFrameSamples);
+        for (int i = 0; i < total_frames; ++i) {
+          auto chunk = mic.read(voxorchestra::backend::kFrameSamples);
+          if (chunk.empty()) {
+            --i;  // overrun 空帧：重试本帧
+            continue;
+          }
+          input.audio.insert(input.audio.end(), chunk.begin(), chunk.end());
+        }
+        mic.close();
+#else
+        send_reply(build_error(
+            request, 3,
+            "当前构建未启用 ALSA 录音（需硬件后端构建，--record-device）"));
+        return;
+#endif
       } else {
         input.mode = PipelineInput::Mode::kText;
         input.text = payload.value("text", std::string());

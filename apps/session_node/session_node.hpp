@@ -67,6 +67,10 @@ struct SessionNodeConfig {
  // net 模式 ASR 真实负载：音频上行（PCM base64 上行到 asr 节点，由节点
  // 真实后端识别）；false 时为 Mock 帧数约定（fake 节点，回归基线）。
  bool asr_audio_uplink = false;
+ // 现场麦克风输入（mode=alsa）：录音设备与时长（板端 ES8323 板载麦克风
+ // 走 "default"，显式 plughw:0,0 亦可）。仅 VOXORCHESTRA_HAS_ALSA 构建生效。
+ std::string record_device = "default";
+ std::chrono::milliseconds record_duration{3000};
 };
 
 class SessionNode {

@@ -187,7 +187,7 @@ constexpr const char* kSessionNodeExe = "../../apps/session_node/session_node";
 constexpr const char* kAsrNodeExe = "../../apps/asr_node/asr_node";
 constexpr const char* kLlmNodeExe = "../../apps/llm_node/llm_node";
 constexpr const char* kTtsNodeExe = "../../apps/tts_node/tts_node";
-constexpr const char* kSessionListen = "tcp://127.0.0.1:19310";
+constexpr const char* kSessionListen = "tcp://127.0.0.1:19610";
 
 // 测试用独立端口段，与既有测试/默认端口约定错开：
 //  节点 RPC：19271/19272/19273；数据面事件：19281/19282/19283；

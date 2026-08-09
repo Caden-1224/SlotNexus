@@ -50,10 +50,11 @@ struct PipelineConfig {
 
 // 一次运行（一个请求）的输入。
 struct PipelineInput {
-  enum class Mode { kText, kWav };
+  enum class Mode { kText, kWav, kMic };
   Mode mode = Mode::kText;
   std::string text;      // kText：文本直接进入路由
-  std::string wav_path;  // kWav：WAV → FakeASR → 路由
+  std::string wav_path;  // kWav：WAV → ASR → 路由
+  std::vector<std::int16_t> audio;  // kMic：会话侧录制样本（16k/16bit/mono）
 };
 
 // 运行结果：路由证据、统计与状态机轨迹（验收/证据记录用）。

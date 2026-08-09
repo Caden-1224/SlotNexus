@@ -123,20 +123,34 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
   bool workers_spawned = false;
 
   try {
-    // ---------- 1. 输入阶段：WAV → ASR（Listening）----------
+    // ---------- 1. 输入阶段：WAV / 麦克风 → ASR（Listening）----------
+    // kWav / kMic 同一条样本链路：kWav 由管线读文件，kMic 直接用会话侧
+    // 录制样本（AlsaAudioSource 在会话进程完成采集，管线不依赖声卡）。
     state_machine_.dispatch(SessionEvent::kAudioStart);
     std::string query;
-    if (input.mode == PipelineInput::Mode::kWav) {
-      const auto wav = common::WavReader::read(input.wav_path);
-      if (!wav.ok) {
-        result.error = wav.error;
-      } else if (wav.info.sample_rate != backend::kSampleRateHz ||
-                 wav.info.channels != backend::kChannels ||
-                 wav.info.bits != 16) {
-        result.error = "固定输入须为 16kHz 单声道 16-bit WAV";
-      } else if (wav.info.samples.empty()) {
-        result.error = "WAV 无音频数据";
+    if (input.mode == PipelineInput::Mode::kWav ||
+        input.mode == PipelineInput::Mode::kMic) {
+      std::vector<std::int16_t> samples;
+      if (input.mode == PipelineInput::Mode::kWav) {
+        const auto wav = common::WavReader::read(input.wav_path);
+        if (!wav.ok) {
+          result.error = wav.error;
+        } else if (wav.info.sample_rate != backend::kSampleRateHz ||
+                   wav.info.channels != backend::kChannels ||
+                   wav.info.bits != 16) {
+          result.error = "固定输入须为 16kHz 单声道 16-bit WAV";
+        } else if (wav.info.samples.empty()) {
+          result.error = "WAV 无音频数据";
+        } else {
+          samples = wav.info.samples;
+        }
       } else {
+        samples = input.audio;
+        if (samples.empty()) {
+          result.error = "录音无音频数据";
+        }
+      }
+      if (result.error.empty()) {
         asr_.set_event_callback([&](const BackendEvent& e) {
           if (!is_active()) {
             return;  // 取消后 ASR 的晚到事件：丢弃
@@ -147,17 +161,15 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
         });
         constexpr std::size_t kFrame =
             static_cast<std::size_t>(backend::kFrameSamples);
-        for (std::size_t off = 0; off < wav.info.samples.size();
-             off += kFrame) {
+        for (std::size_t off = 0; off < samples.size(); off += kFrame) {
           if (cancelled_.load() || timed_out()) {
             break;
           }
-          const std::size_t end =
-              std::min(off + kFrame, wav.info.samples.size());
-          const bool last = end == wav.info.samples.size();
+          const std::size_t end = std::min(off + kFrame, samples.size());
+          const bool last = end == samples.size();
           std::vector<std::int16_t> frame(
-              wav.info.samples.begin() + static_cast<std::ptrdiff_t>(off),
-              wav.info.samples.begin() + static_cast<std::ptrdiff_t>(end));
+              samples.begin() + static_cast<std::ptrdiff_t>(off),
+              samples.begin() + static_cast<std::ptrdiff_t>(end));
           asr_.feed_audio(frame, last);
           if (config_.stage_delay.count() > 0) {
             std::this_thread::sleep_for(config_.stage_delay);

@@ -12,6 +12,11 @@ target_link_libraries(session_node_lib PRIVATE
   voxorchestra::net_backends
   voxorchestra::protocol
 )
+# 现场麦克风输入（mode=alsa）：硬件后端开启时接入 AlsaAudioSource。
+if(VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS)
+  target_compile_definitions(session_node_lib PRIVATE VOXORCHESTRA_HAS_ALSA=1)
+  target_link_libraries(session_node_lib PRIVATE voxorchestra::alsa)
+endif()
 
 add_executable(session_node main.cpp)
 target_link_libraries(session_node PRIVATE
