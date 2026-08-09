@@ -175,6 +175,10 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
             std::this_thread::sleep_for(config_.stage_delay);
           }
         }
+        result.asr_text = query;
+        if (query.find_first_not_of(" \t\r\n") == std::string::npos) {
+          result.error = "ASR 未识别到文本";
+        }
       }
       state_machine_.dispatch(SessionEvent::kAsrFinal);
     } else {

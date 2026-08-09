@@ -63,6 +63,7 @@ struct PipelineResult {
   bool cancelled = false;
   std::string error;
   std::string route;          // "l0"/"l1"/"l2"/"l3"
+  std::string asr_text;       // WAV/麦克风输入的 ASR 最终文本
   std::string final_text;     // 回答文本（L0/L1 直答或 LLM 输出）
   std::string wav_path;       // 输出 WAV 路径（取消时可能为部分数据）
   bool llm_called = false;

@@ -113,6 +113,25 @@ class RecordingLlm final : public back::ILlmBackend {
   void cancel() override {}
 };
 
+// 空识别后端：收到有效 PCM，但 final 文本为空（现场静音/漏识别场景）。
+class EmptyFinalAsr final : public back::IAsrBackend {
+ public:
+  void set_event_callback(back::EventCallback cb) override {
+    cb_ = std::move(cb);
+  }
+
+  void feed_audio(const std::vector<std::int16_t>&, bool is_last) override {
+    if (is_last && cb_) {
+      cb_({back::BackendEvent::Kind::kFinal, "", {}});
+    }
+  }
+
+  void cancel() override {}
+
+ private:
+  back::EventCallback cb_;
+};
+
 // 顽固大模型：无视 cancel，按固定节奏持续产出 token（模拟真实 SDK 回调线程）。
 class SlowStubbornLlm final : public back::ILlmBackend {
  public:
@@ -390,6 +409,34 @@ void test_wav_input_pipeline() {
             << std::endl;
 }
 
+// ---------- 有 PCM 但 ASR 未识别到文本：早失败，不调用 LLM/TTS ----------
+
+void test_empty_asr_text_stops_pipeline() {
+  Fixture f;
+  EmptyFinalAsr asr;
+  RecordingLlm llm;
+  fake::FakeTtsBackend tts;
+  auto sink_factory = [](const std::string&) {
+    return std::make_unique<CountingSink>();
+  };
+  sess::SessionPipeline pipe(base_config(f), f.router, asr, llm, tts,
+                             sink_factory);
+
+  sess::PipelineInput input;
+  input.mode = sess::PipelineInput::Mode::kMic;
+  input.audio.assign(static_cast<std::size_t>(back::kFrameSamples), 100);
+  const auto r = pipe.run(input, "r-empty-asr", 0ms);
+
+  CHECK(!r.ok);
+  CHECK(r.asr_text.empty());
+  CHECK(r.error.find("ASR 未识别到文本") != std::string::npos);
+  CHECK(!r.llm_called);
+  CHECK(llm.prompts.empty());
+  CHECK(r.pcm_frames == 0);
+  std::cout << "  [ok] 空 ASR 文本：返回明确错误且不调用 LLM/TTS"
+            << std::endl;
+}
+
 // ---------- 有界队列：满时超时丢弃并计数，峰值 ≤ 容量 ----------
 
 void test_queue_full_drop() {
@@ -605,6 +652,7 @@ int main() {
   std::cout << "session_pipeline_test:" << std::endl;
   test_four_routes();
   test_wav_input_pipeline();
+  test_empty_asr_text_stops_pipeline();
   test_queue_full_drop();
   test_cancel_mid_llm_late_tokens();
   test_cancel_mid_tts_late_pcm();
