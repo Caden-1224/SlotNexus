@@ -369,6 +369,10 @@ void test_session_e2e(const std::string& e2e_dir, const std::string& root) {
  CHECK(reply.type() == MessageType::kAck);
  CHECK(reply.payload().value("status", std::string()) == "ok");
  CHECK(reply.payload().value("pcm_frames", 0) > 0);
+ const std::string wav_asr_text =
+     reply.payload().value("asr_text", std::string());
+ CHECK(wav_asr_text.find("第1帧(320)") != std::string::npos);
+ CHECK(wav_asr_text.find("第50帧(320)") != std::string::npos);
  {
    const std::string wav_path = reply.payload().value("wav_path", std::string());
    CHECK(!wav_path.empty());
@@ -381,7 +385,12 @@ void test_session_e2e(const std::string& e2e_dir, const std::string& root) {
      CHECK(n == 4 && std::string(magic, 4) == "RIFF");
    }
  }
- std::cout << "  [ok] 固定 WAV：完整链路输出 RIFF WAV 文件" << std::endl;
+ CHECK(exchange(c, MakeRequest(MessageType::kTaskInfo, "w-0", "t-wav"),
+                reply, 3000ms));
+ CHECK(reply.type() == MessageType::kAck);
+ CHECK(reply.payload().value("asr_text", std::string()) == wav_asr_text);
+ std::cout << "  [ok] 固定 WAV：ACK/taskinfo 返回 ASR 文本并输出 RIFF WAV 文件"
+           << std::endl;
 
  // 5. 取消传播：直连 session_node（控制面同步转发的已知限制见测试头注释）。
  //   推理在工作线程上运行约 430ms（21 token × stage-delay 20ms），

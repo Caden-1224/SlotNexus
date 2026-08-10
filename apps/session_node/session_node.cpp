@@ -41,9 +41,22 @@ constexpr int kWorkerPushTimeoutMs = 500;
 // 工作线程编号（inproc 端点唯一化）。
 std::atomic<std::uint32_t> g_instance_seq{0};
 
+const char* PipelineInputModeName(PipelineInput::Mode mode) {
+  switch (mode) {
+    case PipelineInput::Mode::kText:
+      return "text";
+    case PipelineInput::Mode::kWav:
+      return "wav";
+    case PipelineInput::Mode::kMic:
+      return "mic";
+  }
+  return "unknown";
+}
+
 // 结果 → taskinfo/ack 的公共统计字段。
 nlohmann::json ResultStats(const PipelineResult& r) {
   return {{"route", r.route},
+          {"asr_text", r.asr_text},
           {"final_text", r.final_text},
           {"generation", r.generation},
           {"token_count", r.token_count},
@@ -489,8 +502,7 @@ void SessionNode::run_inference(const std::string& identity,
   push.connect(reply_endpoint_);
 
   common::LogLine("session run request_id=" + request_id + " work_id=" + work_id +
-                  " mode=" +
-                  (input.mode == PipelineInput::Mode::kWav ? "wav" : "text"));
+                  " mode=" + PipelineInputModeName(input.mode));
   const PipelineResult result = s->pipeline->run(input, request_id, deadline);
 
   {
