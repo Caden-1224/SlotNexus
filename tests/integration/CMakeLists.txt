@@ -37,3 +37,12 @@ add_test(NAME echo_e2e_test COMMAND echo_e2e_test)
 add_executable(fake_nodes_e2e_test fake_nodes_e2e_test.cpp)
 target_link_libraries(fake_nodes_e2e_test PRIVATE voxorchestra::protocol)
 add_test(NAME fake_nodes_e2e_test COMMAND fake_nodes_e2e_test)
+
+add_test(
+  NAME no_hw_deps_guard_test
+  COMMAND bash
+          ${CMAKE_CURRENT_SOURCE_DIR}/check_no_hw_deps_test.sh
+          ${PROJECT_SOURCE_DIR}/scripts/check_no_hw_deps.sh
+          ${CMAKE_CXX_COMPILER}
+)
+set_tests_properties(no_hw_deps_guard_test PROPERTIES TIMEOUT 10)

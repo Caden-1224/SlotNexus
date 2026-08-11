@@ -15,6 +15,7 @@ BINS=(
   "$BUILD/apps/unit_manager/unit_manager"
   "$BUILD/apps/edge_gateway/edge_gateway"
   "$BUILD/apps/session_node/session_node"
+  "$BUILD/apps/voice_cli/voice_cli"
 )
 PATTERN='rkllm|rknn|sherpa|onnx|summer|asound|libsndfile'
 FAILED=0
