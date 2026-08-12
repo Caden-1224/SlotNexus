@@ -46,3 +46,14 @@ add_test(
           ${CMAKE_CXX_COMPILER}
 )
 set_tests_properties(no_hw_deps_guard_test PROPERTIES TIMEOUT 10)
+
+foreach(build_mode IN ITEMS default hardware missing)
+  add_test(
+    NAME taishanpi3m_build_${build_mode}_test
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/taishanpi3m_build_script_test.sh
+            ${build_mode}
+            ${PROJECT_SOURCE_DIR}/deploy/taishanpi3m/build.sh
+  )
+  set_tests_properties(taishanpi3m_build_${build_mode}_test PROPERTIES TIMEOUT 10)
+endforeach()
