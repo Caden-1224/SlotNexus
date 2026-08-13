@@ -57,3 +57,14 @@ foreach(build_mode IN ITEMS default hardware missing)
   )
   set_tests_properties(taishanpi3m_build_${build_mode}_test PROPERTIES TIMEOUT 10)
 endforeach()
+
+foreach(check_case IN ITEMS valid missing_model unresolved_library)
+  add_test(
+    NAME taishanpi3m_deploy_${check_case}_test
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/taishanpi3m_deploy_check_test.sh
+            ${check_case}
+            ${PROJECT_SOURCE_DIR}/deploy/taishanpi3m/check_deployment.sh
+  )
+  set_tests_properties(taishanpi3m_deploy_${check_case}_test PROPERTIES TIMEOUT 10)
+endforeach()
