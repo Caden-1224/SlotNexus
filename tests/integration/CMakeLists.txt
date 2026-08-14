@@ -68,3 +68,15 @@ foreach(check_case IN ITEMS valid missing_model unresolved_library)
   )
   set_tests_properties(taishanpi3m_deploy_${check_case}_test PROPERTIES TIMEOUT 10)
 endforeach()
+
+foreach(stop_case IN ITEMS stop_idempotent stop_force)
+  add_test(
+    NAME taishanpi3m_${stop_case}_test
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/taishanpi3m_lifecycle_test.sh
+            ${stop_case}
+            ${PROJECT_SOURCE_DIR}/deploy/taishanpi3m/start.sh
+            ${PROJECT_SOURCE_DIR}/deploy/taishanpi3m/stop.sh
+  )
+  set_tests_properties(taishanpi3m_${stop_case}_test PROPERTIES TIMEOUT 15)
+endforeach()
