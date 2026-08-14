@@ -5,15 +5,52 @@
 本文定义全真实语音链路的板端启动与停止入口。部署包不包含模型、厂商
 SDK、动态库、板卡地址或凭据；这些资源由部署环境提供。
 
+## 部署包内容
+
+发布源码包由 `git archive` 生成，不含 `.git/` 和构建缓存。运行相关内容：
+
+| 内容 | 路径 |
+|---|---|
+| 六进程源码与公共库 | `apps/`、`libs/`、`backends/` |
+| 板端配置 | `config/taishanpi3m/session.json` |
+| 固定非隐私输入与知识库 | `data/fixtures/`、`data/knowledge/` |
+| 构建/预检/启动/停止 | `deploy/taishanpi3m/{build,check_deployment,start,stop}.sh` |
+| 版本、许可和发布证据 | `artifacts/`、`THIRD_PARTY_NOTICES.md` |
+
+模型、SDK、`.so`、构建目录、原始日志、现场录音、凭据和板卡地址明确排除。
+
+## 板端构建
+
+先安装系统依赖：CMake、C++17 编译器、ZeroMQ、nlohmann-json 和 ALSA
+开发包。硬件构建还需要在板端外部准备 sherpa-onnx、RKLLM Runtime、
+SummerTTS 源码及三类模型：
+
+```bash
+export VOXORCHESTRA_SHERTA_ROOT=<sherpa-onnx 根目录>
+export VOXORCHESTRA_RKLLM_ROOT=<librkllm_api 根目录>
+export VOXORCHESTRA_SUMMERTTS_ROOT=<SummerTTS 根目录>
+export VOXORCHESTRA_ASR_MODEL=<ASR 模型目录>
+export VOXORCHESTRA_RKLLM_MODEL=<RKLLM 模型文件>
+export VOXORCHESTRA_TTS_MODEL=<TTS 模型文件>
+export VOXORCHESTRA_BUILD_JOBS=4
+bash deploy/taishanpi3m/build.sh hardware
+```
+
+`build.sh` 即使检测到更多 CPU 也把并行度限制为 4。4 GB 板卡编译
+SummerTTS 的 Eigen 模板代码时若内存紧张，应进一步降低为 1 或 2，不提高
+上限。默认构建使用 `build.sh default`，并额外执行无硬件依赖门禁。
+
 ## 命令入口
 
 ```bash
+export VOXORCHESTRA_RKLLM_ROOT=<librkllm_api 根目录>
+export VOXORCHESTRA_SHERTA_ROOT=<sherpa-onnx 根目录>
 bash deploy/taishanpi3m/start.sh
 bash deploy/taishanpi3m/stop.sh
 ```
 
-`start.sh` 在后台启动六个服务并完成模型 `setup`。`stop.sh` 停止本次部署
-的服务，可重复执行。
+`start.sh` 使用 `nohup` 在后台启动六个服务，使其不依赖当前 SSH 终端，
+并完成模型 `setup`。`stop.sh` 停止本次部署的服务，可重复执行。
 
 ## 环境与状态
 
@@ -68,3 +105,27 @@ bash deploy/taishanpi3m/stop.sh
 
 自动化测试只验证脚本契约和进程生命周期。模型实际加载、NPU Runtime、
 ALSA 设备和端到端推理仍必须在泰山派 3M 上核验。
+
+本发布候选已在无 Git 元数据的板端部署根目录中完成预检和真实 setup，
+六个 PID 的进程名均匹配。随后固定 WAV 请求返回 ack，L2 路由产生 34 token、
+599 个 PCM 帧且无队列丢弃，WAV 为 16 kHz/单声道/16-bit；停止入口执行后
+六进程与 PID 文件均无残留。该单轮结果不替代 30 轮稳定性统计。
+
+## 模型路径与版本
+
+`config/taishanpi3m/session.json` 使用相对部署根目录的路径：
+
+| 组件 | 配置路径 | 运行版本 |
+|---|---|---|
+| ASR | `models/sherpa-zipformer-bilingual-zh-en-2023-02-16/` | sherpa-onnx + ONNX Runtime 1.17.1 |
+| LLM | `models/DeepSeek-R1-Distill-Qwen-1.5B_w4a16_RK3576.rkllm` | RKLLM Runtime 1.2.0 / RKNPU 0.9.8 |
+| TTS | `models/single_speaker_fast.bin` | SummerTTS vits-based |
+
+路径可由部署环境覆盖，但不得只替换模型而混用不兼容的 Runtime/驱动版本链。
+
+## 诊断脚本边界
+
+`run_real_wav_chain.sh`、`run_mic_chain.sh`、`run_llm_chain.sh`、
+`run_inject_test.sh` 和 `run_stability_30.sh` 是阶段性诊断/证据采集入口，
+部分保留既有板端目录假设。正式发布只以 `start.sh`、`stop.sh` 和本文的
+环境变量为准；不要与诊断脚本并行运行。

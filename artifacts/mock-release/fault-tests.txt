@@ -1,4 +1,4 @@
-Test project /home/caden/work/voxorchestra-runtime/build-wsl
+Test project <repo>/build-wsl
     Start 28: session_fault_test
 1/2 Test #28: session_fault_test ...............   Passed    8.16 sec
     Start 29: chain_fault_test

@@ -10,8 +10,8 @@
 #  2. EventLoop 分发批次中途执行任务销毁 Channel（批次末统一 drain + close 保活）
 #  3. RpcServer::close 跨线程销毁 zmq socket + closed_ 非原子 → 原子标志 + 服务线程回收
 # 命令: ctest --test-dir build-asan --output-on-failure
-Internal ctest changing into directory: /home/caden/work/voxorchestra-runtime/build-asan
-Test project /home/caden/work/voxorchestra-runtime/build-asan
+Internal ctest changing into directory: <repo>/build-asan
+Test project <repo>/build-asan
       Start  1: smoke_test
  1/28 Test  #1: smoke_test .......................   Passed    0.01 sec
       Start  2: protocol_test

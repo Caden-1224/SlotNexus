@@ -23,8 +23,8 @@
 #       先序测试遗留进程经 ZMQ 自动重连的请求注入（TSan 全量跑中
 #       实测发现：echo/fake_nodes 链的排队请求注入共享端口 19100）
 # 命令: ctest --test-dir build-tsan --output-on-failure
-Internal ctest changing into directory: /home/caden/work/voxorchestra-runtime/build-tsan
-Test project /home/caden/work/voxorchestra-runtime/build-tsan
+Internal ctest changing into directory: <repo>/build-tsan
+Test project <repo>/build-tsan
       Start  1: smoke_test
  1/28 Test  #1: smoke_test .......................   Passed    0.01 sec
       Start  2: protocol_test

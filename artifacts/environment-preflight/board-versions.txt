@@ -28,10 +28,10 @@ oem       /dev/mmcblk0p6 104M（/oem）
 userdata  /dev/mmcblk0p7 944M（/userdata）
 
 == RKNPU ==
-内核驱动  已加载（dmesg: 27700000.npu, soc version=0, speed=5, avs=0）
+内核驱动  0.9.8 20240828，已加载（dmesg: 27700000.npu, soc version=0, speed=5, avs=0）
 EM/OPP    OPP 400000/500000 标记 inefficient；nbuf [0x3fe80000,0x3ff80000) size 0x100000
 debugfs   /sys/kernel/debug/rknpu 未发现（无权限/未挂载）
-设备节点  /dev/rknpu* 未出现 ⚠ 接入 RKLLM 前需确认用户态访问路径
+用户态链  RKLLM Runtime 1.2.0 已成功初始化并完成真实推理
 GPU/显示  /dev/dri/card0（root:video）
 
 == ALSA 音频 ==
@@ -58,7 +58,14 @@ lckfb (uid=1000, gid=1000)
 组      audio video render sudo adm disk cdrom plugdev users netdev kvm input
         → audio/video/render 组具备 /dev/snd 与 GPU/NPU 相关设备访问权
 
-== 待确认 / 风险 ==
-- /dev/rknpu* 设备节点未出现：RKLLM Runtime 通常经此节点 ioctl 访问 NPU；
-  接入前需确认 BSP 是否需加载 rknpu 用户态驱动 / udev 规则 / 节点别名。
-- 无 swap：大模型推理 RSS 需实测，关注 OOM 风险（仅 3.8 GiB）。
+== 发布候选运行链 ==
+RKLLM Runtime  1.2.0（build f8ca3ae8 2025-04-08）
+RKNPU 驱动     0.9.8（20240828）
+LLM 模型       DeepSeek-R1-Distill-Qwen-1.5B W4A16 RK3576
+真实门禁       固定 WAV / 现场麦克风 / 故障注入 / 30 轮稳定性均完成
+
+== 已知限制 / 风险 ==
+- RKLLM Runtime 1.2.0 / RKNPU 0.9.8 存在长时运行劣化；
+- DeepSeek-R1 单次回答约 30–60 秒；
+- 4 GB 内存板端构建 SummerTTS 时需限制并行度，发布脚本最多 -j4；
+- 麦克风入口为固定 3 秒采集，不是 VAD 常驻流。

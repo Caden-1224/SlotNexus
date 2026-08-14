@@ -1,7 +1,7 @@
 #
 # 命令: ctest --test-dir build-clean --output-on-failure
-Internal ctest changing into directory: /home/caden/work/voxorchestra-runtime/build-clean
-Test project /home/caden/work/voxorchestra-runtime/build-clean
+Internal ctest changing into directory: <repo>/build-clean
+Test project <repo>/build-clean
       Start  1: smoke_test
  1/27 Test  #1: smoke_test .......................   Passed    0.00 sec
       Start  2: protocol_test

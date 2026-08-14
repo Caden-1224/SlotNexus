@@ -12,7 +12,7 @@
 -- Detecting CXX compile features - done
 -- Configuring done
 -- Generating done
--- Build files have been written to: /home/caden/work/voxorchestra-runtime/build-clean
+-- Build files have been written to: <repo>/build-clean
 #
 # ---------- build ----------
 # 命令: cmake --build build-clean -j8
@@ -121,12 +121,12 @@
 [ 72%] Building CXX object tests/unit/CMakeFiles/session_state_test.dir/session_state_test.cpp.o
 [ 72%] Linking CXX executable session_state_test
 [ 73%] Linking CXX executable echo_e2e_test
-/home/caden/work/voxorchestra-runtime/apps/session_node/session_node.cpp: In member function ‘bool voxorchestra::app::SessionNode::serve_once(std::chrono::milliseconds)’:
-/home/caden/work/voxorchestra-runtime/apps/session_node/session_node.cpp:97:18: warning: ‘int zmq::poll(zmq_pollitem_t*, size_t, long int)’ is deprecated: from 4.8.0, use poll taking std::chrono::duration instead of long [-Wdeprecated-declarations]
+<repo>/apps/session_node/session_node.cpp: In member function ‘bool voxorchestra::app::SessionNode::serve_once(std::chrono::milliseconds)’:
+<repo>/apps/session_node/session_node.cpp:97:18: warning: ‘int zmq::poll(zmq_pollitem_t*, size_t, long int)’ is deprecated: from 4.8.0, use poll taking std::chrono::duration instead of long [-Wdeprecated-declarations]
    97 |     n = zmq::poll(items, 2, static_cast<long>(poll_timeout.count()));
       |         ~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-In file included from /home/caden/work/voxorchestra-runtime/apps/session_node/session_node.hpp:26,
-                 from /home/caden/work/voxorchestra-runtime/apps/session_node/session_node.cpp:1:
+In file included from <repo>/apps/session_node/session_node.hpp:26,
+                 from <repo>/apps/session_node/session_node.cpp:1:
 /usr/include/zmq.hpp:316:12: note: declared here
   316 | inline int poll(zmq_pollitem_t *items_, size_t nitems_, long timeout_)
       |            ^~~~

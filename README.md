@@ -11,7 +11,7 @@
 - **多进程**：Gateway、Unit Manager、Session 与各模型节点独立进程运行，故障边界清晰，节点按需启停、可独立替换；
 - **通信与推理中间件**：ZMQ 多模式通信、TCP 网关、任务调度、Node 运行时与 Backend 契约全部独立实现，系统级依赖仅 ZeroMQ 与 nlohmann-json；
 - **全离线**：不依赖公网与云端，适用于无网络、隐私敏感的部署环境；
-- **大模型语音交互**：统一编排 ASR、本地 RAG、RKLLM 与 TTS，构建"语音输入 → 语音输出"全离线闭环（Mock 五节点链路已跑通；四类真实硬件后端已接入并板端核验，全真实链路联调中）。
+- **大模型语音交互**：统一编排 ASR、本地 RAG、RKLLM 与 TTS，已在泰山派 3M 上完成固定 WAV、板载麦克风、故障注入和 30 轮全真实闭环；Fake 后端仅用于默认构建的确定性测试。
 
 系统以**单机多进程**为边界：不涉及跨主机集群、注册中心或故障转移；控制面 RPC（deadline + 结构化错误）与数据面异步流（有界、可取消）分离，外部客户端只访问 TCP 网关。
 
@@ -32,56 +32,29 @@
 ## 项目架构图
 
 ```mermaid
-flowchart TB
+flowchart LR
     Client["Voice Client<br/>麦克风 / WAV / 文本"]
+    Gateway["Edge Gateway<br/>TCP/NDJSON + Reactor"]
+    Manager["Unit Manager<br/>work_id + TaskRegistry"]
+    Session["Session Node<br/>状态机 + BM25/L0-L3"]
+    ASR["ASR Node<br/>Fake / sherpa-onnx"]
+    LLM["LLM Node<br/>Fake / RKLLM"]
+    TTS["TTS Node<br/>Fake / SummerTTS"]
+    Output["WAV / ALSA"]
 
-    subgraph Control["外部接入与控制面（已实现）"]
-        direction LR
-        Gateway["Edge Gateway<br/>主从 Reactor · TCP/NDJSON"]
-        Manager["Unit Manager<br/>work_id 分配 · 节点路由"]
-        Registry["TaskRegistry<br/>allocate / find / release"]
-        Gateway -->|"REQ/REP RPC<br/>deadline + 结构化错误"| Manager
-        Manager --- Registry
-    end
-
-    subgraph Pipeline["会话编排与推理数据面"]
-        direction LR
-        Session["Session Node<br/>状态机 · cancel · generation<br/>已实现（Mock）"]
-        ASR["ASR Node<br/>Fake + sherpa-onnx<br/>均已接入"]
-        RAG["RAG Node<br/>Fake 已实现<br/>JSONL + BM25 已实现"]
-        LLM["LLM Node<br/>Fake + RKLLM<br/>均已接入"]
-        TTS["TTS Node<br/>Fake + SummerTTS<br/>均已接入"]
-        Sink["Audio Sink<br/>WAV / ALSA<br/>已接入"]
-
-        Session -.->|"音频帧"| ASR
-        ASR -.->|"partial / final"| RAG
-        RAG -.->|"L2 / L3 + context"| LLM
-        RAG -.->|"L0 / L1 直答"| TTS
-        LLM -.->|"token / 句子"| TTS
-        TTS -.->|"PCM"| Sink
-    end
-
-    Runtime["统一 Node Runtime（已实现）<br/>setup / inference / cancel / taskinfo / exit<br/>TaskChannel · Backend 契约"]
-    Foundation["共享中间件基础（已实现）<br/>MessageEnvelope · ZeroMQ Transport · epoll Network"]
-
-    Client -->|"TCP + NDJSON"| Gateway
-    Manager -.->|"统一任务生命周期"| Session
-    Manager -->|"setup / inference / cancel<br/>taskinfo / exit"| ASR
-    Manager -->|"统一 action 路由"| RAG
-    Manager -->|"统一 action 路由"| LLM
-    Manager -->|"统一 action 路由"| TTS
-
-    Runtime -.-> Session
-    Runtime --- ASR
-    Runtime --- RAG
-    Runtime --- LLM
-    Runtime --- TTS
-    Foundation --- Gateway
-    Foundation --- Manager
-    Foundation --- Runtime
+    Client -->|"TCP NDJSON"| Gateway
+    Gateway -->|"REQ/REP + deadline"| Manager
+    Manager -->|"任务生命周期"| Session
+    Session -->|"控制 RPC + 事件流"| ASR
+    ASR -->|"partial / final"| Session
+    Session -->|"L2 / L3"| LLM
+    LLM -->|"token / done"| Session
+    Session -->|"L0-L3 答案"| TTS
+    TTS -->|"PCM / done"| Session
+    Session --> Output
 ```
 
-图中实线表示已落地的当前调用路径。Gateway、Unit Manager、Node Runtime、五类 Fake 契约、JSONL/BM25 与 Session 编排（固定 WAV → Fake PCM 全链路）均已实现；五类真实硬件 Backend（sherpa-onnx / RKLLM / SummerTTS / ALSA）已接入并板端核验，数据面虚线为待联调的全真实链路目标路径。
+图中控制面与数据面路径均已落地。泰山派 3M 的发布运行形态为六进程：Gateway、Unit Manager、Session、ASR、LLM 和 TTS；RAG 在 Session 内完成路由。详细进程图和请求时序见 `docs/architecture.md`。
 
 ### 三个平面
 
@@ -134,7 +107,7 @@ flowchart TB
 - **分级 RAG**：L0 紧急控制（规则命中，绕过 LLM）/ L1 高置信事实直答 / L2 复杂问题带上下文 / L3 闲聊不注入伪知识；JSONL 知识库、BM25 检索与 Session 编排已接入完整链路（阈值在 `config/mock/session.json` 实测标定）；
 - **LLM**：DeepSeek-R1-Distill-Qwen-1.5B W4A16 预转换模型作为首个上游基线，RKLLM 后端已接入（板端流式 token、取消过滤）；
 - **TTS**：离线语音合成，消息/音频队列消除卡顿；SummerTTS 后端与 WAV / ALSA 输出均已接入；
-- **会话编排**：Idle → Listening → Routing → Thinking → Speaking 状态机与 generation 晚到过滤为当前开发阶段目标（见状态表）；已落地部分为节点级协作式取消与超时。
+- **会话编排**：Idle → Listening → Routing → Thinking → Speaking 状态机、generation 晚到过滤、节点级协作式取消与超时均已落地。REP 推理期间的快速打断边界见“已知限制”。
 
 > 性能指标（时延、吞吐、内存占用）只以板卡实测为准，实测数据与方法记录于 `artifacts/`。
 
@@ -145,7 +118,7 @@ flowchart TB
 | Linux / C++17 | 全链路实现语言：进程、线程、epoll 事件驱动 |
 | ZeroMQ | 控制面 RPC 与数据面流的通信底座 |
 | epoll 主从 Reactor | TCP 网关连接管理，连接生命周期一线程归属 |
-| CMake + CTest | 根级构建与测试（当前 33 个测试） |
+| CMake + CTest | 根级构建与测试（默认构建当前 45 个测试） |
 | Shell 脚本 | 演示、板卡体检与无硬件依赖验收 |
 
 **应用场景**：无公网的全离线部署（工业、车载、机器人等边缘环境）；医疗、金融等隐私敏感场景；端侧语音交互与边缘智能应用。
@@ -154,7 +127,7 @@ flowchart TB
 
 | 能力 | 状态 | 说明 |
 |---|---|---|
-| 仓库骨架、根级 CMake/CTest | ✅ | 空目录可复现构建，CTest 33/33 通过 |
+| 仓库骨架、根级 CMake/CTest | ✅ | 无 Git 元数据的干净导出可复现构建，CTest 45/45 通过 |
 | 统一消息信封 MessageEnvelope | ✅ | 版本化 JSON，1 MiB 上限，结构化错误码 |
 | ZMQ 多模式通信 | ✅ | RPC（deadline）/ PUB/SUB（订阅握手）/ PUSH/PULL，均含超时与退出测试 |
 | TCP 网关与 NDJSON 解帧 | ✅ | epoll 主从 Reactor，半包/粘包/超长帧/慢客户端处理 |
@@ -167,8 +140,8 @@ flowchart TB
 | rag_node 真实 BM25 路由 | ✅ | 节点内 KnowledgeStore + Bm25Index + Router（L0-L3 阈值/关键词参数化），21 条测试集冻结路由决策；与 embedded 路由同源实现 |
 | voice_cli 客户端 | ✅ | 现场语音交互入口：TCP NDJSON 直连网关，setup/inference/cancel/taskinfo/exit 全协议；非阻塞 connect 以 getpeername 权威确认（RST 竞态防御）、失败路径不打印空信封摘要、晚到取消静默（同步转发已知限制） |
 | 数据面异步流（控制面/数据面分离） | ✅ | 统一信封 `type=event` 承载流式后端事件（partial/final/token/done/pcm，PCM base64）；主题 `<work_id>/<request_id>/` 前缀精确过滤；EventPublisher/EventSubscriber 订阅握手（slow joiner 防御）；asr/llm/tts 节点推理中实时发布（--events/--events-sync，缺省不发布） |
-| 会话侧网络后端（session_node --backend net） | ✅ | NetAsr/NetLlm/NetTts 与本地 Fake 同契约：控制面 RPC 上行（setup/inference/cancel）+ 数据面事件订阅回放；RpcClient 异步两段式（call_async/poll_response）、事件流 finish 与 RPC 响应双信号判定完成、取消/超时后 REQ 状态机重建；默认 embedded 保持 M1 基线；数据面全链路 E2E（四类路由+固定 WAV+取消传播，33/33 回归） |
-| 泰山派 3M 全真实链路 | ⏳ 联调中 | 上游基线 ✅ → 项目 Backend ✅ → 全链路（ASR→RAG→LLM→TTS→ALSA 端到端）逐级联调；net 模式为真机节点切换就绪（节点换真实后端即可复用） |
+| 会话侧网络后端（session_node --backend net） | ✅ | NetAsr/NetLlm/NetTts 与本地 Fake 同契约：控制面 RPC 上行（setup/inference/cancel）+ 数据面事件订阅回放；RpcClient 异步两段式（call_async/poll_response）、事件流 finish 与 RPC 响应双信号判定完成、取消/超时后 REQ 状态机重建；默认 embedded 保持无硬件基线；数据面全链路 E2E 纳入当前 45/45 回归 |
+| 泰山派 3M 全真实链路 | ✅ | 固定 WAV、板载麦克风、故障注入与 30 轮稳定性均完成；30/30 成功，180 份进程日志中无 Fake/Mock 运行标记 |
 
 ## 快速开始
 
@@ -177,7 +150,7 @@ flowchart TB
 ```bash
 cmake --preset wsl-debug
 cmake --build --preset wsl-debug -j8
-ctest --preset wsl-debug        # 33 个测试，全部通过
+ctest --preset wsl-debug        # 45 个测试
 ```
 
 无硬件依赖可用 `scripts/check_no_hw_deps.sh` 逐二进制验收（ldd 检查 rkllm / sherpa / onnx / asound 等链接）。
@@ -211,14 +184,32 @@ python3 scripts/gateway_probe.py 9100 \
 # → 逐帧 partial 汇总后的 final 文本
 ```
 
-## 板端部署（Mock）
+## 板端部署（全真实链路）
 
-泰山派 3M（RK3576，官方 Ubuntu 24.04 镜像）部署包见 `deploy/taishanpi3m/`：
-清单 `deploy-manifest.md`、板端构建脚本 `build.sh`（aarch64 原生构建 + 全量 CTest）、
-运行脚本 `run_mock_chain.sh`（三进程会话链 + 冒烟验证 + 优雅收尾）、板端配置
-`config/taishanpi3m/session.json`。包内不含模型与厂商 SDK（许可与体积原因，
-见部署清单"明确排除"）；真实硬件后端（sherpa-onnx / RKLLM / SummerTTS / ALSA）
-已板端核验，全链路联调中。
+泰山派 3M（RK3576，官方 Ubuntu 24.04 镜像）部署入口见
+`deploy/taishanpi3m/`：`build.sh` 构建硬件 Backend，`check_deployment.sh`
+核对程序、配置、模型与动态库，`start.sh` 启动并 setup 六个后台服务，
+`stop.sh` 负责幂等停止与超时强制退出。板端配置为
+`config/taishanpi3m/session.json`。部署包明确排除模型、厂商 SDK、动态库、
+凭据和原始日志；完整方法见 `docs/deployment.md`。
+
+## 发布文档
+
+- `docs/architecture.md`：六进程架构、控制面/数据面和端到端时序；
+- `docs/protocol.md`：消息信封、标识符、动作和错误语义；
+- `docs/testing.md`：默认构建、硬件构建与真机测试矩阵；
+- `docs/benchmark.md`：30 轮稳定性方法、指标和证据哈希；
+- `docs/troubleshooting.md`：部署、Runtime、音频与取消边界排查；
+
+## 已知限制
+
+- DeepSeek-R1-Distill-Qwen-1.5B 在当前板卡上的单次回答约 30–60 秒，这是模型与硬件的性能边界；
+- RKLLM Runtime 1.2.0 与 RKNPU 驱动 0.9.8 在长时运行中存在性能劣化，需结合温度、频率和 RSS 观察；
+- 麦克风入口当前固定采集 3 秒，不是 VAD 常驻流式输入；
+- ZeroMQ REP 正在推理时不能插队处理 cancel，L0 路由承担停止/取消类请求的快速路径。
+
+这些限制不影响固定 WAV、现场麦克风、故障注入和全真实 30 轮功能门禁，
+也不应被描述为已经解决。
 
 ## 设计约定
 
@@ -250,7 +241,7 @@ docs/        设计文档（随开发补齐）
 - 单元测试：协议、解帧、Reactor、任务注册表、运行时状态机、五类 Fake 契约；
 - 集成测试：ZMQ 三模式真实收发、TCP 服务器、网关、三进程 Echo E2E、五节点 E2E；
 - 证据目录 `artifacts/`：按能力记录命令、版本、测试、失败与缺陷；
-- 版本链（板卡 → 镜像 → 内核 → NPU 驱动 → Runtime → 模型）在板卡接入后记录于 `artifacts/environment-preflight/versions.txt`。
+- 版本链（板卡 → 镜像/BSP → 内核 → NPU 驱动 → Runtime → 模型）记录于 `artifacts/environment-preflight/versions.txt`。
 
 ## 第三方组件、模型与许可
 

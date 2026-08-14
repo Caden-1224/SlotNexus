@@ -151,8 +151,8 @@
   "context_threshold": 2.0,
   "direct_threshold": 4.5,
   "failures": 0,
-  "knowledge": "/home/caden/work/voxorchestra-runtime/data/knowledge/knowledge.jsonl",
+  "knowledge": "<repo>/data/knowledge/knowledge.jsonl",
   "passed": 21,
-  "testset": "/home/caden/work/voxorchestra-runtime/data/knowledge/rag_test_set.jsonl",
+  "testset": "<repo>/data/knowledge/rag_test_set.jsonl",
   "total": 21
 }

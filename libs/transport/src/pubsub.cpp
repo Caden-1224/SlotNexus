@@ -108,6 +108,8 @@ SubSocket::SubSocket(zmq::context_t& ctx) : ctx_(ctx) {
   // socket 在构造时创建：订阅选项可以在 connect 之前设置，
   // 保证连接建立时订阅关系已经生效。
   sub_ = std::make_unique<zmq::socket_t>(ctx_, zmq::socket_type::sub);
+  // 发布端先退出时不等待尚未发送完的订阅控制消息，避免 context 析构阻塞。
+  sub_->set(zmq::sockopt::linger, 0);
 }
 
 SubSocket::~SubSocket() { close(); }

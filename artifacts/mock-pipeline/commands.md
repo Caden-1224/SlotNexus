@@ -2,7 +2,7 @@
 
 ## 构建
 ```bash
-cd /home/caden/work/voxorchestra-runtime
+cd <repo>
 cmake --preset wsl-debug            # 或直接 cmake -B build-wsl
 cmake --build build-wsl -j8
 ```

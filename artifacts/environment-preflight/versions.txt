@@ -45,3 +45,22 @@ Swap:          4.0Gi          0B       4.0Gi
 Filesystem      Size  Used Avail Use% Mounted on
 /dev/sdc       1007G  4.1G  952G   1% /
 /dev/sdc       1007G  4.1G  952G   1% /
+
+== 板端候选版本链 ==
+板卡: 立创·泰山派 3M，RK3576，4 GB LPDDR5 + 64 GB
+镜像: 官方 Ubuntu 24.04.4 LTS (Noble Numbat)
+BSP: RK_BUILD_INFO root@ubuntu22 Sat Jul 4 17:35:54 CST 2026
+内核: Linux 6.1.99 #1 SMP Sat Jul 4 15:29:50 CST 2026 aarch64
+RKNPU 驱动: 0.9.8 20240828（dmesg: Initialized rknpu）
+RKLLM Runtime: 1.2.0，build f8ca3ae8 2025-04-08 16:58:34
+librkllmrt.so SHA256: 4a23f107cd82481670beba3d0fcf9cbdb767793554df90f2060ed0de4cb000ea
+LLM 模型: DeepSeek-R1-Distill-Qwen-1.5B W4A16 RK3576
+LLM 模型 SHA256: 5f163f25a548803b6ccbf9d4cb477e52f1ee9319ea44630ab70812314f6c5437
+ASR: sherpa-onnx streaming Zipformer int8 + ONNX Runtime 1.17.1
+sherpa-onnx C API SHA256: b88dba77698b6394fe2e5c68ce478b3e46ee5e31fe867ed8fbff2388dd7dfba6
+ONNX Runtime SHA256: 89abc6da8d7ac84e5270349fe8a44ee7469d9a958797eed004f1a3f5c7df21d4
+TTS: SummerTTS vits-based / single_speaker_fast.bin
+TTS 模型 SHA256: 87b774813258a3636b3f1d9adddd3652ede503b4e8f4eb3c39065cba2a4951c4
+
+说明: 上述板端链已经完成真实模型加载、固定 WAV、现场麦克风、故障注入
+和 30 轮稳定性。模型、Runtime、SDK 和动态库均由部署环境提供，不入库。
