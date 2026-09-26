@@ -3,6 +3,11 @@
 // 用法：llm_node [--listen tcp://127.0.0.1:19203] [--config <session.json>]
 //                [--backend fake|rkllm] [--model <模型文件>]
 //                [--max-new-tokens <n>] [--max-context-len <n>]
+//                [--top-k <n>] [--top-p <f>] [--temperature <f>]
+//                [--repeat-penalty <f>] [--frequency-penalty <f>]
+//                [--presence-penalty <f>] [--skip-special-token <0|1>]
+//                [--ignore-eos-token <0|1>] [--enable-thinking <0|1>]
+//                [--reasoning-end-tag <tag>] [--cpus-num <n>] [--cpus-mask <n>]
 //                [--infer-timeout-ms <ms>]
 // 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204。
 //
@@ -11,15 +16,17 @@
 //   - Mock 负载约定（fake 后端）：客户端发 {"text": "<prompt>"}；RuntimeNode
 //     已提取 text 字段，适配器收到纯文本 prompt，同步生成（瞬时）；
 //   - 真实负载约定（rkllm 后端）：payload 为纯文本 prompt；单次生成可能
-//     数秒（1.5B W4A16 板端 ~7.8 tok/s，见 artifacts/upstream-baseline/），
+//     数秒（Qwen3.5-0.8B W4A16 板端 TTFT 约 3 s、约 7 tok/s，见
+//     artifacts/llm-integration/），
 //     生成在后台线程执行，主线程轮询 cancelled / deadline，命中即取消
 //     后端并尽快返回（控制面 RPC 超时由 --forward-timeout-ms /
 //     --node-rpc-timeout-ms 参数化，默认 3000 ms）。
 // 后端经工厂注入：--backend fake（默认，x86/Mock 回归基线）或 rkllm
 // （板端真实大模型，需 VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON 构建）。
-// 模型路径经 --model 或 session.json::llm.model 参数化，不硬编码；
-// 每次 setup 产出独立后端实例（TaskRuntime 工厂语义），rkllm 实例持有
-// 独立模型上下文（加载耗时在 setup 路径内）。
+// 模型路径、采样参数、思考模式开关与思考段过滤标记经 --model/--top-k/…
+// 或 session.json::llm.* 参数化，代码内不保留任何单一模型的硬编码假设
+// （见 rkllm_options.hpp）；每次 setup 产出独立后端实例（TaskRuntime 工厂
+// 语义），rkllm 实例持有独立模型上下文（加载耗时在 setup 路径内）。
 // SIGINT/SIGTERM 优雅退出（退出码 0）。
 #include <atomic>
 #include <chrono>
@@ -38,6 +45,9 @@
 #include "voxorchestra/backend/backend_event.hpp"
 #include "voxorchestra/backend/fake/fake_llm_backend.hpp"
 #include "voxorchestra/backend/i_llm_backend.hpp"
+// 选项与校验不依赖厂商 SDK：默认（无硬件）构建同样编译本文件，因此非法
+// 配置在启动阶段即可快速失败，而不是等到板端 rkllm_init。
+#include "voxorchestra/backend/rkllm/rkllm_options.hpp"
 #ifdef VOXORCHESTRA_HAS_RKLLM
 #include "voxorchestra/backend/rkllm/rkllm_llm_backend.hpp"
 #endif
@@ -147,14 +157,48 @@ int parse_int(const char* s, int fallback) {
   }
 }
 
+float parse_float(const char* s, float fallback) {
+  try {
+    return std::stof(s);
+  } catch (...) {
+    return fallback;
+  }
+}
+
+unsigned int parse_uint(const char* s, unsigned int fallback) {
+  try {
+    const unsigned long v = std::stoul(s);
+    if (v > 0xFFFFFFFFul) {
+      return fallback;
+    }
+    return static_cast<unsigned int>(v);
+  } catch (...) {
+    return fallback;
+  }
+}
+
+// 布尔参数只接受 1/0/true/false；其他取值保持原值并告警，避免把拼错的参数
+// 静默当成 false 生效。
+bool parse_bool(const char* s, bool fallback) {
+  const std::string v(s);
+  if (v == "1" || v == "true" || v == "True" || v == "TRUE") {
+    return true;
+  }
+  if (v == "0" || v == "false" || v == "False" || v == "FALSE") {
+    return false;
+  }
+  std::cerr << "布尔参数取值非法（" << v << "），保持原值" << std::endl;
+  return fallback;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   std::string listen = "tcp://127.0.0.1:19203";
   std::string backend_name = "fake";  // 默认 Fake（x86/Mock 回归基线）
-  std::string model_path;             // rkllm 后端必填（.rkllm 模型文件）
-  int max_new_tokens = 100;           // 采样参数（教程参考值，板端实测校准）
-  int max_context_len = 256;
+  // rkllm 后端的全部可配置项（模型路径 + 采样 + 思考模式 + 运行参数）。
+  // 默认值 = 改造前硬编码值，因此不写这些键时行为与旧版本一致。
+  voxorchestra::backend::rkllm::RkllmOptions llm_options;
   int infer_timeout_ms = 0;           // 节点内推理超时；0 = 默认 5000 ms
   std::string events_endpoint;        // 数据面事件 PUB 端点（可选）
   std::string events_sync;            // 配套握手端点
@@ -174,9 +218,41 @@ int main(int argc, char** argv) {
       if (file_cfg.contains("llm")) {
         const auto& l = file_cfg["llm"];
         backend_name = l.value("backend", backend_name);
-        model_path = l.value("model", model_path);
-        max_new_tokens = l.value("max_new_tokens", max_new_tokens);
-        max_context_len = l.value("max_context_len", max_context_len);
+        llm_options.model_path =
+            l.value("model", llm_options.model_path);
+        llm_options.max_new_tokens =
+            l.value("max_new_tokens", llm_options.max_new_tokens);
+        llm_options.max_context_len =
+            l.value("max_context_len", llm_options.max_context_len);
+        llm_options.top_k = l.value("top_k", llm_options.top_k);
+        llm_options.top_p = l.value("top_p", llm_options.top_p);
+        llm_options.temperature =
+            l.value("temperature", llm_options.temperature);
+        llm_options.repeat_penalty =
+            l.value("repeat_penalty", llm_options.repeat_penalty);
+        llm_options.frequency_penalty =
+            l.value("frequency_penalty", llm_options.frequency_penalty);
+        llm_options.presence_penalty =
+            l.value("presence_penalty", llm_options.presence_penalty);
+        llm_options.skip_special_token =
+            l.value("skip_special_token", llm_options.skip_special_token);
+        llm_options.ignore_eos_token =
+            l.value("ignore_eos_token", llm_options.ignore_eos_token);
+        llm_options.enable_thinking =
+            l.value("enable_thinking", llm_options.enable_thinking);
+        llm_options.reasoning_end_tag =
+            l.value("reasoning_end_tag", llm_options.reasoning_end_tag);
+        llm_options.reasoning_max_buffer_bytes =
+            l.value("reasoning_max_buffer_bytes",
+                    llm_options.reasoning_max_buffer_bytes);
+        llm_options.enabled_cpus_num =
+            l.value("enabled_cpus_num", llm_options.enabled_cpus_num);
+        llm_options.enabled_cpus_mask =
+            l.value("enabled_cpus_mask", llm_options.enabled_cpus_mask);
+        llm_options.embed_flash =
+            l.value("embed_flash", llm_options.embed_flash);
+        llm_options.base_domain_id =
+            l.value("base_domain_id", llm_options.base_domain_id);
       }
     }
   }
@@ -186,11 +262,46 @@ int main(int argc, char** argv) {
     } else if (std::string(argv[i]) == "--backend") {
       backend_name = argv[i + 1];
     } else if (std::string(argv[i]) == "--model") {
-      model_path = argv[i + 1];
+      llm_options.model_path = argv[i + 1];
     } else if (std::string(argv[i]) == "--max-new-tokens") {
-      max_new_tokens = parse_int(argv[i + 1], max_new_tokens);
+      llm_options.max_new_tokens =
+          parse_int(argv[i + 1], llm_options.max_new_tokens);
     } else if (std::string(argv[i]) == "--max-context-len") {
-      max_context_len = parse_int(argv[i + 1], max_context_len);
+      llm_options.max_context_len =
+          parse_int(argv[i + 1], llm_options.max_context_len);
+    } else if (std::string(argv[i]) == "--top-k") {
+      llm_options.top_k = parse_int(argv[i + 1], llm_options.top_k);
+    } else if (std::string(argv[i]) == "--top-p") {
+      llm_options.top_p = parse_float(argv[i + 1], llm_options.top_p);
+    } else if (std::string(argv[i]) == "--temperature") {
+      llm_options.temperature =
+          parse_float(argv[i + 1], llm_options.temperature);
+    } else if (std::string(argv[i]) == "--repeat-penalty") {
+      llm_options.repeat_penalty =
+          parse_float(argv[i + 1], llm_options.repeat_penalty);
+    } else if (std::string(argv[i]) == "--frequency-penalty") {
+      llm_options.frequency_penalty =
+          parse_float(argv[i + 1], llm_options.frequency_penalty);
+    } else if (std::string(argv[i]) == "--presence-penalty") {
+      llm_options.presence_penalty =
+          parse_float(argv[i + 1], llm_options.presence_penalty);
+    } else if (std::string(argv[i]) == "--skip-special-token") {
+      llm_options.skip_special_token =
+          parse_bool(argv[i + 1], llm_options.skip_special_token);
+    } else if (std::string(argv[i]) == "--ignore-eos-token") {
+      llm_options.ignore_eos_token =
+          parse_bool(argv[i + 1], llm_options.ignore_eos_token);
+    } else if (std::string(argv[i]) == "--enable-thinking") {
+      llm_options.enable_thinking =
+          parse_bool(argv[i + 1], llm_options.enable_thinking);
+    } else if (std::string(argv[i]) == "--reasoning-end-tag") {
+      llm_options.reasoning_end_tag = argv[i + 1];
+    } else if (std::string(argv[i]) == "--cpus-num") {
+      llm_options.enabled_cpus_num =
+          parse_int(argv[i + 1], llm_options.enabled_cpus_num);
+    } else if (std::string(argv[i]) == "--cpus-mask") {
+      llm_options.enabled_cpus_mask =
+          parse_uint(argv[i + 1], llm_options.enabled_cpus_mask);
     } else if (std::string(argv[i]) == "--infer-timeout-ms") {
       infer_timeout_ms = parse_int(argv[i + 1], infer_timeout_ms);
     } else if (std::string(argv[i]) == "--events") {
@@ -208,12 +319,17 @@ int main(int argc, char** argv) {
               << "（支持 fake / rkllm）" << std::endl;
     return 1;
   }
-#ifdef VOXORCHESTRA_HAS_RKLLM
-  if (backend_name == "rkllm" && model_path.empty()) {
-    std::cerr << "rkllm 后端需要 --model（或 session.json::llm.model）" << std::endl;
-    return 1;
+  if (backend_name == "rkllm") {
+    // 采样/运行参数在启动阶段校验（不依赖厂商 SDK），避免把非法参数带进
+    // rkllm_init 之后才在 setup 路径失败。
+    const std::string reason =
+        voxorchestra::backend::rkllm::validate(llm_options);
+    if (!reason.empty()) {
+      std::cerr << "llm 配置非法: " << reason << std::endl;
+      return 1;
+    }
   }
-#else
+#ifndef VOXORCHESTRA_HAS_RKLLM
   if (backend_name == "rkllm") {
     std::cerr << "当前构建未启用 rkllm 后端（需 "
                  "-DVOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON）" << std::endl;
@@ -225,11 +341,8 @@ int main(int argc, char** argv) {
   auto make_llm = [&]() -> std::unique_ptr<voxorchestra::backend::ILlmBackend> {
     if (backend_name == "rkllm") {
 #ifdef VOXORCHESTRA_HAS_RKLLM
-      if (model_path.empty()) {
-        throw std::runtime_error("rkllm 后端需要 --model（或 session.json::llm.model）");
-      }
       return std::make_unique<voxorchestra::backend::rkllm::RkllmBackend>(
-          model_path, max_new_tokens, max_context_len);
+          llm_options);
 #else
       throw std::runtime_error(
           "当前构建未启用 rkllm 后端（需 -DVOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON）");
@@ -260,8 +373,18 @@ int main(int argc, char** argv) {
     node.bind(listen);
     std::cout << "llm_node 监听 " << listen << "（" << backend_name << " 后端";
     if (backend_name == "rkllm") {
-      std::cout << "，模型 " << model_path << "，max_new_tokens " << max_new_tokens
-                << " / max_context_len " << max_context_len;
+      std::cout << "，模型 " << llm_options.model_path
+                << "，max_new_tokens " << llm_options.max_new_tokens
+                << " / max_context_len " << llm_options.max_context_len
+                << "，top_k " << llm_options.top_k
+                << " / top_p " << llm_options.top_p
+                << " / temperature " << llm_options.temperature
+                << "，enable_thinking "
+                << (llm_options.enable_thinking ? 1 : 0)
+                << "，reasoning_end_tag "
+                << (llm_options.reasoning_end_tag.empty()
+                        ? std::string("<off>")
+                        : llm_options.reasoning_end_tag);
     }
     std::cout << "）" << std::endl;
   } catch (const std::exception& e) {

@@ -33,3 +33,52 @@ target_include_directories(voxorchestra_rkllm PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 target_compile_features(voxorchestra_rkllm PUBLIC cxx_std_17)
+
+# rknn-llm 在 1.2.0（build 2025-04-08）之后调整过 rkllm_init 的第三个参数：
+#   - 旧形态：裸函数指针 void (*)(RKLLMResult*, void*, LLMCallState)
+#   - 新形态：RKLLMCallback*（result_callback + result_userdata，回调返回 int）
+# 头文件里没有版本宏，板端两种 SDK 都可能存在，因此这里用试编译探测接口
+# 形态，而不是要求部署者记住自己手里是哪一版；两种都不匹配时直接失败，
+# 避免把"头文件不配套"误报成语法错误。
+include(CheckCXXSourceCompiles)
+set(_rkllm_saved_try_compile_target_type ${CMAKE_TRY_COMPILE_TARGET_TYPE})
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+set(CMAKE_REQUIRED_INCLUDES ${VOXORCHESTRA_RKLLM_ROOT}/include)
+
+check_cxx_source_compiles("
+#include <cstddef>
+#include <rkllm.h>
+int cb(RKLLMResult*, void*, LLMCallState) { return 0; }
+int main() {
+  LLMHandle handle = nullptr;
+  RKLLMParam param = rkllm_createDefaultParam();
+  RKLLMCallback callback = {};
+  callback.result_callback = &cb;
+  callback.result_userdata = nullptr;
+  return rkllm_init(&handle, &param, &callback);
+}" VOXORCHESTRA_RKLLM_INIT_CALLBACK_STRUCT)
+
+check_cxx_source_compiles("
+#include <cstddef>
+#include <rkllm.h>
+void cb(RKLLMResult*, void*, LLMCallState) {}
+int main() {
+  LLMHandle handle = nullptr;
+  RKLLMParam param = rkllm_createDefaultParam();
+  return rkllm_init(&handle, &param, &cb);
+}" VOXORCHESTRA_RKLLM_INIT_FUNCTION_POINTER)
+
+set(CMAKE_TRY_COMPILE_TARGET_TYPE ${_rkllm_saved_try_compile_target_type})
+unset(CMAKE_REQUIRED_INCLUDES)
+
+if(VOXORCHESTRA_RKLLM_INIT_CALLBACK_STRUCT)
+  message(STATUS "RKLLM 接口形态: rkllm_init(RKLLMCallback*)（1.2.0 之后的 rkllm.h）")
+  target_compile_definitions(voxorchestra_rkllm
+    PRIVATE VOXORCHESTRA_RKLLM_INIT_CALLBACK_STRUCT=1)
+elseif(VOXORCHESTRA_RKLLM_INIT_FUNCTION_POINTER)
+  message(STATUS "RKLLM 接口形态: rkllm_init(裸函数指针)（1.2.0 build 2025-04-08 的 rkllm.h）")
+else()
+  message(FATAL_ERROR
+    "无法识别 rkllm_init 的接口形态，请检查 "
+    "${VOXORCHESTRA_RKLLM_ROOT}/include/rkllm.h 是否为 RKLLM Runtime 头文件")
+endif()

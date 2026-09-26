@@ -6,7 +6,7 @@
 固定以下变量：
 
 - 板卡：泰山派 3M，RK3576，4 GB；官方 Ubuntu 24.04.4，内核 6.1.99；
-- NPU：RKNPU 0.9.8；RKLLM Runtime 1.2.0；
+- NPU：RKNPU 0.9.8；LLM Runtime：RKLLM 1.2.0（本节 30 轮基线的版本链）；
 - 输入：仓库固定 16 kHz/单声道/16-bit WAV，按顺序执行 30 轮；
 - 路径：sherpa-onnx ASR -> Session 内 BM25/L0-L3 -> RKLLM（需要时）
   -> SummerTTS -> WAV；
@@ -34,7 +34,7 @@
 汇总 CSV SHA256：
 `41c828a3cbc62697a6a73780985a667523fd1b22ecf5256408746a3b23e7858d`。
 
-## 分阶段基线
+## 分阶段基线（上一代 LLM 基线）
 
 | 阶段 | 输入 | 实测 |
 |---|---|---|
@@ -48,6 +48,10 @@
 
 ## 已知性能边界
 
-DeepSeek-R1 单次回答约 30–60 秒。RKLLM Runtime 1.2.0 与 RKNPU 0.9.8
+上述 30 轮基线上，LLM 单次回答约 30–60 秒。RKLLM Runtime 与 RKNPU 0.9.8
 存在长时运行劣化，当前证据只支持上述环境、输入和 30 轮口径，不外推到
 其他模型、镜像或散热条件。
+
+当前默认模型已更换为 Qwen3.5-0.8B W4A16（RKLLM 1.3.0），单后端实测单轮
+约 8–11 秒、TTFT 约 3.0 秒（见 `artifacts/llm-integration/`）；该模型尚未
+参与 30 轮与全链路统计，不得把两个版本链的数字混在同一张表里。

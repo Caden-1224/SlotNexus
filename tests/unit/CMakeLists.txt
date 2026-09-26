@@ -33,6 +33,16 @@ add_executable(backend_contract_test backend_contract_test.cpp)
 target_link_libraries(backend_contract_test PRIVATE voxorchestra::backend)
 add_test(NAME backend_contract_test COMMAND backend_contract_test)
 
+# RKLLM 纯逻辑（无厂商 SDK，默认构建即运行）：思考段过滤的跨 token 闭合、
+# 重复标记取最后一次、未闭合 flush 回退、缓冲上限放行，以及采样/运行参数
+# 的启动期校验。改造前这些逻辑硬编码在 rkllm_llm_backend.cpp 内且只在板端
+# 可测，现在可在 x86 上回归。
+add_executable(rkllm_reasoning_filter_test rkllm_reasoning_filter_test.cpp)
+target_include_directories(rkllm_reasoning_filter_test PRIVATE
+  ${CMAKE_SOURCE_DIR}/backends/rkllm/include
+)
+add_test(NAME rkllm_reasoning_filter_test COMMAND rkllm_reasoning_filter_test)
+
 # Fake 语音识别：确定性 partial/final、取消语义与会话重置。
 add_executable(fake_asr_test fake_asr_test.cpp)
 target_link_libraries(fake_asr_test PRIVATE voxorchestra::fake_backends)

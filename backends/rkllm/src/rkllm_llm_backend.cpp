@@ -1,13 +1,16 @@
 // RkllmBackend 实现：封装 RKLLM Runtime C API（librkllmrt.so）。
 //
 // 调用序列与 rkllm_smoke.cpp 一致（行为依据）：
-//   rkllm_createDefaultParam → 采样参数 → rkllm_set_chat_template →
-//   rkllm_init → rkllm_run（异步，userdata 传 Impl*，经回调回传）→
+//   rkllm_createDefaultParam → 采样/运行参数 → rkllm_init →
+//   rkllm_run_async（异步，userdata 传 Impl*，经回调回传）→
 //   generate 泵队列等 FINISH/ERROR → rkllm_destroy。
 // RKLLM 回调来自厂商内部线程：回调只把 {generation, state, text 拷贝} 压入
 // 互斥队列并 notify（速拷，不阻塞厂商线程）；BackendEvent 一律由 generate
 // 的调用线程泵队列时投递。取消置位后泵循环立即停发（旧 token 全过滤，
 // 含已入队未投递的），厂商 rkllm_abort 尽力而为，返回值不作为依据。
+//
+// 模型无关性：全部采样/运行参数来自 RkllmOptions；思考段过滤由
+// ReasoningFilter 承担（reasoning_end_tag 为空即直通）。
 #include <cstddef>
 #include <cstdint>
 #include "rkllm.h"
@@ -15,6 +18,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <mutex>
@@ -23,45 +27,14 @@
 #include <utility>
 
 #include "voxorchestra/backend/rkllm/rkllm_llm_backend.hpp"
+#include "voxorchestra/backend/rkllm/rkllm_reasoning_filter.hpp"
 
 namespace voxorchestra::backend::rkllm {
 
 namespace {
 
-// 采样参数参考值（与 rkllm_smoke.cpp / llm_demo.cpp 一致；板端实测校准见
-// artifacts/llm-integration/）。CPU0|CPU2 两核沿用门禁基线（7.79 tok/s）。
-constexpr float kTopP = 0.95f;
-constexpr float kTemperature = 0.8f;
-constexpr float kRepeatPenalty = 1.1f;
-constexpr int kTopK = 1;
-constexpr bool kSkipSpecialToken = true;
-constexpr int kBaseDomainId = 0;
-constexpr int kEmbedFlash = 1;
-constexpr int kEnabledCpusNum = 2;
-constexpr int kEnabledCpusMask = CPU0 | CPU2;
 // 泵循环取消响应粒度：cancelled 置位后最多约 20 ms 内停发。
 constexpr std::chrono::milliseconds kPumpWaitMs(20);
-
-// DeepSeek-R1 输出含 <think>…</think> 思考段；下游消费（TTS 朗读）需要
-// 的只是正式回答。取最后一个 "</think>" 之后的内容（trim 前导空白）；
-// 思考段未闭合（token 预算耗尽）时回退原文，保证有内容可读。
-constexpr char kThinkEndTag[] = "</think>";
-constexpr std::size_t kThinkEndTagLen = sizeof(kThinkEndTag) - 1;
-
-// DeepSeek-R1 输出含 <think>…</think> 思考段；下游消费（TTS 朗读）需要
-// 的只是正式回答。取最后一个 "</think>" 之后的内容（trim 前导空白）；
-// 思考段未闭合（token 预算耗尽）时回退原文，保证有内容可读。
-std::string StripThink(const std::string& s) {
-  const std::size_t pos = s.rfind(kThinkEndTag);
-  if (pos == std::string::npos) {
-    return s;
-  }
-  std::size_t start = pos + kThinkEndTagLen;
-  while (start < s.size() && (s[start] == ' ' || s[start] == '\n')) {
-    ++start;
-  }
-  return s.substr(start);
-}
 
 }  // namespace
 
@@ -73,37 +46,48 @@ struct RkllmBackend::Impl {
     std::string text;
   };
 
-  Impl(const std::string& model_path, int max_new_tokens,
-       int max_context_len) {
+  explicit Impl(const RkllmOptions& options) : options_(options) {
     RKLLMParam param = rkllm_createDefaultParam();
-    param.model_path = model_path.c_str();
-    param.top_k = kTopK;
-    param.top_p = kTopP;
-    param.temperature = kTemperature;
-    param.repeat_penalty = kRepeatPenalty;
-    param.frequency_penalty = 0.0f;
-    param.presence_penalty = 0.0f;
-    param.max_new_tokens = max_new_tokens;
-    param.max_context_len = max_context_len;
-    param.skip_special_token = kSkipSpecialToken;
-    // 异步：rkllm_run 立即返回，回调由厂商内部线程按 token 流式触发
-    // （默认 is_async=false 时 run 同步阻塞、事件只能批量落地，无法流式
-    // 投递也无法在生成中途取消）。
+    param.model_path = options_.model_path.c_str();
+    param.top_k = options_.top_k;
+    param.top_p = options_.top_p;
+    param.temperature = options_.temperature;
+    param.repeat_penalty = options_.repeat_penalty;
+    param.frequency_penalty = options_.frequency_penalty;
+    param.presence_penalty = options_.presence_penalty;
+    param.max_new_tokens = options_.max_new_tokens;
+    param.max_context_len = options_.max_context_len;
+    param.skip_special_token = options_.skip_special_token;
+    param.ignore_eos_token = options_.ignore_eos_token;
+    // 异步：rkllm_run_async 立即返回，回调由厂商内部线程按 token 流式触发
+    // （同步模式下 run 阻塞、事件只能批量落地，无法流式投递也无法中途取消）。
     param.is_async = true;
-    param.extend_param.base_domain_id = kBaseDomainId;
-    param.extend_param.embed_flash = kEmbedFlash;
-    param.extend_param.enabled_cpus_num = kEnabledCpusNum;
-    param.extend_param.enabled_cpus_mask = kEnabledCpusMask;
+    param.extend_param.base_domain_id = options_.base_domain_id;
+    param.extend_param.embed_flash = options_.embed_flash ? 1 : 0;
+    param.extend_param.enabled_cpus_num =
+        static_cast<int8_t>(options_.enabled_cpus_num);
+    param.extend_param.enabled_cpus_mask =
+        static_cast<uint32_t>(options_.enabled_cpus_mask);
 
     LLMHandle h = nullptr;
-    const int ret = rkllm_init(&h, &param, &Impl::on_vendor_result);
+    int ret = 0;
+#if defined(VOXORCHESTRA_RKLLM_INIT_CALLBACK_STRUCT)
+    // 新接口（rknn-llm 1.2.0 之后）：回调注册在 RKLLMCallback 结构里。
+    RKLLMCallback callback = {};
+    callback.result_callback = &Impl::on_vendor_result;
+    // rkllm_run_async 的第 4 个参数优先于这里；保留 nullptr 作为兜底。
+    callback.result_userdata = nullptr;
+    ret = rkllm_init(&h, &param, &callback);
+#else
+    // 旧接口（rknn-llm 1.2.0 build 2025-04-08）：直接传裸函数指针。
+    ret = rkllm_init(&h, &param, &Impl::on_vendor_result);
+#endif
     if (ret != 0 || h == nullptr) {
       throw std::runtime_error("rkllm_init 失败 ret=" + std::to_string(ret) +
-                               ": " + model_path);
+                               ": " + options_.model_path);
     }
     handle = h;
-    // 对话模板用模型自带（.rkllm 导出时打包，DeepSeek-R1-Distill 为
-    // ｜User｜…｜Assistant｜<think>\n）。早期覆盖为纯 ｜User｜/｜Assistant｜
+    // 对话模板用模型自带（.rkllm 导出时打包）。早期覆盖为纯 ｜User｜/｜Assistant｜
     // 会在生成时反复输出模板符号（实测：100 token 全是 "｜ User ｜｜
     // Assistant ｜"），勿再覆盖。
   }
@@ -119,8 +103,10 @@ struct RkllmBackend::Impl {
   }
 
   // 厂商回调（rkllm_run 的 userdata 透传本实例）：速拷入队，不投递事件。
-  static void on_vendor_result(RKLLMResult* result, void* userdata,
-                               LLMCallState state) {
+  // 两种 SDK 的差异只在返回值类型（新接口的 LLMResultCallback 返回 int，
+  // 返回 1 表示挂起本次推理；这里始终返回 0 继续生成），回调体共用。
+  static void handle_vendor_result(RKLLMResult* result, void* userdata,
+                                   LLMCallState state) {
     auto* self = static_cast<Impl*>(userdata);
     if (self == nullptr) {
       return;
@@ -139,16 +125,43 @@ struct RkllmBackend::Impl {
     self->cv.notify_one();
   }
 
+#if defined(VOXORCHESTRA_RKLLM_INIT_CALLBACK_STRUCT)
+  static int on_vendor_result(RKLLMResult* result, void* userdata,
+                              LLMCallState state) {
+    handle_vendor_result(result, userdata, state);
+    return 0;  // 不挂起推理
+  }
+#else
+  static void on_vendor_result(RKLLMResult* result, void* userdata,
+                               LLMCallState state) {
+    handle_vendor_result(result, userdata, state);
+  }
+#endif
+
   // 泵队列：只投递与 my_generation 匹配的事件，且每次投递前复查取消；
   // cancelled 置位立即返回 false（generate 不得再产出任何事件）。
-  // 正常结束（FINISH / ERROR）返回 true，accumulated 为累计输出文本。
+  // 正常结束（FINISH / ERROR）返回 true，delivered 为实际下发给下游的文本
+  // 拼接（已剔除思考段），供 kDone 使用。
   bool pump(std::uint64_t my_generation, const EventCallback& cb,
-            std::string* accumulated) {
-    accumulated->clear();
+            std::string* delivered) {
+    delivered->clear();
     std::string pending_waiting;  // WAITING 状态携带的 UTF-8 半字符
-    // R1 思考段过滤（每轮 generate 独立状态）：见 NORMAL 分支注释。
-    std::string think_buf;
-    bool think_done = false;
+    // 思考段过滤（每轮 generate 独立状态）：见 ReasoningFilter 头文件注释。
+    ReasoningFilter filter(options_.reasoning_end_tag,
+                           options_.reasoning_max_buffer_bytes);
+
+    // 把过滤结果投递给下游；空结果不下发。
+    const auto emit = [&](const std::string& raw) {
+      std::string out = filter.accept(raw);
+      if (out.empty()) {
+        return;
+      }
+      *delivered += out;
+      if (cb) {
+        cb({BackendEvent::Kind::kToken, out, {}});
+      }
+    };
+
     for (;;) {
       std::unique_lock<std::mutex> lk(mu);
       cv.wait_for(lk, kPumpWaitMs,
@@ -171,33 +184,30 @@ struct RkllmBackend::Impl {
         } else if (item.state == RKLLM_RUN_NORMAL) {
           std::string text = pending_waiting + item.text;
           pending_waiting.clear();
-          *accumulated += text;
-          if (!think_done) {
-            // R1 思考段：缓冲中找闭合标记；闭合前丢弃（不投递下游）。
-            // 跨 token 的 "</think>" 由累积缓冲天然拼接（累积用 rfind
-            // 保守防思考内容里出现字面量的误判）。
-            think_buf += text;
-            const std::size_t pos = think_buf.rfind(kThinkEndTag);
-            if (pos == std::string::npos) {
-              continue;
-            }
-            // 闭合：之后的内容才是回答，投递（可能为空，等后续 token）。
-            think_done = true;
-            text = think_buf.substr(pos + kThinkEndTagLen);
-            if (text.empty()) {
-              continue;
-            }
-          }
-          if (cb) {
-            cb({BackendEvent::Kind::kToken, text, {}});
-          }
+          emit(text);
         } else {
           // FINISH / ERROR：本次 run 终止（generate 统一补 kDone）。
-          *accumulated += pending_waiting;
-          if (!think_done && !think_buf.empty() && cb) {
-            // 思考段未闭合（token 预算耗尽）：回退投递缓冲内容，保证
-            // 下游有输出可读（与 StripThink 的未闭合回退语义一致）。
-            cb({BackendEvent::Kind::kToken, think_buf, {}});
+          if (!pending_waiting.empty()) {
+            emit(pending_waiting);
+            pending_waiting.clear();
+          }
+          // 思考段未闭合（token 预算耗尽 / 生成出错）：回退放行缓冲内容，
+          // 保证下游有输出可读（与过滤器的未闭合回退语义一致）。
+          const std::string tail = filter.flush();
+          if (!tail.empty()) {
+            // 这不是错误，但意味着本轮回答（或其中一大段）被压到生成结束才
+            // 下发，流式重叠失效。对根本不输出思考段的模型，根因是
+            // reasoning_end_tag 配错了，因此显式提示一次。
+            std::fprintf(
+                stderr,
+                "[rkllm] 本轮生成结束仍未出现思考段标记 \"%s\"，"
+                "被缓冲的回答延迟到生成结束才下发；"
+                "若该模型不输出思考段，请把 reasoning_end_tag 设为空\n",
+                options_.reasoning_end_tag.c_str());
+            *delivered += tail;
+            if (cb) {
+              cb({BackendEvent::Kind::kToken, tail, {}});
+            }
           }
           return true;
         }
@@ -205,6 +215,7 @@ struct RkllmBackend::Impl {
     }
   }
 
+  RkllmOptions options_;  // 模型路径与全部采样/运行参数（值语义，持有副本）
   LLMHandle handle = nullptr;
   EventCallback cb;                 // 只由 set_event_callback / generate 使用
   std::atomic<bool> cancelled{false};
@@ -215,9 +226,8 @@ struct RkllmBackend::Impl {
   std::uint64_t generation = 0;
 };
 
-RkllmBackend::RkllmBackend(std::string model_path, int max_new_tokens,
-                           int max_context_len) {
-  impl_ = std::make_unique<Impl>(model_path, max_new_tokens, max_context_len);
+RkllmBackend::RkllmBackend(RkllmOptions options) {
+  impl_ = std::make_unique<Impl>(options);
 }
 
 RkllmBackend::~RkllmBackend() = default;
@@ -245,28 +255,32 @@ void RkllmBackend::generate(const std::string& prompt) {
   std::memset(&input, 0, sizeof(input));
   input.input_type = RKLLM_INPUT_PROMPT;
   input.prompt_input = prompt.c_str();
+  // 思考模式开关：Qwen3 系列据此决定是否输出思考段；对不支持该字段的模型
+  // 无副作用（RKLLM 内部忽略）。
+  input.enable_thinking = impl_->options_.enable_thinking;
 
   RKLLMInferParam infer;
   std::memset(&infer, 0, sizeof(infer));
   infer.mode = RKLLM_INFER_GENERATE;
   infer.keep_history = 0;
+  // max_new_tokens <= 0 表示沿用 rkllm_init 时的取值。
+  infer.max_new_tokens = 0;
 
   impl_->running.store(true);
-  // rkllm_run 在 is_async=false 时同步阻塞（回调由调用线程触发，事件只能
-  // 批量落地）；rkllm_run_async 立即返回，回调由厂商内部线程按 token
-  // 流式触发，泵队列才能实时投递、生成中途才能取消。
+  // rkllm_run_async 立即返回，回调由厂商内部线程按 token 流式触发，泵队列
+  // 才能实时投递、生成中途才能取消。
   const int ret = rkllm_run_async(impl_->handle, &input, &infer, impl_.get());
   if (ret != 0) {
     // 本次生成未启动：不产出任何事件（与取消后空操作等价）。
     impl_->running.store(false);
     return;
   }
-  std::string full;
-  const bool normal_end = impl_->pump(gen, cb, &full);
+  std::string delivered;
+  const bool normal_end = impl_->pump(gen, cb, &delivered);
   impl_->running.store(false);
   if (normal_end) {
-    // kDone 携带正式回答：剥离 R1 思考段（思考过程不朗读，见 StripThink）。
-    cb({BackendEvent::Kind::kDone, StripThink(std::move(full)), {}});
+    // kDone 携带实际下发文本（思考段已在 pump 内剔除）。
+    cb({BackendEvent::Kind::kDone, std::move(delivered), {}});
   }
 }
 

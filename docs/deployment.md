@@ -118,10 +118,51 @@ ALSA 设备和端到端推理仍必须在泰山派 3M 上核验。
 | 组件 | 配置路径 | 运行版本 |
 |---|---|---|
 | ASR | `models/sherpa-zipformer-bilingual-zh-en-2023-02-16/` | sherpa-onnx + ONNX Runtime 1.17.1 |
-| LLM | `models/DeepSeek-R1-Distill-Qwen-1.5B_w4a16_RK3576.rkllm` | RKLLM Runtime 1.2.0 / RKNPU 0.9.8 |
+| LLM | `models/Qwen3.5-0.8B_w4a16_g128_rk3576.rkllm` | RKLLM Runtime 1.3.0 / RKNPU 0.9.8 |
 | TTS | `models/single_speaker_fast.bin` | SummerTTS vits-based |
 
 路径可由部署环境覆盖，但不得只替换模型而混用不兼容的 Runtime/驱动版本链。
+RKLLM 的 `rkllm_init` 回调形态在 SDK 版本间变过（1.2.0 build 2025-04-08 为裸
+函数指针，之后为 `RKLLMCallback*`），`backends/rkllm/CMakeLists.txt` 在配置期
+试编译探测，两种头文件都能直接构建，不需要人工切换开关。
+
+## LLM 采样与思考段配置
+
+`config/*/session.json::llm` 的全部字段（也可用 `llm_node` 的同名命令行参数
+覆盖）。改造前这些取值硬编码在 `backends/rkllm/src/rkllm_llm_backend.cpp` 内，
+因此换模型必须改代码；现在换模型只改配置：
+
+| 字段 | 默认值 | 说明 |
+|---|---|---|
+| `model` | — | `.rkllm` 模型文件路径（必填） |
+| `max_new_tokens` / `max_context_len` | 100 / 256 | 单轮新增 token 上限与上下文窗口 |
+| `top_k` / `top_p` / `temperature` | 1 / 0.95 / 0.8 | 采样参数；`top_k=1` 为确定性贪心 |
+| `repeat_penalty` / `frequency_penalty` / `presence_penalty` | 1.1 / 0 / 0 | 重复与频率惩罚 |
+| `skip_special_token` / `ignore_eos_token` | true / false | 跳过特殊 token；忽略 EOS 仅用于对照实验 |
+| `enable_thinking` | false | 思考模式开关（Qwen3 系列生效，映射到 `RKLLMInput.enable_thinking`） |
+| `reasoning_end_tag` | `</think>` | 思考段过滤标记，见下方契约 |
+| `reasoning_max_buffer_bytes` | 262144 | 过滤缓冲上限，超限即原样放行，保证内存有界 |
+| `enabled_cpus_num` / `enabled_cpus_mask` | 2 / 5（CPU0+CPU2） | 参与推理的 CPU 核数与掩码 |
+| `embed_flash` / `base_domain_id` | true / 0 | 词嵌入取自闪存；基座模型域 id |
+
+表中的"默认值"指代码内置默认；`config/taishanpi3m/session.json` 会显式覆盖其中
+若干项——当前模型为 `max_new_tokens=256`、`reasoning_end_tag=""`（关闭过滤）。
+
+**思考段过滤契约**：`reasoning_end_tag` 非空时，最后一次出现该标记之前（含标记）
+的内容不下发下游，TTS 因此不朗读思考过程。这个标记必须与模型**实际输出**的
+文本一致：
+
+- 模型确实会输出 `<think>…</think>` 时，保持 `</think>`（取最后一次出现，标记前的内容不下发）；
+- Qwen3.5-0.8B 在 `enable_thinking=false` 时完全不输出标记，必须把
+  `reasoning_end_tag` 设为空串；留成 `</think>` 会把整段回答缓冲到生成结束
+  才一次性下发（流式重叠失效，日志会打印一次明确告警）；
+- Qwen3.5-0.8B 在 `enable_thinking=true` 时输出的是裸的 `Thinking Process: …`
+  文本，**不含任何标记**，因此标记式过滤无法把思考段与正式回答分开——语音
+  链路必须保持 `enable_thinking=false`（实测见 `artifacts/llm-integration/`）。
+
+非法采样/运行参数（`max_new_tokens <= 0`、`top_p` 越界、CPU 掩码为 0 等）由
+`rkllm_options.hpp::validate()` 在 `llm_node` 启动阶段拦截并返回非零退出码，
+不会带进 `rkllm_init`；这层校验不依赖厂商 SDK，默认构建同样生效。
 
 ## 诊断脚本边界
 

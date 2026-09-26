@@ -20,9 +20,23 @@
   },
   "llm": {
     "backend": "rkllm",
-    "model": "models/DeepSeek-R1-Distill-Qwen-1.5B_w4a16_RK3576.rkllm",
-    "max_new_tokens": 300,
-    "max_context_len": 256
+    "model": "models/Qwen3.5-0.8B_w4a16_g128_rk3576.rkllm",
+    "max_new_tokens": 256,
+    "max_context_len": 256,
+    "top_k": 1,
+    "top_p": 0.95,
+    "temperature": 0.8,
+    "repeat_penalty": 1.1,
+    "frequency_penalty": 0.0,
+    "presence_penalty": 0.0,
+    "skip_special_token": true,
+    "ignore_eos_token": false,
+    "enable_thinking": false,
+    "reasoning_end_tag": "",
+    "enabled_cpus_num": 2,
+    "enabled_cpus_mask": 5,
+    "embed_flash": true,
+    "base_domain_id": 0
   },
   "tts": {
     "backend": "summertts",

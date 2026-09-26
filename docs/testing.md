@@ -2,14 +2,14 @@
 
 ## 默认 x86 构建
 
-默认配置必须保持 `VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=OFF`。当前 45 个
+默认配置必须保持 `VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=OFF`。当前 46 个
 CTest 覆盖如下：
 
 | 层级 | 覆盖 | 数量/口径 |
 |---|---|---|
-| 单元与契约 | 信封、解帧、Reactor、队列、RAG、状态机、Fake Backend | CTest 1-19 |
-| 集成 | ZeroMQ 三模式、数据面、网关、部署构建/预检/生命周期 | CTest 20-40 |
-| E2E 与故障 | Session embedded/net、轮次隔离、会话故障、链路故障 | CTest 41-45 |
+| 单元与契约 | 信封、解帧、Reactor、队列、RAG、状态机、Fake Backend、RKLLM 纯逻辑 | CTest 1-20 |
+| 集成 | ZeroMQ 三模式、数据面、网关、部署构建/预检/生命周期 | CTest 21-41 |
+| E2E 与故障 | Session embedded/net、轮次隔离、会话故障、链路故障 | CTest 42-46 |
 | 链接门禁 | 九个应用逐一执行 `ldd` | 不得出现 rkllm/rknn/sherpa/onnx/summer/asound |
 
 ```bash
@@ -34,7 +34,7 @@ ctest --test-dir <clean-dir>/build-clean --output-on-failure
 bash <clean-dir>/scripts/check_no_hw_deps.sh <clean-dir>/build-clean
 ```
 
-本次候选结果为 45/45，默认硬件开关为 OFF，九个应用均未链接厂商 SDK
+当前默认构建结果为 46/46，默认硬件开关为 OFF，九个应用均未链接厂商 SDK
 或 ALSA。
 
 ## 泰山派硬件构建与部署
@@ -44,8 +44,22 @@ bash <clean-dir>/scripts/check_no_hw_deps.sh <clean-dir>/build-clean
 | 构建入口参数与缺失依赖 | `taishanpi3m_build_*` | 板端原生构建，最多 `-j4` |
 | 部署预检 | `taishanpi3m_deploy_*` | 六个程序、配置、三类模型和动态库 |
 | 启停与回滚 | `taishanpi3m_*start/stop*` | setup、PID 身份、停止后零残留 |
-| Backend 契约 | x86 Fake/协议回归 | sherpa-onnx、RKLLM、SummerTTS、ALSA 各自板端核验 |
+| Backend 契约 | x86 Fake/协议回归、`rkllm_reasoning_filter_test` 纯逻辑 | sherpa-onnx、RKLLM、SummerTTS、ALSA 各自板端核验 |
 | 全真实 E2E | 不以 Fake 结果代替 | 固定 WAV、现场麦克风、故障注入、30 轮稳定性 |
+
+`rkllm_llm_test`（硬件后端构建）的模型与取样参数全部经环境变量注入，因此
+同一块板可以在不改仓库的情况下做模型对照：
+
+| 环境变量 | 默认 | 说明 |
+|---|---|---|
+| `VOXORCHESTRA_RKLLM_MODEL` | 空（跳过整组） | `.rkllm` 模型路径；由 CMake 缓存变量写入测试环境 |
+| `VOXORCHESTRA_RKLLM_MAX_NEW_TOKENS` / `_MAX_CONTEXT_LEN` | 100 / 256 | 单轮 token 上限与上下文窗口 |
+| `VOXORCHESTRA_RKLLM_TOP_K` / `_TOP_P` / `_TEMPERATURE` / `_REPEAT_PENALTY` | 1 / 0.95 / 0.8 / 1.1 | 采样参数 |
+| `VOXORCHESTRA_RKLLM_ENABLE_THINKING` | 0 | 思考模式开关（Qwen3 系列） |
+| `VOXORCHESTRA_RKLLM_REASONING_END_TAG` | `</think>` | 思考段过滤标记；取值 `-` 或 `off` 表示关闭过滤（模型不输出思考段时必须关闭） |
+
+Qwen3.5-0.8B 的对照方法与实测结果见
+`artifacts/llm-integration/llm-node-rkllm-qwen35.md`。
 
 脚本运行前清理 `edge_gateway`、`unit_manager`、`session_node`、`asr_node`、
 `llm_node`、`tts_node` 六个精确进程名。板端同步只逐文件使用 `scp`，不使用

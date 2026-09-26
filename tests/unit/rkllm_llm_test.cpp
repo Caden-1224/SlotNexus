@@ -6,8 +6,13 @@
 // rkllm_smoke.cpp），top_k=1 贪心采样输出确定性，文本与指标（TTFT / tok/s）
 // 记录进证据文档对照。模型路径经环境变量 VOXORCHESTRA_RKLLM_MODEL 注入
 // （tests/unit/CMakeLists.txt 由 VOXORCHESTRA_RKLLM_MODEL 缓存变量设置）；
-// 未配置时整组跳过（返回 0）。R1 推理模型输出文本不作逐字断言（受
-// max_new_tokens 与上下文影响），只断言结构 + 非空。
+// 未配置时整组跳过（返回 0）。
+// 采样参数与思考模式同样可用环境变量覆盖（见 options_from_env），因此同一
+// 块板可以在不改仓库的情况下对比不同模型：例如把 VOXORCHESTRA_RKLLM_MODEL
+// 指向 Qwen3.5-0.8B，配合 VOXORCHESTRA_RKLLM_ENABLE_THINKING=1 观察思考段
+// 是否被 reasoning_end_tag 过滤干净。
+// 输出文本不作逐字断言（受模型与 max_new_tokens 影响），只断言结构 + 非空；
+// 启用思考段过滤时额外断言事件流中不残留过滤标记。
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -21,6 +26,7 @@
 
 #include "voxorchestra/backend/backend_event.hpp"
 #include "voxorchestra/backend/rkllm/rkllm_llm_backend.hpp"
+#include "voxorchestra/backend/rkllm/rkllm_options.hpp"
 
 namespace eb = voxorchestra::backend;
 namespace er = voxorchestra::backend::rkllm;
@@ -28,6 +34,7 @@ namespace er = voxorchestra::backend::rkllm;
 namespace {
 
 int g_failures = 0;
+std::string g_reasoning_tag;  // 仅用于“事件流不残留过滤标记”的断言
 
 #define CHECK(cond)                                                          \
   do {                                                                       \
@@ -38,9 +45,34 @@ int g_failures = 0;
     }                                                                        \
   } while (0)
 
+std::string env_or(const char* name, const std::string& fallback) {
+  const char* p = std::getenv(name);
+  return (p != nullptr && *p != '\0') ? std::string(p) : fallback;
+}
+
 std::string model_from_env() {
-  const char* p = std::getenv("VOXORCHESTRA_RKLLM_MODEL");
-  return p != nullptr ? p : "";
+  return env_or("VOXORCHESTRA_RKLLM_MODEL", "");
+}
+
+// 选项来源：环境变量（默认值与 config/taishanpi3m/session.json 一致）。
+// 取值 "-" 或 "off" 表示空串（用于关闭思考段过滤）。
+er::RkllmOptions options_from_env() {
+  er::RkllmOptions o;
+  o.model_path = model_from_env();
+  o.max_new_tokens =
+      std::atoi(env_or("VOXORCHESTRA_RKLLM_MAX_NEW_TOKENS", "100").c_str());
+  o.max_context_len =
+      std::atoi(env_or("VOXORCHESTRA_RKLLM_MAX_CONTEXT_LEN", "256").c_str());
+  o.top_k = std::atoi(env_or("VOXORCHESTRA_RKLLM_TOP_K", "1").c_str());
+  o.top_p = std::stof(env_or("VOXORCHESTRA_RKLLM_TOP_P", "0.95"));
+  o.temperature = std::stof(env_or("VOXORCHESTRA_RKLLM_TEMPERATURE", "0.8"));
+  o.repeat_penalty =
+      std::stof(env_or("VOXORCHESTRA_RKLLM_REPEAT_PENALTY", "1.1"));
+  o.enable_thinking = env_or("VOXORCHESTRA_RKLLM_ENABLE_THINKING", "0") == "1";
+  const std::string tag =
+      env_or("VOXORCHESTRA_RKLLM_REASONING_END_TAG", "</think>");
+  o.reasoning_end_tag = (tag == "-" || tag == "off") ? std::string() : tag;
+  return o;
 }
 
 // 门禁 smoke 同款固定 prompt（upstream-baseline.md 门禁记录）。
@@ -67,6 +99,12 @@ std::string check_structure(Session& s, const char* what) {
   }
   CHECK(s.events.back().text == concat);
   CHECK(!s.events.back().text.empty());
+  // 启用思考段过滤时：事件流（含 kDone）中不得残留过滤标记。
+  if (!g_reasoning_tag.empty()) {
+    for (const auto& e : s.events) {
+      CHECK(e.text.find(g_reasoning_tag) == std::string::npos);
+    }
+  }
   const double total_s =
       std::chrono::duration<double>(s.last - s.start).count();
   const double ttft_ms = std::chrono::duration<double, std::milli>(
@@ -85,8 +123,8 @@ std::string check_structure(Session& s, const char* what) {
 // 固定 prompt 与 smoke 对照：kToken 流 + 末事件 kDone（完整输出），
 // 结构断言 + 指标打印（TTFT / tok/s，板端与门禁基线 288 ms / 7.79 tok/s
 // 对照，证据入 artifacts/llm-integration/）。
-void test_fixed_prompt_matches_smoke(const std::string& model) {
-  er::RkllmBackend llm(model);
+void test_fixed_prompt_matches_smoke(const er::RkllmOptions& options) {
+  er::RkllmBackend llm(options);
   Session s;
   s.start = std::chrono::steady_clock::now();
   llm.set_event_callback([&s](const eb::BackendEvent& e) {
@@ -103,8 +141,8 @@ void test_fixed_prompt_matches_smoke(const std::string& model) {
 }
 
 // 取消：cancel 后 generate 不产出任何事件（含 kDone）。
-void test_cancel_suppresses_generation(const std::string& model) {
-  er::RkllmBackend llm(model);
+void test_cancel_suppresses_generation(const er::RkllmOptions& options) {
+  er::RkllmBackend llm(options);
   std::vector<eb::BackendEvent> events;
   llm.set_event_callback([&events](const eb::BackendEvent& e) {
     events.push_back(e);
@@ -117,8 +155,8 @@ void test_cancel_suppresses_generation(const std::string& model) {
 
 // 生成中取消：已投递的旧 token 之后不得再有新事件（过滤点在泵队列），
 // 且不得补发 kDone。
-void test_cancel_filters_inflight(const std::string& model) {
-  er::RkllmBackend llm(model);
+void test_cancel_filters_inflight(const er::RkllmOptions& options) {
+  er::RkllmBackend llm(options);
   std::vector<eb::BackendEvent> events;
   std::mutex mu;
   llm.set_event_callback([&events, &mu](const eb::BackendEvent& e) {
@@ -162,8 +200,8 @@ void test_cancel_filters_inflight(const std::string& model) {
 }
 
 // 会话重置：新 set_event_callback 清除取消状态，新会话正常生成。
-void test_session_reset_clears_cancel(const std::string& model) {
-  er::RkllmBackend llm(model);
+void test_session_reset_clears_cancel(const er::RkllmOptions& options) {
+  er::RkllmBackend llm(options);
   {
     std::vector<eb::BackendEvent> events;
     llm.set_event_callback([&events](const eb::BackendEvent& e) {
@@ -193,23 +231,39 @@ void test_session_reset_clears_cancel(const std::string& model) {
 
 int main() {
   std::cout << "rkllm_llm_test:" << std::endl;
-  const std::string model = model_from_env();
-  if (model.empty()) {
+  const er::RkllmOptions options = options_from_env();
+  if (options.model_path.empty()) {
     std::cout << "  [skip] 未配置 VOXORCHESTRA_RKLLM_MODEL（板端 ctest 需 "
                  "-DVOXORCHESTRA_RKLLM_MODEL=<模型路径>）" << std::endl;
     return 0;
   }
-  if (std::FILE* f = std::fopen(model.c_str(), "rb")) {
+  if (std::FILE* f = std::fopen(options.model_path.c_str(), "rb")) {
     std::fclose(f);
   } else {
-    std::cerr << "  [fail] 模型文件不存在: " << model << std::endl;
+    std::cerr << "  [fail] 模型文件不存在: " << options.model_path << std::endl;
     return 1;
   }
+  const std::string reason = er::validate(options);
+  if (!reason.empty()) {
+    std::cerr << "  [fail] 选项非法: " << reason << std::endl;
+    return 1;
+  }
+  g_reasoning_tag = options.reasoning_end_tag;
+  std::cout << "  [info] 模型 " << options.model_path << "，max_new_tokens "
+            << options.max_new_tokens << " / max_context_len "
+            << options.max_context_len << "，top_k " << options.top_k
+            << " / top_p " << options.top_p << " / temperature "
+            << options.temperature << "，enable_thinking "
+            << (options.enable_thinking ? 1 : 0) << "，reasoning_end_tag "
+            << (options.reasoning_end_tag.empty()
+                    ? std::string("<off>")
+                    : options.reasoning_end_tag)
+            << std::endl;
   try {
-    test_fixed_prompt_matches_smoke(model);
-    test_cancel_suppresses_generation(model);
-    test_cancel_filters_inflight(model);
-    test_session_reset_clears_cancel(model);
+    test_fixed_prompt_matches_smoke(options);
+    test_cancel_suppresses_generation(options);
+    test_cancel_filters_inflight(options);
+    test_session_reset_clears_cancel(options);
   } catch (const std::exception& e) {
     std::cerr << "  [fail] 构造/生成异常: " << e.what() << std::endl;
     ++g_failures;

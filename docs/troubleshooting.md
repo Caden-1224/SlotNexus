@@ -36,7 +36,8 @@ bash deploy/taishanpi3m/start.sh
 
 ## 推理变慢
 
-DeepSeek-R1 的 30–60 秒回答属于已知边界。若随轮次继续劣化，同时采集：
+单轮回答耗时由 LLM 生成速度决定（上一代 1.5B 基线约 30–60 秒，当前
+Qwen3.5-0.8B 约 8–11 秒）。若随轮次继续劣化，同时采集：
 
 ```bash
 grep -E 'VmRSS|VmHWM' /proc/<pid>/status
@@ -44,8 +45,9 @@ cat /sys/class/thermal/thermal_zone*/temp
 cat /sys/kernel/debug/rknpu/load 2>/dev/null || true
 ```
 
-RKLLM Runtime 1.2.0 / RKNPU 0.9.8 的长时劣化尚未修复；不要用 Fake 输出
-替代，也不要把重新启动后的最好轮次混入同一统计。
+RKLLM Runtime / RKNPU 0.9.8 的长时劣化尚未修复（劣化在 1.2.0 上观测，
+1.3.0 未重测）；不要用 Fake 输出替代，也不要把重新启动后的最好轮次混入
+同一统计。
 
 ## cancel 看似延迟
 

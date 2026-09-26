@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(voxorchestra
   VERSION 0.1.0
-  DESCRIPTION "VoxOrchestra: 基于 C++ 多进程推理框架的端侧全离线语音交互系统"
+  DESCRIPTION "VoxOrchestra: 端侧多进程通信与推理中间件（统一后端契约、有界数据面、进程隔离）"
   LANGUAGES CXX)
 
 # 统一使用 C++17：本项目所有库与可执行文件共用的语言标准。

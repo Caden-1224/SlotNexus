@@ -14,8 +14,8 @@ Fake Backend 做确定性回归，二者不得混为同一运行证据。
 | 系统 | 官方 Ubuntu 24.04.4 LTS 成品镜像 |
 | BSP / 内核 | RK_BUILD_INFO 2026-07-04 / Linux 6.1.99 |
 | NPU 驱动 | RKNPU 0.9.8（20240828） |
-| LLM Runtime | RKLLM 1.2.0 |
-| LLM 模型 | DeepSeek-R1-Distill-Qwen-1.5B W4A16 RK3576 |
+| LLM Runtime | RKLLM 1.3.0；`rkllm_init` 回调形态在 SDK 版本间变过，构建期试编译探测 |
+| LLM 模型 | Qwen3.5-0.8B W4A16 G128 RK3576 |
 
 ## 包内内容
 
@@ -25,7 +25,7 @@ Fake Backend 做确定性回归，二者不得混为同一运行证据。
 | 许可明确的内嵌依赖 | `third_party/nlohmann/json.hpp` | nlohmann-json 3.10.5，MIT 许可头保留 |
 | 构建入口 | `deploy/taishanpi3m/build.sh` | default / hardware 两种模式，最多 `-j4` |
 | 发布入口 | `check_deployment.sh` `start.sh` `stop.sh` | 预检、六进程启动/setup、幂等停止 |
-| 板端配置 | `config/taishanpi3m/session.json` | 真实 Backend、模型相对路径、队列与路由参数 |
+| 板端配置 | `config/taishanpi3m/session.json` | 真实 Backend、模型相对路径、LLM 采样与思考段过滤、队列与路由参数 |
 | 固定公开输入 | `data/fixtures/` | 非隐私 WAV，仅用于可重复测试 |
 | 知识库 | `data/knowledge/knowledge.jsonl` | L0-L3 / BM25 数据 |
 | 说明与证据 | `README.md` `docs/` `artifacts/` | 方法、版本、许可、脱敏摘要和哈希 |
