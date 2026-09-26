@@ -1,10 +1,10 @@
 // 数据面事件编解码实现：payload JSON 互转 + PCM 二进制 base64 编解码。
-#include "voxorchestra/dataplane/dataplane_event.hpp"
+#include "slotnexus/dataplane/dataplane_event.hpp"
 
 #include <cstring>
 #include <utility>
 
-namespace voxorchestra::dataplane {
+namespace slotnexus::dataplane {
 
 namespace {
 
@@ -132,4 +132,4 @@ DataplaneEvent dataplane_event_from_backend(const backend::BackendEvent& e) {
   return out;
 }
 
-}  // namespace voxorchestra::dataplane
+}  // namespace slotnexus::dataplane

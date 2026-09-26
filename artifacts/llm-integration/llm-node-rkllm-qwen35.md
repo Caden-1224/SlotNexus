@@ -8,7 +8,7 @@
 改造前，采样参数、CPU 绑核、`embed_flash` 以及针对单一模型的 `</think>`
 剥离全部硬编码在 `backends/rkllm/src/rkllm_llm_backend.cpp` 内，
 换模型必须改代码。本次把这些取值外提为 `RkllmOptions`
-（`backends/rkllm/include/voxorchestra/backend/rkllm/rkllm_options.hpp`），由
+（`backends/rkllm/include/slotnexus/backend/rkllm/rkllm_options.hpp`），由
 `config/*/session.json::llm` 与 `llm_node` 命令行参数注入：
 
 | 文件 | 作用 |
@@ -45,15 +45,15 @@
 `npu_core_num 2`、`model_dtype W4A16_G128`、`Using mrope`。
 
 本次只在板端编译并运行 LLM 单后端用例：源码（不含模型、SDK、构建目录）
-放在板端临时目录 `~/workspace/voxorchestra-runtime`。板上当前没有本项目的
+放在板端临时目录 `~/workspace/slotnexus-runtime`。板上当前没有本项目的
 六进程部署，基线用的 sherpa-onnx / SummerTTS SDK 目录也已不存在，因此
 **没有**跑全链路：
 
 ```bash
-g++ -O2 -std=c++17 -pthread -DVOXORCHESTRA_RKLLM_INIT_CALLBACK_STRUCT=1 \
+g++ -O2 -std=c++17 -pthread -DSLOTNEXUS_RKLLM_INIT_CALLBACK_STRUCT=1 \
   -Ibackends/include -Ibackends/rkllm/include -I"$DEPS/include" \
   tests/unit/rkllm_llm_test.cpp backends/rkllm/src/rkllm_llm_backend.cpp \
-  -L"$DEPS/lib" -lrkllmrt -Wl,-rpath,"$DEPS/lib" -o /tmp/voxorchestra_rkllm_test
+  -L"$DEPS/lib" -lrkllmrt -Wl,-rpath,"$DEPS/lib" -o /tmp/slotnexus_rkllm_test
 ```
 
 ## 回调形态探针（先确认运行时行为）
@@ -106,7 +106,7 @@ temperature=0.8 / enable_thinking=0 / reasoning_end_tag=""`。
 ## 未测量 / 边界
 
 - 六进程全链路（gateway → manager → session → llm）未跑：板上没有本次改动后
-  的 VoxOrchestra 部署，基线 SDK 目录缺失，且 ASR/TTS 仍是旧模型链；本次只
+  的 SlotNexus 部署，基线 SDK 目录缺失，且 ASR/TTS 仍是旧模型链；本次只
   证明 LLM 后端在 Qwen3.5-0.8B 上可用。
 - 未测 NPU/CPU 争用：Qwen3.5-0.8B 单后端独占时可用，与 ASR/TTS 并发时的
   首 token 延迟、吞吐与 RSS 均无数据。

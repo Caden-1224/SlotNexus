@@ -1,4 +1,4 @@
-#include "voxorchestra/session/session_pipeline.hpp"
+#include "slotnexus/session/session_pipeline.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -7,11 +7,11 @@
 #include <thread>
 #include <utility>
 
-#include "voxorchestra/backend/backend_event.hpp"
-#include "voxorchestra/common/sentence_chunker.hpp"
-#include "voxorchestra/common/wav_reader.hpp"
+#include "slotnexus/backend/backend_event.hpp"
+#include "slotnexus/common/sentence_chunker.hpp"
+#include "slotnexus/common/wav_reader.hpp"
 
-namespace voxorchestra::session {
+namespace slotnexus::session {
 
 namespace {
 
@@ -380,4 +380,4 @@ std::string SessionPipeline::make_wav_path(
   return config_.output_dir + "/session_" + text_hash(request_id) + ".wav";
 }
 
-}  // namespace voxorchestra::session
+}  // namespace slotnexus::session

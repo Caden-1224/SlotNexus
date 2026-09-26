@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
   std::signal(SIGTERM, handle_signal);
 
   zmq::context_t ctx(1);
-  voxorchestra::manager::UnitManager manager(
+  slotnexus::manager::UnitManager manager(
       ctx, nodes, /*max_tasks=*/0,
       std::chrono::milliseconds(node_rpc_timeout_ms));
   try {

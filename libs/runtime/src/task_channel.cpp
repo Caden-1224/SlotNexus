@@ -1,8 +1,8 @@
-#include "voxorchestra/runtime/task_channel.hpp"
+#include "slotnexus/runtime/task_channel.hpp"
 
 #include <utility>
 
-namespace voxorchestra::runtime {
+namespace slotnexus::runtime {
 
 TaskChannel::TaskChannel(std::string work_id, std::shared_ptr<IBackend> backend)
     : work_id_(std::move(work_id)), backend_(std::move(backend)) {}
@@ -142,4 +142,4 @@ const char* to_string(TaskChannel::Error error) {
   }
 }
 
-}  // namespace voxorchestra::runtime
+}  // namespace slotnexus::runtime

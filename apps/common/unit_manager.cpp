@@ -3,12 +3,12 @@
 #include <utility>
 
 #include "action_helpers.hpp"
-#include "voxorchestra/common/log.hpp"
-#include "voxorchestra/protocol/message_envelope.hpp"
-#include "voxorchestra/runtime/task_channel.hpp"
-#include "voxorchestra/transport/transport_error.hpp"
+#include "slotnexus/common/log.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
+#include "slotnexus/runtime/task_channel.hpp"
+#include "slotnexus/transport/transport_error.hpp"
 
-namespace voxorchestra::manager {
+namespace slotnexus::manager {
 
 using protocol::MessageEnvelope;
 using protocol::MessageType;
@@ -138,4 +138,4 @@ MessageEnvelope UnitManager::forward(const MessageEnvelope& request,
   }
 }
 
-}  // namespace voxorchestra::manager
+}  // namespace slotnexus::manager

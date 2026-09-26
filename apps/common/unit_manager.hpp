@@ -16,11 +16,11 @@
 
 #include <zmq.hpp>
 
-#include "voxorchestra/protocol/message_envelope.hpp"
-#include "voxorchestra/task_registry/task_registry.hpp"
-#include "voxorchestra/transport/rpc.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
+#include "slotnexus/task_registry/task_registry.hpp"
+#include "slotnexus/transport/rpc.hpp"
 
-namespace voxorchestra::manager {
+namespace slotnexus::manager {
 
 class UnitManager {
  public:
@@ -61,4 +61,4 @@ class UnitManager {
   std::size_t next_node_ = 0;
 };
 
-}  // namespace voxorchestra::manager
+}  // namespace slotnexus::manager

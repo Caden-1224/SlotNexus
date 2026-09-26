@@ -1,10 +1,10 @@
 # 协议库：统一消息 MessageEnvelope 的 JSON 编码/解码与校验
-add_library(voxorchestra_protocol STATIC
+add_library(slotnexus_protocol STATIC
   src/message_envelope.cpp
 )
-add_library(voxorchestra::protocol ALIAS voxorchestra_protocol)
+add_library(slotnexus::protocol ALIAS slotnexus_protocol)
 
-target_include_directories(voxorchestra_protocol PUBLIC
+target_include_directories(slotnexus_protocol PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
@@ -12,11 +12,11 @@ target_include_directories(voxorchestra_protocol PUBLIC
 # （third_party/nlohmann/json.hpp，MIT 许可，版本 3.10.5）
 find_package(nlohmann_json QUIET)
 if(nlohmann_json_FOUND)
-  target_link_libraries(voxorchestra_protocol PUBLIC nlohmann_json::nlohmann_json)
+  target_link_libraries(slotnexus_protocol PUBLIC nlohmann_json::nlohmann_json)
 else()
-  target_include_directories(voxorchestra_protocol SYSTEM PUBLIC
+  target_include_directories(slotnexus_protocol SYSTEM PUBLIC
     ${PROJECT_SOURCE_DIR}/third_party)
 endif()
 
-target_link_libraries(voxorchestra_protocol PUBLIC voxorchestra::common)
-target_compile_features(voxorchestra_protocol PUBLIC cxx_std_17)
+target_link_libraries(slotnexus_protocol PUBLIC slotnexus::common)
+target_compile_features(slotnexus_protocol PUBLIC cxx_std_17)

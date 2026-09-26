@@ -13,11 +13,11 @@
 
 #include <zmq.hpp>
 
-#include "voxorchestra/dataplane/event_channel.hpp"
-#include "voxorchestra/runtime/task_runtime.hpp"
-#include "voxorchestra/transport/rpc.hpp"
+#include "slotnexus/dataplane/event_channel.hpp"
+#include "slotnexus/runtime/task_runtime.hpp"
+#include "slotnexus/transport/rpc.hpp"
 
-namespace voxorchestra::node {
+namespace slotnexus::node {
 
 class RuntimeNode {
  public:
@@ -54,4 +54,4 @@ class RuntimeNode {
   std::shared_ptr<dataplane::EventPublisher> events_;
 };
 
-}  // namespace voxorchestra::node
+}  // namespace slotnexus::node

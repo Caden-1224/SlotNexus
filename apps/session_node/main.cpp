@@ -13,7 +13,7 @@
 //                   [--net-setup-timeout-ms <N>] [--net-rpc-timeout-ms <N>]
 //                   [--record-device <设备>] [--record-ms <N>]
 //                   （mode=alsa 现场麦克风输入：录音设备与时长，默认
-//                   default/3000；需 VOXORCHESTRA_HAS_ALSA 构建）
+//                   default/3000；需 SLOTNEXUS_HAS_ALSA 构建）
 // 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204 /
 //             session 19210；数据面事件 asr 19211 / llm 19212 / tts 19213
 //             （握手 19221/19222/19223，与节点 --events/--events-sync 对应）。
@@ -75,7 +75,7 @@ double parse_double(const char* s, double fallback) {
 }  // namespace
 
 int main(int argc, char** argv) {
- voxorchestra::app::SessionNodeConfig config;
+ slotnexus::app::SessionNodeConfig config;
 
  // 先读配置文件（缺省路径），命令行参数随后覆盖。
  nlohmann::json file_cfg;
@@ -236,7 +236,7 @@ int main(int argc, char** argv) {
  std::signal(SIGTERM, handle_signal);
 
  zmq::context_t ctx(1);
- voxorchestra::app::SessionNode node(ctx, config);
+ slotnexus::app::SessionNode node(ctx, config);
  try {
    node.bind();
    std::cout << "session_node 监听 " << config.listen << "（" << config.backend

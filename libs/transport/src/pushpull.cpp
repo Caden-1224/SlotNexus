@@ -1,11 +1,11 @@
-#include "voxorchestra/transport/pushpull.hpp"
+#include "slotnexus/transport/pushpull.hpp"
 
 #include <cerrno>
 #include <utility>
 
-#include "voxorchestra/transport/transport_error.hpp"
+#include "slotnexus/transport/transport_error.hpp"
 
-namespace voxorchestra::transport {
+namespace slotnexus::transport {
 
 namespace {
 
@@ -111,4 +111,4 @@ void PullSocket::throw_if_closed() const {
   }
 }
 
-}  // namespace voxorchestra::transport
+}  // namespace slotnexus::transport

@@ -1,4 +1,4 @@
-#include "voxorchestra/network/event_loop.hpp"
+#include "slotnexus/network/event_loop.hpp"
 
 #include <cerrno>
 #include <cstring>
@@ -8,10 +8,10 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 
-#include "voxorchestra/network/channel.hpp"
-#include "voxorchestra/network/poller.hpp"
+#include "slotnexus/network/channel.hpp"
+#include "slotnexus/network/poller.hpp"
 
-namespace voxorchestra::network {
+namespace slotnexus::network {
 
 EventLoop::EventLoop() {
   thread_id_ = std::this_thread::get_id();
@@ -142,4 +142,4 @@ void EventLoop::run_pending_tasks() {
   }
 }
 
-}  // namespace voxorchestra::network
+}  // namespace slotnexus::network

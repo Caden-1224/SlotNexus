@@ -1,5 +1,5 @@
 // WavReader 单元测试：标准 16-bit PCM 解析、未知块跳过、格式拒绝与损坏输入。
-#include "voxorchestra/common/wav_reader.hpp"
+#include "slotnexus/common/wav_reader.hpp"
 
 #include <cstdint>
 #include <cstdio>
@@ -12,7 +12,7 @@
 
 #include <unistd.h>  // getpid（临时文件唯一名）
 
-namespace cq = voxorchestra::common;
+namespace cq = slotnexus::common;
 
 namespace {
 

@@ -4,7 +4,7 @@ set -euo pipefail
 CASE_NAME=$1
 START_SCRIPT=$2
 STOP_SCRIPT=$3
-TEST_ROOT=$(mktemp -d /tmp/voxorchestra-lifecycle-test.XXXXXX)
+TEST_ROOT=$(mktemp -d /tmp/slotnexus-lifecycle-test.XXXXXX)
 RUN_DIR="$TEST_ROOT/run"
 SERVICES=(edge_gateway unit_manager session_node asr_node llm_node tts_node)
 PIDS=()
@@ -132,13 +132,13 @@ EOF
 }
 
 run_start() {
-  VOXORCHESTRA_DEPLOY_ROOT="$TEST_ROOT" \
-  VOXORCHESTRA_BUILD_DIR="$BUILD_DIR" \
-  VOXORCHESTRA_CONFIG="$CONFIG" \
-  VOXORCHESTRA_RUN_DIR="$RUN_DIR" \
-  VOXORCHESTRA_RKLLM_ROOT="$RKLLM_ROOT" \
-  VOXORCHESTRA_SHERTA_ROOT="$SHERPA_ROOT" \
-  VOXORCHESTRA_SETUP_TIMEOUT_SECONDS=1 \
+  SLOTNEXUS_DEPLOY_ROOT="$TEST_ROOT" \
+  SLOTNEXUS_BUILD_DIR="$BUILD_DIR" \
+  SLOTNEXUS_CONFIG="$CONFIG" \
+  SLOTNEXUS_RUN_DIR="$RUN_DIR" \
+  SLOTNEXUS_RKLLM_ROOT="$RKLLM_ROOT" \
+  SLOTNEXUS_SHERTA_ROOT="$SHERPA_ROOT" \
+  SLOTNEXUS_SETUP_TIMEOUT_SECONDS=1 \
     /bin/bash "$START_SCRIPT"
 }
 
@@ -158,13 +158,13 @@ assert_no_service_processes() {
 case "$CASE_NAME" in
   stop_idempotent)
     start_service_stubs
-    VOXORCHESTRA_RUN_DIR="$RUN_DIR" /bin/bash "$STOP_SCRIPT"
+    SLOTNEXUS_RUN_DIR="$RUN_DIR" /bin/bash "$STOP_SCRIPT"
     assert_services_stopped
-    VOXORCHESTRA_RUN_DIR="$RUN_DIR" /bin/bash "$STOP_SCRIPT"
+    SLOTNEXUS_RUN_DIR="$RUN_DIR" /bin/bash "$STOP_SCRIPT"
     ;;
   stop_force)
     start_service_stubs
-    VOXORCHESTRA_RUN_DIR="$RUN_DIR" /bin/bash "$STOP_SCRIPT" --force
+    SLOTNEXUS_RUN_DIR="$RUN_DIR" /bin/bash "$STOP_SCRIPT" --force
     assert_services_stopped
     ;;
   start_success)
@@ -179,25 +179,25 @@ case "$CASE_NAME" in
       [ "$(cat "/proc/$pid/comm")" = "$service" ]
     done
 
-    VOXORCHESTRA_RUN_DIR="$RUN_DIR" /bin/bash "$STOP_SCRIPT"
+    SLOTNEXUS_RUN_DIR="$RUN_DIR" /bin/bash "$STOP_SCRIPT"
     assert_services_stopped
     ;;
   missing_runtime)
     prepare_deploy_fixture
     set +e
     OUTPUT=$(env \
-      -u VOXORCHESTRA_RKLLM_ROOT \
-      VOXORCHESTRA_DEPLOY_ROOT="$TEST_ROOT" \
-      VOXORCHESTRA_BUILD_DIR="$BUILD_DIR" \
-      VOXORCHESTRA_CONFIG="$CONFIG" \
-      VOXORCHESTRA_RUN_DIR="$RUN_DIR" \
-      VOXORCHESTRA_SHERTA_ROOT="$SHERPA_ROOT" \
-      VOXORCHESTRA_SETUP_TIMEOUT_SECONDS=1 \
+      -u SLOTNEXUS_RKLLM_ROOT \
+      SLOTNEXUS_DEPLOY_ROOT="$TEST_ROOT" \
+      SLOTNEXUS_BUILD_DIR="$BUILD_DIR" \
+      SLOTNEXUS_CONFIG="$CONFIG" \
+      SLOTNEXUS_RUN_DIR="$RUN_DIR" \
+      SLOTNEXUS_SHERTA_ROOT="$SHERPA_ROOT" \
+      SLOTNEXUS_SETUP_TIMEOUT_SECONDS=1 \
         /bin/bash "$START_SCRIPT" 2>&1)
     STATUS=$?
     set -e
     [ "$STATUS" -ne 0 ]
-    grep -Fq '缺少运行参数 VOXORCHESTRA_RKLLM_ROOT' <<< "$OUTPUT"
+    grep -Fq '缺少运行参数 SLOTNEXUS_RKLLM_ROOT' <<< "$OUTPUT"
     assert_no_service_processes
     ;;
   setup_failure)

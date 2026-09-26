@@ -1,6 +1,6 @@
 // PUSH/PULL 集成测试：顺序分发、空队列超时、关闭、context 终止。
-#include "voxorchestra/transport/pushpull.hpp"
-#include "voxorchestra/transport/transport_error.hpp"
+#include "slotnexus/transport/pushpull.hpp"
+#include "slotnexus/transport/transport_error.hpp"
 
 #include <chrono>
 #include <iostream>
@@ -9,7 +9,7 @@
 
 #include <zmq.hpp>
 
-namespace et = voxorchestra::transport;
+namespace et = slotnexus::transport;
 using namespace std::chrono_literals;
 
 namespace {

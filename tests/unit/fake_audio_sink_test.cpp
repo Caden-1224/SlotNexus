@@ -1,5 +1,5 @@
 // FakeAudioSink 单元测试：WAV 文件头、PCM 数据往返与生命周期语义。
-#include "voxorchestra/backend/fake/fake_audio_sink.hpp"
+#include "slotnexus/backend/fake/fake_audio_sink.hpp"
 
 #include <cstdint>
 #include <cstdio>
@@ -10,8 +10,8 @@
 
 #include <unistd.h>
 
-namespace eb = voxorchestra::backend;
-namespace ef = voxorchestra::backend::fake;
+namespace eb = slotnexus::backend;
+namespace ef = slotnexus::backend::fake;
 
 namespace {
 

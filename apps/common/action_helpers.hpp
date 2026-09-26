@@ -8,9 +8,9 @@
 
 #include <string>
 
-#include "voxorchestra/protocol/message_envelope.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
 
-namespace voxorchestra::app {
+namespace slotnexus::app {
 
 // ack 信封：回显请求的 work_id / request_id / session_id。
 inline protocol::MessageEnvelope BuildAck(const protocol::MessageEnvelope& request,
@@ -44,4 +44,4 @@ inline std::string ExtractText(const nlohmann::json& payload) {
   return (it != payload.end() && it->is_string()) ? it->get<std::string>() : "";
 }
 
-}  // namespace voxorchestra::app
+}  // namespace slotnexus::app

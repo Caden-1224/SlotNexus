@@ -4,16 +4,16 @@
 add_executable(session_fault_test session_fault_test.cpp)
 target_link_libraries(session_fault_test PRIVATE
   session_node_lib
-  voxorchestra::transport
-  voxorchestra::session
-  voxorchestra::fake_backends
-  voxorchestra::protocol
+  slotnexus::transport
+  slotnexus::session
+  slotnexus::fake_backends
+  slotnexus::protocol
 )
 add_test(NAME session_fault_test COMMAND session_fault_test)
 
 # 链路级：client --TCP--> gateway --ZMQ--> manager --ZMQ--> session_node 真实进程。
 add_executable(chain_fault_test chain_fault_test.cpp)
 target_link_libraries(chain_fault_test PRIVATE
-  voxorchestra::protocol
+  slotnexus::protocol
 )
 add_test(NAME chain_fault_test COMMAND chain_fault_test)

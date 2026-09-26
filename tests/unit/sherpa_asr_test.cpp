@@ -3,8 +3,8 @@
 // 与 fake_asr_test 相同的协议骨架：收集事件 → 断言 kPartial 渐进 + 末事件
 // kFinal；并核对识别结果与门禁基线一致（test_wavs/0.wav 固定音频、4 线程
 // 最终文本，见 artifacts/upstream-baseline/upstream-baseline.md 第二段）。
-// 模型目录经环境变量 VOXORCHESTRA_ASR_MODEL 注入（tests/unit/CMakeLists.txt
-// 由 VOXORCHESTRA_ASR_MODEL 缓存变量设置）；未配置时整组跳过（返回 0）。
+// 模型目录经环境变量 SLOTNEXUS_ASR_MODEL 注入（tests/unit/CMakeLists.txt
+// 由 SLOTNEXUS_ASR_MODEL 缓存变量设置）；未配置时整组跳过（返回 0）。
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -14,13 +14,13 @@
 #include <string>
 #include <vector>
 
-#include "voxorchestra/backend/backend_event.hpp"
-#include "voxorchestra/backend/sherpa_onnx/sherpa_asr_backend.hpp"
-#include "voxorchestra/common/wav_reader.hpp"
+#include "slotnexus/backend/backend_event.hpp"
+#include "slotnexus/backend/sherpa_onnx/sherpa_asr_backend.hpp"
+#include "slotnexus/common/wav_reader.hpp"
 
-namespace eb = voxorchestra::backend;
-namespace es = voxorchestra::backend::sherpa_onnx;
-using voxorchestra::common::WavReader;
+namespace eb = slotnexus::backend;
+namespace es = slotnexus::backend::sherpa_onnx;
+using slotnexus::common::WavReader;
 
 namespace {
 
@@ -36,7 +36,7 @@ int g_failures = 0;
   } while (0)
 
 std::string model_dir_from_env() {
-  const char* p = std::getenv("VOXORCHESTRA_ASR_MODEL");
+  const char* p = std::getenv("SLOTNEXUS_ASR_MODEL");
   return p != nullptr ? p : "";
 }
 
@@ -137,8 +137,8 @@ int main() {
   std::cout << "sherpa_asr_test:" << std::endl;
   const std::string model_dir = model_dir_from_env();
   if (model_dir.empty()) {
-    std::cout << "  [skip] 未配置 VOXORCHESTRA_ASR_MODEL（板端 ctest 需 "
-                 "-DVOXORCHESTRA_ASR_MODEL=<模型目录>）" << std::endl;
+    std::cout << "  [skip] 未配置 SLOTNEXUS_ASR_MODEL（板端 ctest 需 "
+                 "-DSLOTNEXUS_ASR_MODEL=<模型目录>）" << std::endl;
     return 0;
   }
   const std::string wav_path = model_dir + "/test_wavs/0.wav";

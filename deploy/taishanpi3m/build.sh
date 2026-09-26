@@ -22,9 +22,9 @@ case "$MODE" in
     ;;
 esac
 
-JOBS=${VOXORCHESTRA_BUILD_JOBS:-$(nproc)}
+JOBS=${SLOTNEXUS_BUILD_JOBS:-$(nproc)}
 if ! [[ "$JOBS" =~ ^[1-9][0-9]*$ ]]; then
-  echo "VOXORCHESTRA_BUILD_JOBS 必须是正整数" >&2
+  echo "SLOTNEXUS_BUILD_JOBS 必须是正整数" >&2
   exit 2
 fi
 if [ "$JOBS" -gt 4 ]; then
@@ -50,25 +50,25 @@ require_path() {
 
 if [ "$MODE" = hardware ]; then
   for name in \
-    VOXORCHESTRA_SHERTA_ROOT \
-    VOXORCHESTRA_RKLLM_ROOT \
-    VOXORCHESTRA_SUMMERTTS_ROOT \
-    VOXORCHESTRA_ASR_MODEL \
-    VOXORCHESTRA_RKLLM_MODEL \
-    VOXORCHESTRA_TTS_MODEL; do
+    SLOTNEXUS_SHERTA_ROOT \
+    SLOTNEXUS_RKLLM_ROOT \
+    SLOTNEXUS_SUMMERTTS_ROOT \
+    SLOTNEXUS_ASR_MODEL \
+    SLOTNEXUS_RKLLM_MODEL \
+    SLOTNEXUS_TTS_MODEL; do
     require_hardware_parameter "$name"
   done
 
-  require_path "$VOXORCHESTRA_SHERTA_ROOT/sherpa-onnx/c-api/c-api.h" " sherpa-onnx C API 头文件"
-  require_path "$VOXORCHESTRA_SHERTA_ROOT/build/lib/libsherpa-onnx-c-api.so" " sherpa-onnx 动态库"
-  require_path "$VOXORCHESTRA_RKLLM_ROOT/include/rkllm.h" " RKLLM 头文件"
-  require_path "$VOXORCHESTRA_RKLLM_ROOT/aarch64/librkllmrt.so" " RKLLM Runtime"
-  require_path "$VOXORCHESTRA_SUMMERTTS_ROOT/src" " SummerTTS 源码目录"
-  require_path "$VOXORCHESTRA_SUMMERTTS_ROOT/include" " SummerTTS 头文件目录"
-  require_path "$VOXORCHESTRA_SUMMERTTS_ROOT/eigen-3.4.0" " Eigen 目录"
-  require_path "$VOXORCHESTRA_ASR_MODEL" " ASR 模型目录"
-  require_path "$VOXORCHESTRA_RKLLM_MODEL" " RKLLM 模型"
-  require_path "$VOXORCHESTRA_TTS_MODEL" " TTS 模型"
+  require_path "$SLOTNEXUS_SHERTA_ROOT/sherpa-onnx/c-api/c-api.h" " sherpa-onnx C API 头文件"
+  require_path "$SLOTNEXUS_SHERTA_ROOT/build/lib/libsherpa-onnx-c-api.so" " sherpa-onnx 动态库"
+  require_path "$SLOTNEXUS_RKLLM_ROOT/include/rkllm.h" " RKLLM 头文件"
+  require_path "$SLOTNEXUS_RKLLM_ROOT/aarch64/librkllmrt.so" " RKLLM Runtime"
+  require_path "$SLOTNEXUS_SUMMERTTS_ROOT/src" " SummerTTS 源码目录"
+  require_path "$SLOTNEXUS_SUMMERTTS_ROOT/include" " SummerTTS 头文件目录"
+  require_path "$SLOTNEXUS_SUMMERTTS_ROOT/eigen-3.4.0" " Eigen 目录"
+  require_path "$SLOTNEXUS_ASR_MODEL" " ASR 模型目录"
+  require_path "$SLOTNEXUS_RKLLM_MODEL" " RKLLM 模型"
+  require_path "$SLOTNEXUS_TTS_MODEL" " TTS 模型"
 fi
 
 echo "== 依赖检查 =="
@@ -88,19 +88,19 @@ CMAKE_ARGS=(
   -S .
   -B "$BUILD_DIR"
   -DCMAKE_BUILD_TYPE=Release
-  "-DVOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=$HARDWARE_BACKENDS"
+  "-DSLOTNEXUS_ENABLE_HARDWARE_BACKENDS=$HARDWARE_BACKENDS"
 )
 if [ "$MODE" = hardware ]; then
   CMAKE_ARGS+=(
-    "-DVOXORCHESTRA_SHERTA_ROOT=$VOXORCHESTRA_SHERTA_ROOT"
-    "-DVOXORCHESTRA_RKLLM_ROOT=$VOXORCHESTRA_RKLLM_ROOT"
-    "-DVOXORCHESTRA_SUMMERTTS_ROOT=$VOXORCHESTRA_SUMMERTTS_ROOT"
-    "-DVOXORCHESTRA_ASR_MODEL=$VOXORCHESTRA_ASR_MODEL"
-    "-DVOXORCHESTRA_RKLLM_MODEL=$VOXORCHESTRA_RKLLM_MODEL"
-    "-DVOXORCHESTRA_TTS_MODEL=$VOXORCHESTRA_TTS_MODEL"
+    "-DSLOTNEXUS_SHERTA_ROOT=$SLOTNEXUS_SHERTA_ROOT"
+    "-DSLOTNEXUS_RKLLM_ROOT=$SLOTNEXUS_RKLLM_ROOT"
+    "-DSLOTNEXUS_SUMMERTTS_ROOT=$SLOTNEXUS_SUMMERTTS_ROOT"
+    "-DSLOTNEXUS_ASR_MODEL=$SLOTNEXUS_ASR_MODEL"
+    "-DSLOTNEXUS_RKLLM_MODEL=$SLOTNEXUS_RKLLM_MODEL"
+    "-DSLOTNEXUS_TTS_MODEL=$SLOTNEXUS_TTS_MODEL"
   )
-  if [ -n "${VOXORCHESTRA_ALSA_DEVICE:-}" ]; then
-    CMAKE_ARGS+=("-DVOXORCHESTRA_ALSA_DEVICE=$VOXORCHESTRA_ALSA_DEVICE")
+  if [ -n "${SLOTNEXUS_ALSA_DEVICE:-}" ]; then
+    CMAKE_ARGS+=("-DSLOTNEXUS_ALSA_DEVICE=$SLOTNEXUS_ALSA_DEVICE")
   fi
 fi
 

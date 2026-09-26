@@ -17,9 +17,9 @@
 
 #include "sherpa-onnx/c-api/c-api.h"
 
-#include "voxorchestra/backend/sherpa_onnx/sherpa_asr_backend.hpp"
+#include "slotnexus/backend/sherpa_onnx/sherpa_asr_backend.hpp"
 
-namespace voxorchestra::backend::sherpa_onnx {
+namespace slotnexus::backend::sherpa_onnx {
 
 namespace {
 
@@ -167,4 +167,4 @@ void SherpaAsrBackend::feed_audio(const std::vector<int16_t>& pcm,
 
 void SherpaAsrBackend::cancel() { impl_->cancelled.store(true); }
 
-}  // namespace voxorchestra::backend::sherpa_onnx
+}  // namespace slotnexus::backend::sherpa_onnx

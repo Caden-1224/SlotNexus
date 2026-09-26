@@ -4,9 +4,9 @@
 // 网关把 action 转发出去并把响应送回原连接。
 #include "action_helpers.hpp"
 #include "edge_gateway.hpp"
-#include "voxorchestra/network/event_loop.hpp"
-#include "voxorchestra/protocol/message_envelope.hpp"
-#include "voxorchestra/transport/rpc.hpp"
+#include "slotnexus/network/event_loop.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
+#include "slotnexus/transport/rpc.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -23,7 +23,7 @@
 
 #include <zmq.hpp>
 
-namespace eg = voxorchestra::gateway;
+namespace eg = slotnexus::gateway;
 using namespace std::chrono_literals;
 
 namespace {
@@ -124,9 +124,9 @@ constexpr const char* kFakeManagerEndpoint = "tcp://127.0.0.1:19555";
 // 真实 Manager 的响应形态。有独立线程服务，保证与网关的 RPC 并发。
 std::string fake_manager_handler(const std::string& request_json) {
   try {
-    const voxorchestra::protocol::MessageEnvelope req =
-        voxorchestra::protocol::MessageEnvelope::from_json(request_json);
-    return voxorchestra::app::BuildAck(req, {{"status", "ok"}}).to_json();
+    const slotnexus::protocol::MessageEnvelope req =
+        slotnexus::protocol::MessageEnvelope::from_json(request_json);
+    return slotnexus::app::BuildAck(req, {{"status", "ok"}}).to_json();
   } catch (...) {
     return R"({"version":1,"type":"error","error":{"code":1,"message":"bad json"}})";
   }
@@ -135,10 +135,10 @@ std::string fake_manager_handler(const std::string& request_json) {
 // 进程内网关：专用线程跑事件循环；with_fake_manager 时起 fake Manager 线程。
 struct GatewayFixture {
   zmq::context_t ctx{1};
-  voxorchestra::transport::RpcServer fake_manager{ctx};
+  slotnexus::transport::RpcServer fake_manager{ctx};
   std::atomic<bool> fake_stop{false};
   std::thread fake_thread;
-  voxorchestra::network::EventLoop loop;
+  slotnexus::network::EventLoop loop;
   eg::EdgeGateway gateway{&loop, "127.0.0.1", 0,
                           kFakeManagerEndpoint};  // 默认连 fake Manager
   std::atomic<bool> started{false};

@@ -1,4 +1,4 @@
-#include "voxorchestra/network/tcp_server.hpp"
+#include "slotnexus/network/tcp_server.hpp"
 
 #include <cerrno>
 #include <cstring>
@@ -11,10 +11,10 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "voxorchestra/network/channel.hpp"
-#include "voxorchestra/network/event_loop.hpp"
+#include "slotnexus/network/channel.hpp"
+#include "slotnexus/network/event_loop.hpp"
 
-namespace voxorchestra::network {
+namespace slotnexus::network {
 
 TcpServer::TcpServer(EventLoop* loop, const std::string& host, std::uint16_t port)
     : loop_(loop), host_(host), port_(port) {}
@@ -147,4 +147,4 @@ void TcpServer::handle_accept() {
   }
 }
 
-}  // namespace voxorchestra::network
+}  // namespace slotnexus::network

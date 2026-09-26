@@ -1,9 +1,9 @@
-#include "voxorchestra/task_registry/task_registry.hpp"
+#include "slotnexus/task_registry/task_registry.hpp"
 
 #include <mutex>
 #include <unordered_set>
 
-namespace voxorchestra::task_registry {
+namespace slotnexus::task_registry {
 
 namespace {
 
@@ -68,4 +68,4 @@ std::size_t TaskRegistry::size() const { return impl_->size(); }
 
 std::size_t TaskRegistry::capacity() const { return impl_->capacity(); }
 
-}  // namespace voxorchestra::task_registry
+}  // namespace slotnexus::task_registry

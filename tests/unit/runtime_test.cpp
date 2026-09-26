@@ -1,6 +1,6 @@
 // 节点运行时单元测试：状态机流转、任务隔离、未知任务、超时、取消、重复 exit。
-#include "voxorchestra/runtime/backends.hpp"
-#include "voxorchestra/runtime/task_runtime.hpp"
+#include "slotnexus/runtime/backends.hpp"
+#include "slotnexus/runtime/task_runtime.hpp"
 
 #include <chrono>
 #include <iostream>
@@ -8,7 +8,7 @@
 #include <string>
 #include <thread>
 
-namespace etr = voxorchestra::runtime;
+namespace etr = slotnexus::runtime;
 
 namespace {
 

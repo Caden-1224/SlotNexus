@@ -1,6 +1,6 @@
-#include "voxorchestra/version.hpp"
+#include "slotnexus/version.hpp"
 
-namespace voxorchestra {
+namespace slotnexus {
 
 namespace {
 
@@ -13,4 +13,4 @@ const Version& version() { return kVersion; }
 
 const std::string& version_string() { return kVersionString; }
 
-}  // namespace voxorchestra
+}  // namespace slotnexus

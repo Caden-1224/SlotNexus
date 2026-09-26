@@ -1,4 +1,4 @@
-# VoxOrchestra —— 端侧多进程通信与推理中间件
+# SlotNexus —— 端侧多进程通信与推理中间件
 
 > 统一后端契约、有界数据面与进程隔离；通信、调度、节点运行时与 Backend 契约全部自研，首个端到端应用是全离线大模型语音闭环。
 
@@ -127,7 +127,7 @@ flowchart LR
 
 | 能力 | 状态 | 说明 |
 |---|---|---|
-| 仓库骨架、根级 CMake/CTest | ✅ | 无 Git 元数据的干净导出可复现构建，CTest 45/45 通过 |
+| 仓库骨架、根级 CMake/CTest | ✅ | 无 Git 元数据的干净导出可复现构建，CTest 46/46 通过 |
 | 统一消息信封 MessageEnvelope | ✅ | 版本化 JSON，1 MiB 上限，结构化错误码 |
 | ZMQ 多模式通信 | ✅ | RPC（deadline）/ PUB/SUB（订阅握手）/ PUSH/PULL，均含超时与退出测试 |
 | TCP 网关与 NDJSON 解帧 | ✅ | epoll 主从 Reactor，半包/粘包/超长帧/慢客户端处理 |
@@ -136,12 +136,12 @@ flowchart LR
 | JSONL/BM25 分级 RAG | ✅ | L0-L3 路由、文本规范化、Top-K 检索与单元测试已落地 |
 | Session 编排、取消与晚到过滤 | ✅ | 固定 WAV → Fake PCM 全链路；状态机（Idle→Listening→Routing→Thinking→Speaking）、有界文本/PCM 队列、generation 取消传播与晚到过滤；E2E + 故障注入测试覆盖 |
 | WSL Mock 冻结（M1 门禁） | ✅ | 50 轮 E2E 零跨流、进程/端口无残留、request_id 日志全链关联、干净构建排除旧缓存；故障注入回归（非法输入、超长帧、未知任务、挂起兜底超时、重复 cancel/exit）；证据见 `artifacts/mock-release/` |
-| 真实硬件后端（sherpa-onnx / RKLLM / SummerTTS / ALSA） | ✅ | 已接入并板端核验；默认构建关闭，仅 `VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON` 时构建（证据见 `artifacts/{asr,llm,tts,audio}-integration/`） |
+| 真实硬件后端（sherpa-onnx / RKLLM / SummerTTS / ALSA） | ✅ | 已接入并板端核验；默认构建关闭，仅 `SLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON` 时构建（证据见 `artifacts/{asr,llm,tts,audio}-integration/`） |
 | rag_node 真实 BM25 路由 | ✅ | 节点内 KnowledgeStore + Bm25Index + Router（L0-L3 阈值/关键词参数化），21 条测试集冻结路由决策；与 embedded 路由同源实现 |
 | voice_cli 客户端 | ✅ | 现场语音交互入口：TCP NDJSON 直连网关，setup/inference/cancel/taskinfo/exit 全协议；非阻塞 connect 以 getpeername 权威确认（RST 竞态防御）、失败路径不打印空信封摘要、晚到取消静默（同步转发已知限制） |
 | 数据面异步流（控制面/数据面分离） | ✅ | 统一信封 `type=event` 承载流式后端事件（partial/final/token/done/pcm，PCM base64）；主题 `<work_id>/<request_id>/` 前缀精确过滤；EventPublisher/EventSubscriber 订阅握手（slow joiner 防御）；asr/llm/tts 节点推理中实时发布（--events/--events-sync，缺省不发布） |
-| 会话侧网络后端（session_node --backend net） | ✅ | NetAsr/NetLlm/NetTts 与本地 Fake 同契约：控制面 RPC 上行（setup/inference/cancel）+ 数据面事件订阅回放；RpcClient 异步两段式（call_async/poll_response）、事件流 finish 与 RPC 响应双信号判定完成、取消/超时后 REQ 状态机重建；默认 embedded 保持无硬件基线；数据面全链路 E2E 纳入当前 45/45 回归 |
-| 泰山派 3M 全真实链路 | ✅ | 固定 WAV、板载麦克风、故障注入与 30 轮稳定性均完成；30/30 成功，180 份进程日志中无 Fake/Mock 运行标记 |
+| 会话侧网络后端（session_node --backend net） | ✅ | NetAsr/NetLlm/NetTts 与本地 Fake 同契约：控制面 RPC 上行（setup/inference/cancel）+ 数据面事件订阅回放；RpcClient 异步两段式（call_async/poll_response）、事件流 finish 与 RPC 响应双信号判定完成、取消/超时后 REQ 状态机重建；默认 embedded 保持无硬件基线；数据面全链路 E2E 纳入当前 46/46 回归 |
+| 泰山派 3M 全真实链路 | ✅ | 固定 WAV、板载麦克风、故障注入与 30 轮稳定性均完成；30/30 成功，180 份进程日志中无 Fake/Mock 运行标记（该结果取自上一代 1.5B LLM 基线，更换 LLM 后全链路未重跑） |
 
 ## 快速开始
 
@@ -163,7 +163,7 @@ ctest --preset wsl-debug        # 46 个测试
 scripts/demo_mock_chain.sh
 ```
 
-一键拉起五节点 + Manager + 网关，展示 work_id 轮转路由、逐节点推理输出、TTS 产出的 WAV 与 SIGTERM 优雅退出；日志与音频落在 `/tmp/voxorchestra-demo/`。
+一键拉起五节点 + Manager + 网关，展示 work_id 轮转路由、逐节点推理输出、TTS 产出的 WAV 与 SIGTERM 优雅退出；日志与音频落在 `/tmp/slotnexus-demo/`。
 
 Session 编排全链路（固定 WAV → Fake PCM）：
 
@@ -171,7 +171,7 @@ Session 编排全链路（固定 WAV → Fake PCM）：
 scripts/demo_mock_session.sh
 ```
 
-一键拉起 session_node + Manager + 网关，展示四类路由（L0 控制 / L1 直答 / L2 带上下文 / L3 闲聊）、固定 WAV 完整链路、taskinfo 队列统计与 SIGTERM 优雅退出；输出 1 秒 WAV 落在 `/tmp/voxorchestra-session/`（Fake TTS 为 500 Hz 测试音，实际内容见各请求 `final_text`，真实语音 SummerTTS 已接入）。
+一键拉起 session_node + Manager + 网关，展示四类路由（L0 控制 / L1 直答 / L2 带上下文 / L3 闲聊）、固定 WAV 完整链路、taskinfo 队列统计与 SIGTERM 优雅退出；输出 1 秒 WAV 落在 `/tmp/slotnexus-session/`（Fake TTS 为 500 Hz 测试音，实际内容见各请求 `final_text`，真实语音 SummerTTS 已接入）。
 
 单条协议交互（手动探测）：
 

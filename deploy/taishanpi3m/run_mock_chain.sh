@@ -7,13 +7,13 @@
 #
 # 用法：bash deploy/taishanpi3m/run_mock_chain.sh
 #   前台演示：启动三进程 → 冒烟验证（setup + 四类路由各一次）→ SIGTERM 优雅收尾；
-#   日志与 WAV 输出落在 /tmp/voxorchestra-session/。
+#   日志与 WAV 输出落在 /tmp/slotnexus-session/。
 #   板端常驻：末尾 sleep 改 while 即可（SIGTERM 由 systemd/手动信号处理）。
 set -u
 cd "$(dirname "$0")/../.."
 B=build-taishanpi3m
 CFG=config/taishanpi3m/session.json
-OUT=/tmp/voxorchestra-session
+OUT=/tmp/slotnexus-session
 mkdir -p "$OUT"
 
 if [ ! -x "$B/apps/session_node/session_node" ]; then

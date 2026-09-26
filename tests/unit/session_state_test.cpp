@@ -1,11 +1,11 @@
 // Session 状态机单元测试：合法迁移、非法迁移拒绝、任意阶段取消、轨迹记录。
-#include "voxorchestra/session/session_state_machine.hpp"
+#include "slotnexus/session/session_state_machine.hpp"
 
 #include <iostream>
 #include <string>
 #include <vector>
 
-namespace ss = voxorchestra::session;
+namespace ss = slotnexus::session;
 using ss::SessionStateMachine;
 
 namespace {

@@ -7,7 +7,7 @@
 # 输出 /tmp/stability/：stability.csv + 每轮日志目录 + 汇总。
 # 用法：板端执行（约 45-60 分钟）。中途 Ctrl+C 可停，CSV 已落盘。
 set -u
-cd ~/workspace/voxorchestra-runtime
+cd ~/workspace/slotnexus-runtime
 export LD_LIBRARY_PATH=/home/lckfb/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api/aarch64
 ROUNDS=${1:-30}
 BASE=/tmp/stability

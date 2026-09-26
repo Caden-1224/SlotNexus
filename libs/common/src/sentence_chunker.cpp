@@ -1,9 +1,9 @@
-#include "voxorchestra/common/sentence_chunker.hpp"
+#include "slotnexus/common/sentence_chunker.hpp"
 
 #include <cstddef>
 #include <utility>
 
-namespace voxorchestra::common {
+namespace slotnexus::common {
 
 namespace {
 
@@ -81,4 +81,4 @@ std::vector<std::string> SentenceChunker::flush() {
   return out;
 }
 
-}  // namespace voxorchestra::common
+}  // namespace slotnexus::common

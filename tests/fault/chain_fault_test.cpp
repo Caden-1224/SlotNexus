@@ -13,7 +13,7 @@
 //
 // 端口约定：与 50 轮轮换回归（9112/19111/19211）及进程内故障测试
 // （19220/19222）错开，避免跨测试 ZMQ 重连注入。
-#include "voxorchestra/protocol/message_envelope.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
 
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -37,7 +37,7 @@
 
 using namespace std::chrono_literals;
 
-namespace ep = voxorchestra::protocol;
+namespace ep = slotnexus::protocol;
 using ep::MessageEnvelope;
 using ep::MessageType;
 

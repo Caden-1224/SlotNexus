@@ -1,13 +1,13 @@
-#include "voxorchestra/rag/bm25.hpp"
+#include "slotnexus/rag/bm25.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <map>
 #include <utility>
 
-#include "voxorchestra/rag/text_normalizer.hpp"
+#include "slotnexus/rag/text_normalizer.hpp"
 
-namespace voxorchestra::rag {
+namespace slotnexus::rag {
 
 void Bm25Index::add_document(const std::string& text) {
   doc_texts_.push_back(text);
@@ -131,4 +131,4 @@ double Bm25Index::score_tokens(const std::vector<std::string>& query_tokens,
   return total;
 }
 
-}  // namespace voxorchestra::rag
+}  // namespace slotnexus::rag

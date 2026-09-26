@@ -1,6 +1,6 @@
 // BoundedQueue 单元测试：容量、满队列行为（拒绝/超时/阻塞）、关闭唤醒、
 // 清空、峰值统计与多线程并发。
-#include "voxorchestra/common/bounded_queue.hpp"
+#include "slotnexus/common/bounded_queue.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -9,7 +9,7 @@
 #include <thread>
 #include <vector>
 
-namespace cq = voxorchestra::common;
+namespace cq = slotnexus::common;
 using cq::QueueResult;
 
 using namespace std::chrono_literals;

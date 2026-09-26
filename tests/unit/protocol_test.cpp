@@ -1,12 +1,12 @@
 // MessageEnvelope 单元测试：序列化往返、版本/类型/长度校验、错误路径。
-#include "voxorchestra/protocol/message_envelope.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
 
 #include <cassert>
 #include <iostream>
 #include <sstream>
 #include <string>
 
-namespace vx = voxorchestra::protocol;
+namespace vx = slotnexus::protocol;
 
 namespace {
 

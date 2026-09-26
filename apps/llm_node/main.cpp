@@ -22,7 +22,7 @@
 //     后端并尽快返回（控制面 RPC 超时由 --forward-timeout-ms /
 //     --node-rpc-timeout-ms 参数化，默认 3000 ms）。
 // 后端经工厂注入：--backend fake（默认，x86/Mock 回归基线）或 rkllm
-// （板端真实大模型，需 VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON 构建）。
+// （板端真实大模型，需 SLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON 构建）。
 // 模型路径、采样参数、思考模式开关与思考段过滤标记经 --model/--top-k/…
 // 或 session.json::llm.* 参数化，代码内不保留任何单一模型的硬编码假设
 // （见 rkllm_options.hpp）；每次 setup 产出独立后端实例（TaskRuntime 工厂
@@ -42,16 +42,16 @@
 #include <nlohmann/json.hpp>
 #include <zmq.hpp>
 
-#include "voxorchestra/backend/backend_event.hpp"
-#include "voxorchestra/backend/fake/fake_llm_backend.hpp"
-#include "voxorchestra/backend/i_llm_backend.hpp"
+#include "slotnexus/backend/backend_event.hpp"
+#include "slotnexus/backend/fake/fake_llm_backend.hpp"
+#include "slotnexus/backend/i_llm_backend.hpp"
 // 选项与校验不依赖厂商 SDK：默认（无硬件）构建同样编译本文件，因此非法
 // 配置在启动阶段即可快速失败，而不是等到板端 rkllm_init。
-#include "voxorchestra/backend/rkllm/rkllm_options.hpp"
-#ifdef VOXORCHESTRA_HAS_RKLLM
-#include "voxorchestra/backend/rkllm/rkllm_llm_backend.hpp"
+#include "slotnexus/backend/rkllm/rkllm_options.hpp"
+#ifdef SLOTNEXUS_HAS_RKLLM
+#include "slotnexus/backend/rkllm/rkllm_llm_backend.hpp"
 #endif
-#include "voxorchestra/runtime/ibackend.hpp"
+#include "slotnexus/runtime/ibackend.hpp"
 #include "runtime_node.hpp"
 
 namespace {
@@ -59,22 +59,22 @@ namespace {
 // IBackend 适配器：把流式 ILlmBackend 驱动到完成。
 // 负载按后端约定解释：fake / rkllm 均为纯文本 prompt（Mock 负载约定）；
 // rkllm 单次生成耗时数秒，在后台线程执行并协作式响应 cancelled / deadline。
-class LlmNodeBackend final : public voxorchestra::runtime::IBackend {
+class LlmNodeBackend final : public slotnexus::runtime::IBackend {
  public:
   // llm：后端实例（工厂注入，Fake / Rkllm 可替换）。
   // backend_name：驱动负载约定（fake / rkllm）。
-  LlmNodeBackend(std::unique_ptr<voxorchestra::backend::ILlmBackend> llm,
+  LlmNodeBackend(std::unique_ptr<slotnexus::backend::ILlmBackend> llm,
                  std::string backend_name)
       : llm_(std::move(llm)), backend_name_(std::move(backend_name)) {}
 
-  voxorchestra::runtime::BackendResult infer(
+  slotnexus::runtime::BackendResult infer(
       const std::string& payload,
       std::chrono::steady_clock::time_point deadline,
       const std::atomic<bool>& cancelled,
-      const voxorchestra::runtime::EventSink& events) override {
+      const slotnexus::runtime::EventSink& events) override {
     if (cancelled.load()) {
       llm_->cancel();
-      return {voxorchestra::runtime::BackendResult::Code::kCancelled, {}};
+      return {slotnexus::runtime::BackendResult::Code::kCancelled, {}};
     }
     if (backend_name_ == "rkllm") {
       return run_rkllm(payload, deadline, cancelled, events);
@@ -84,13 +84,13 @@ class LlmNodeBackend final : public voxorchestra::runtime::IBackend {
 
  private:
   // Mock 约定：payload 为提取后的纯文本 prompt，同步生成（Fake 瞬时）。
-  voxorchestra::runtime::BackendResult run_fake(
+  slotnexus::runtime::BackendResult run_fake(
       const std::string& payload,
-      const voxorchestra::runtime::EventSink& events) {
+      const slotnexus::runtime::EventSink& events) {
     std::string final_text;
     llm_->set_event_callback(
-        [&final_text, &events](const voxorchestra::backend::BackendEvent& e) {
-          if (e.kind == voxorchestra::backend::BackendEvent::Kind::kDone) {
+        [&final_text, &events](const slotnexus::backend::BackendEvent& e) {
+          if (e.kind == slotnexus::backend::BackendEvent::Kind::kDone) {
             final_text = e.text;
           }
           if (events) {
@@ -98,21 +98,21 @@ class LlmNodeBackend final : public voxorchestra::runtime::IBackend {
           }
         });
     llm_->generate(payload);
-    return {voxorchestra::runtime::BackendResult::Code::kOk, std::move(final_text)};
+    return {slotnexus::runtime::BackendResult::Code::kOk, std::move(final_text)};
   }
 
   // 真实约定：payload 为纯文本 prompt。生成在后台线程执行（数秒级，
   // 事件回调只在该线程被调用）；主线程轮询 cancelled / deadline，命中即
   // llm_->cancel()（后端过滤旧 token）后 join 返回。
-  voxorchestra::runtime::BackendResult run_rkllm(
+  slotnexus::runtime::BackendResult run_rkllm(
       const std::string& payload,
       std::chrono::steady_clock::time_point deadline,
       const std::atomic<bool>& cancelled,
-      const voxorchestra::runtime::EventSink& events) {
+      const slotnexus::runtime::EventSink& events) {
     std::string final_text;
     llm_->set_event_callback(
-        [&final_text, &events](const voxorchestra::backend::BackendEvent& e) {
-          if (e.kind == voxorchestra::backend::BackendEvent::Kind::kDone) {
+        [&final_text, &events](const slotnexus::backend::BackendEvent& e) {
+          if (e.kind == slotnexus::backend::BackendEvent::Kind::kDone) {
             final_text = e.text;
           }
           if (events) {
@@ -128,20 +128,20 @@ class LlmNodeBackend final : public voxorchestra::runtime::IBackend {
       if (cancelled.load()) {
         llm_->cancel();
         worker.join();
-        return {voxorchestra::runtime::BackendResult::Code::kCancelled, {}};
+        return {slotnexus::runtime::BackendResult::Code::kCancelled, {}};
       }
       if (std::chrono::steady_clock::now() >= deadline) {
         llm_->cancel();
         worker.join();
-        return {voxorchestra::runtime::BackendResult::Code::kTimeout, {}};
+        return {slotnexus::runtime::BackendResult::Code::kTimeout, {}};
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     worker.join();
-    return {voxorchestra::runtime::BackendResult::Code::kOk, std::move(final_text)};
+    return {slotnexus::runtime::BackendResult::Code::kOk, std::move(final_text)};
   }
 
-  std::unique_ptr<voxorchestra::backend::ILlmBackend> llm_;
+  std::unique_ptr<slotnexus::backend::ILlmBackend> llm_;
   std::string backend_name_;
 };
 
@@ -198,7 +198,7 @@ int main(int argc, char** argv) {
   std::string backend_name = "fake";  // 默认 Fake（x86/Mock 回归基线）
   // rkllm 后端的全部可配置项（模型路径 + 采样 + 思考模式 + 运行参数）。
   // 默认值 = 改造前硬编码值，因此不写这些键时行为与旧版本一致。
-  voxorchestra::backend::rkllm::RkllmOptions llm_options;
+  slotnexus::backend::rkllm::RkllmOptions llm_options;
   int infer_timeout_ms = 0;           // 节点内推理超时；0 = 默认 5000 ms
   std::string events_endpoint;        // 数据面事件 PUB 端点（可选）
   std::string events_sync;            // 配套握手端点
@@ -323,50 +323,50 @@ int main(int argc, char** argv) {
     // 采样/运行参数在启动阶段校验（不依赖厂商 SDK），避免把非法参数带进
     // rkllm_init 之后才在 setup 路径失败。
     const std::string reason =
-        voxorchestra::backend::rkllm::validate(llm_options);
+        slotnexus::backend::rkllm::validate(llm_options);
     if (!reason.empty()) {
       std::cerr << "llm 配置非法: " << reason << std::endl;
       return 1;
     }
   }
-#ifndef VOXORCHESTRA_HAS_RKLLM
+#ifndef SLOTNEXUS_HAS_RKLLM
   if (backend_name == "rkllm") {
     std::cerr << "当前构建未启用 rkllm 后端（需 "
-                 "-DVOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON）" << std::endl;
+                 "-DSLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON）" << std::endl;
     return 1;
   }
 #endif
 
   // 后端工厂：每次 setup 产出独立实例（每任务一个模型上下文）。
-  auto make_llm = [&]() -> std::unique_ptr<voxorchestra::backend::ILlmBackend> {
+  auto make_llm = [&]() -> std::unique_ptr<slotnexus::backend::ILlmBackend> {
     if (backend_name == "rkllm") {
-#ifdef VOXORCHESTRA_HAS_RKLLM
-      return std::make_unique<voxorchestra::backend::rkllm::RkllmBackend>(
+#ifdef SLOTNEXUS_HAS_RKLLM
+      return std::make_unique<slotnexus::backend::rkllm::RkllmBackend>(
           llm_options);
 #else
       throw std::runtime_error(
-          "当前构建未启用 rkllm 后端（需 -DVOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON）");
+          "当前构建未启用 rkllm 后端（需 -DSLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON）");
 #endif
     }
-    return std::make_unique<voxorchestra::backend::fake::FakeLlmBackend>();
+    return std::make_unique<slotnexus::backend::fake::FakeLlmBackend>();
   };
 
   std::signal(SIGINT, handle_signal);
   std::signal(SIGTERM, handle_signal);
 
   zmq::context_t ctx(1);
-  auto runtime = std::make_unique<voxorchestra::runtime::TaskRuntime>(
+  auto runtime = std::make_unique<slotnexus::runtime::TaskRuntime>(
       [make_llm, backend_name] {
         return std::make_shared<LlmNodeBackend>(make_llm(), backend_name);
       });
   // 数据面事件出口：--events 指定时绑定发布端点并注入节点外壳，
   // 生成 token/done 实时发布（订阅者先行握手，节点侧不阻塞等待）。
-  std::shared_ptr<voxorchestra::dataplane::EventPublisher> event_pub;
+  std::shared_ptr<slotnexus::dataplane::EventPublisher> event_pub;
   if (!events_endpoint.empty()) {
-    event_pub = std::make_shared<voxorchestra::dataplane::EventPublisher>(ctx);
+    event_pub = std::make_shared<slotnexus::dataplane::EventPublisher>(ctx);
     event_pub->bind(events_endpoint, events_sync);
   }
-  voxorchestra::node::RuntimeNode node(
+  slotnexus::node::RuntimeNode node(
       ctx, std::move(runtime),
       std::chrono::milliseconds(infer_timeout_ms), event_pub);
   try {

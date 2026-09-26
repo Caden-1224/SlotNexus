@@ -35,8 +35,8 @@ int main(int argc, char** argv) {
   std::signal(SIGTERM, handle_signal);
 
   zmq::context_t ctx(1);
-  auto runtime = std::make_unique<voxorchestra::runtime::TaskRuntime>();  // Echo 工厂
-  voxorchestra::node::RuntimeNode node(ctx, std::move(runtime));
+  auto runtime = std::make_unique<slotnexus::runtime::TaskRuntime>();  // Echo 工厂
+  slotnexus::node::RuntimeNode node(ctx, std::move(runtime));
   try {
     node.bind(listen);
     std::cout << "echo_node 监听 " << listen << "（Echo 后端）" << std::endl;

@@ -6,24 +6,24 @@
 
 #include <nlohmann/json.hpp>
 
-#include "voxorchestra/backend/fake/fake_audio_sink.hpp"
-#include "voxorchestra/backend/fake/fake_asr_backend.hpp"
-#include "voxorchestra/backend/fake/fake_llm_backend.hpp"
-#include "voxorchestra/backend/fake/fake_tts_backend.hpp"
-#include "voxorchestra/backend/i_asr_backend.hpp"
-#include "voxorchestra/backend/i_llm_backend.hpp"
-#include "voxorchestra/backend/i_tts_backend.hpp"
-#ifdef VOXORCHESTRA_HAS_ALSA
-#include "voxorchestra/backend/alsa/alsa_audio_source.hpp"
+#include "slotnexus/backend/fake/fake_audio_sink.hpp"
+#include "slotnexus/backend/fake/fake_asr_backend.hpp"
+#include "slotnexus/backend/fake/fake_llm_backend.hpp"
+#include "slotnexus/backend/fake/fake_tts_backend.hpp"
+#include "slotnexus/backend/i_asr_backend.hpp"
+#include "slotnexus/backend/i_llm_backend.hpp"
+#include "slotnexus/backend/i_tts_backend.hpp"
+#ifdef SLOTNEXUS_HAS_ALSA
+#include "slotnexus/backend/alsa/alsa_audio_source.hpp"
 #endif
-#include "voxorchestra/backend/net/net_asr_backend.hpp"
-#include "voxorchestra/backend/net/net_llm_backend.hpp"
-#include "voxorchestra/backend/net/net_tts_backend.hpp"
-#include "voxorchestra/common/log.hpp"
-#include "voxorchestra/protocol/message_envelope.hpp"
-#include "voxorchestra/rag/knowledge_store.hpp"
+#include "slotnexus/backend/net/net_asr_backend.hpp"
+#include "slotnexus/backend/net/net_llm_backend.hpp"
+#include "slotnexus/backend/net/net_tts_backend.hpp"
+#include "slotnexus/common/log.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
+#include "slotnexus/rag/knowledge_store.hpp"
 
-namespace voxorchestra::app {
+namespace slotnexus::app {
 
 namespace {
 
@@ -72,9 +72,9 @@ nlohmann::json ResultStats(const PipelineResult& r) {
 // 一个会话实例：后端归本实例所有（embedded=Fake / net=节点代理，见
 // MakeAsrBackend 等），管线只依赖接口引用。
 struct SessionNode::Session {
-  std::unique_ptr<voxorchestra::backend::IAsrBackend> asr;
-  std::unique_ptr<voxorchestra::backend::ILlmBackend> llm;
-  std::unique_ptr<voxorchestra::backend::ITtsBackend> tts;
+  std::unique_ptr<slotnexus::backend::IAsrBackend> asr;
+  std::unique_ptr<slotnexus::backend::ILlmBackend> llm;
+  std::unique_ptr<slotnexus::backend::ITtsBackend> tts;
   std::unique_ptr<session::SessionPipeline> pipeline;
   std::atomic<bool> busy{false};
   std::mutex last_mutex;
@@ -86,42 +86,42 @@ struct SessionNode::Session {
 //  - embedded：本地 Fake（确定性，M1 基线）；
 //  - net：远端节点代理（work_id 与节点任务一致；构造时同步 setup 节点，
 //    失败抛异常 → 会话 setup 失败，客户端早失败早清楚）。
-std::unique_ptr<voxorchestra::backend::IAsrBackend> MakeAsrBackend(
+std::unique_ptr<slotnexus::backend::IAsrBackend> MakeAsrBackend(
     zmq::context_t& ctx, const SessionNodeConfig& cfg,
     const std::string& work_id) {
   if (cfg.backend == "net") {
-    voxorchestra::backend::net::NetBackendConfig c{
+    slotnexus::backend::net::NetBackendConfig c{
         cfg.asr_ep.rpc, cfg.asr_ep.events, cfg.asr_ep.sync, work_id,
         cfg.net_setup_timeout, cfg.net_rpc_timeout};
     c.asr_audio_uplink = cfg.asr_audio_uplink;
-    return std::make_unique<voxorchestra::backend::net::NetAsrBackend>(ctx,
+    return std::make_unique<slotnexus::backend::net::NetAsrBackend>(ctx,
                                                                        c);
   }
-  return std::make_unique<voxorchestra::backend::fake::FakeAsrBackend>();
+  return std::make_unique<slotnexus::backend::fake::FakeAsrBackend>();
 }
 
-std::unique_ptr<voxorchestra::backend::ILlmBackend> MakeLlmBackend(
+std::unique_ptr<slotnexus::backend::ILlmBackend> MakeLlmBackend(
     zmq::context_t& ctx, const SessionNodeConfig& cfg,
     const std::string& work_id) {
   if (cfg.backend == "net") {
-    return std::make_unique<voxorchestra::backend::net::NetLlmBackend>(
-        ctx, voxorchestra::backend::net::NetBackendConfig{
+    return std::make_unique<slotnexus::backend::net::NetLlmBackend>(
+        ctx, slotnexus::backend::net::NetBackendConfig{
                  cfg.llm_ep.rpc, cfg.llm_ep.events, cfg.llm_ep.sync, work_id,
                  cfg.net_setup_timeout, cfg.net_rpc_timeout});
   }
-  return std::make_unique<voxorchestra::backend::fake::FakeLlmBackend>();
+  return std::make_unique<slotnexus::backend::fake::FakeLlmBackend>();
 }
 
-std::unique_ptr<voxorchestra::backend::ITtsBackend> MakeTtsBackend(
+std::unique_ptr<slotnexus::backend::ITtsBackend> MakeTtsBackend(
     zmq::context_t& ctx, const SessionNodeConfig& cfg,
     const std::string& work_id) {
   if (cfg.backend == "net") {
-    return std::make_unique<voxorchestra::backend::net::NetTtsBackend>(
-        ctx, voxorchestra::backend::net::NetBackendConfig{
+    return std::make_unique<slotnexus::backend::net::NetTtsBackend>(
+        ctx, slotnexus::backend::net::NetBackendConfig{
                  cfg.tts_ep.rpc, cfg.tts_ep.events, cfg.tts_ep.sync, work_id,
                  cfg.net_setup_timeout, cfg.net_rpc_timeout});
   }
-  return std::make_unique<voxorchestra::backend::fake::FakeTtsBackend>();
+  return std::make_unique<slotnexus::backend::fake::FakeTtsBackend>();
 }
 
 SessionNode::SessionNode(zmq::context_t& ctx, SessionNodeConfig config)
@@ -302,7 +302,7 @@ void SessionNode::handle_request(const std::string& identity,
                            config_.output_dir, config_.tts_min_duration},
             *router_, *s->asr, *s->llm, *s->tts,
             [](const std::string& path) {
-              return std::make_unique<voxorchestra::backend::fake::FakeAudioSink>(
+              return std::make_unique<slotnexus::backend::fake::FakeAudioSink>(
                   path);
             });
         sessions_[request.work_id()] = s;
@@ -352,13 +352,13 @@ void SessionNode::handle_request(const std::string& identity,
         }
         input.wav_path = wav;
       } else if (mode == "alsa") {
-#ifdef VOXORCHESTRA_HAS_ALSA
+#ifdef SLOTNEXUS_HAS_ALSA
         input.mode = PipelineInput::Mode::kMic;
         // 阻塞采集 record_duration 时长：20 ms 帧轮询读取，XRUN 空帧
         // 重试本帧（AlsaAudioSource 契约）。录音中不可取消（单流模型，
         // 请求在途即占用会话），时长由 --record-ms 控制。
-        voxorchestra::backend::alsa::AlsaAudioSource mic(
-            config_.record_device, voxorchestra::backend::kSampleRateHz);
+        slotnexus::backend::alsa::AlsaAudioSource mic(
+            config_.record_device, slotnexus::backend::kSampleRateHz);
         if (!mic.open()) {
           log_err(request, "mic_open_failed");
           send_reply(build_error(request, 3,
@@ -368,9 +368,9 @@ void SessionNode::handle_request(const std::string& identity,
         const int total_frames = std::max(
             1, static_cast<int>(config_.record_duration.count()) / 20);
         input.audio.reserve(static_cast<std::size_t>(total_frames) *
-                            voxorchestra::backend::kFrameSamples);
+                            slotnexus::backend::kFrameSamples);
         for (int i = 0; i < total_frames; ++i) {
-          auto chunk = mic.read(voxorchestra::backend::kFrameSamples);
+          auto chunk = mic.read(slotnexus::backend::kFrameSamples);
           if (chunk.empty()) {
             --i;  // overrun 空帧：重试本帧
             continue;
@@ -547,4 +547,4 @@ void SessionNode::run_inference(const std::string& identity,
   }
 }
 
-}  // namespace voxorchestra::app
+}  // namespace slotnexus::app

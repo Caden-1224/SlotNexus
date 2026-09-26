@@ -3,8 +3,8 @@
 // 与 fake_tts_test 相同的协议骨架：收集事件 → 断言 kPcm 帧 + kDone；
 // 并核对合成结果与门禁基线一致（固定文本 dataLen=53248，16 kHz mono S16，
 // 见 artifacts/upstream-baseline/upstream-baseline.md 第三段）。
-// 模型路径经环境变量 VOXORCHESTRA_TTS_MODEL 注入（tests/unit/CMakeLists.txt
-// 由 VOXORCHESTRA_TTS_MODEL 缓存变量设置）；未配置时整组跳过（返回 0）。
+// 模型路径经环境变量 SLOTNEXUS_TTS_MODEL 注入（tests/unit/CMakeLists.txt
+// 由 SLOTNEXUS_TTS_MODEL 缓存变量设置）；未配置时整组跳过（返回 0）。
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -13,11 +13,11 @@
 #include <string>
 #include <vector>
 
-#include "voxorchestra/backend/backend_event.hpp"
-#include "voxorchestra/backend/summer_tts/summer_tts_backend.hpp"
+#include "slotnexus/backend/backend_event.hpp"
+#include "slotnexus/backend/summer_tts/summer_tts_backend.hpp"
 
-namespace eb = voxorchestra::backend;
-namespace es = voxorchestra::backend::summer_tts;
+namespace eb = slotnexus::backend;
+namespace es = slotnexus::backend::summer_tts;
 
 namespace {
 
@@ -33,7 +33,7 @@ int g_failures = 0;
   } while (0)
 
 std::string model_path_from_env() {
-  const char* p = std::getenv("VOXORCHESTRA_TTS_MODEL");
+  const char* p = std::getenv("SLOTNEXUS_TTS_MODEL");
   return p != nullptr ? p : "";
 }
 
@@ -107,8 +107,8 @@ int main() {
   std::cout << "summer_tts_test:" << std::endl;
   const std::string model = model_path_from_env();
   if (model.empty()) {
-    std::cout << "  [skip] 未配置 VOXORCHESTRA_TTS_MODEL（板端 ctest 需 "
-                 "-DVOXORCHESTRA_TTS_MODEL=<模型路径>）" << std::endl;
+    std::cout << "  [skip] 未配置 SLOTNEXUS_TTS_MODEL（板端 ctest 需 "
+                 "-DSLOTNEXUS_TTS_MODEL=<模型路径>）" << std::endl;
     return 0;
   }
   if (std::FILE* f = std::fopen(model.c_str(), "rb")) {

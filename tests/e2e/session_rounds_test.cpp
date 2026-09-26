@@ -23,7 +23,7 @@
 //
 // 用法：session_rounds_test [--summary <统计 JSON 路径>]
 //   --summary 缺省写入测试输出目录（session-rounds-out/summary.json）。
-#include "voxorchestra/protocol/message_envelope.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -46,7 +46,7 @@
 
 using namespace std::chrono_literals;
 
-namespace ep = voxorchestra::protocol;
+namespace ep = slotnexus::protocol;
 using ep::MessageEnvelope;
 using ep::MessageType;
 
@@ -305,7 +305,7 @@ bool VerifyKind(Kind k, const MessageEnvelope& reply, std::string& detail) {
       return true;
     case Kind::kL1: {
       const std::string kAudioAnswer =
-          "VoxOrchestra 音频格式统一为 16kHz 单声道 16-bit PCM，帧长 20 毫秒";
+          "SlotNexus 音频格式统一为 16kHz 单声道 16-bit PCM，帧长 20 毫秒";
       if (route != "l1" || p.value("final_text", std::string()) != kAudioAnswer) {
         detail = "route=" + route;
         return false;

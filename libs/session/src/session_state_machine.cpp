@@ -1,9 +1,9 @@
-#include "voxorchestra/session/session_state_machine.hpp"
+#include "slotnexus/session/session_state_machine.hpp"
 
 #include <mutex>
 #include <utility>
 
-namespace voxorchestra::session {
+namespace slotnexus::session {
 
 namespace {
 
@@ -123,4 +123,4 @@ void SessionStateMachine::reset() {
   trace_.clear();
 }
 
-}  // namespace voxorchestra::session
+}  // namespace slotnexus::session

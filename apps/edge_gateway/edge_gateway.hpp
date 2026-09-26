@@ -17,11 +17,11 @@
 
 #include <zmq.hpp>
 
-#include "voxorchestra/network/event_loop.hpp"
-#include "voxorchestra/network/tcp_server.hpp"
-#include "voxorchestra/transport/rpc.hpp"
+#include "slotnexus/network/event_loop.hpp"
+#include "slotnexus/network/tcp_server.hpp"
+#include "slotnexus/transport/rpc.hpp"
 
-namespace voxorchestra::gateway {
+namespace slotnexus::gateway {
 
 class EdgeGateway {
  public:
@@ -66,4 +66,4 @@ class EdgeGateway {
   std::unique_ptr<transport::RpcClient> manager_;
 };
 
-}  // namespace voxorchestra::gateway
+}  // namespace slotnexus::gateway

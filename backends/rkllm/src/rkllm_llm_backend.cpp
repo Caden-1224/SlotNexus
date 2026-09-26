@@ -26,10 +26,10 @@
 #include <string>
 #include <utility>
 
-#include "voxorchestra/backend/rkllm/rkllm_llm_backend.hpp"
-#include "voxorchestra/backend/rkllm/rkllm_reasoning_filter.hpp"
+#include "slotnexus/backend/rkllm/rkllm_llm_backend.hpp"
+#include "slotnexus/backend/rkllm/rkllm_reasoning_filter.hpp"
 
-namespace voxorchestra::backend::rkllm {
+namespace slotnexus::backend::rkllm {
 
 namespace {
 
@@ -71,7 +71,7 @@ struct RkllmBackend::Impl {
 
     LLMHandle h = nullptr;
     int ret = 0;
-#if defined(VOXORCHESTRA_RKLLM_INIT_CALLBACK_STRUCT)
+#if defined(SLOTNEXUS_RKLLM_INIT_CALLBACK_STRUCT)
     // 新接口（rknn-llm 1.2.0 之后）：回调注册在 RKLLMCallback 结构里。
     RKLLMCallback callback = {};
     callback.result_callback = &Impl::on_vendor_result;
@@ -125,7 +125,7 @@ struct RkllmBackend::Impl {
     self->cv.notify_one();
   }
 
-#if defined(VOXORCHESTRA_RKLLM_INIT_CALLBACK_STRUCT)
+#if defined(SLOTNEXUS_RKLLM_INIT_CALLBACK_STRUCT)
   static int on_vendor_result(RKLLMResult* result, void* userdata,
                               LLMCallState state) {
     handle_vendor_result(result, userdata, state);
@@ -292,4 +292,4 @@ void RkllmBackend::cancel() {
   }
 }
 
-}  // namespace voxorchestra::backend::rkllm
+}  // namespace slotnexus::backend::rkllm

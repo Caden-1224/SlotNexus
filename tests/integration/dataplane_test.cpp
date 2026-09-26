@@ -1,10 +1,10 @@
 // 数据面事件通道集成测试（inproc 端点）：握手防丢首条、事件顺序与
 // finish 标记、主题精确过滤（work_id 隔离 + 相近 request_id 不串）、
 // PCM 二进制 base64 往返、接收超时与发布端关闭不挂起、协议校验。
-#include "voxorchestra/dataplane/dataplane_event.hpp"
-#include "voxorchestra/dataplane/event_channel.hpp"
-#include "voxorchestra/protocol/message_envelope.hpp"
-#include "voxorchestra/transport/pubsub.hpp"
+#include "slotnexus/dataplane/dataplane_event.hpp"
+#include "slotnexus/dataplane/event_channel.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
+#include "slotnexus/transport/pubsub.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -14,9 +14,9 @@
 
 #include <zmq.hpp>
 
-namespace vd = voxorchestra::dataplane;
-namespace et = voxorchestra::transport;
-namespace pr = voxorchestra::protocol;
+namespace vd = slotnexus::dataplane;
+namespace et = slotnexus::transport;
+namespace pr = slotnexus::protocol;
 using namespace std::chrono_literals;
 
 namespace {

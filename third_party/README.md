@@ -9,9 +9,9 @@
 |---|---|---|
 | ZeroMQ / cppzmq | Ubuntu `libzmq3-dev` / `cppzmq-dev` | MPL-2.0 / MIT |
 | ALSA | CMake `find_package(ALSA)` | LGPL-2.1-or-later，系统动态库 |
-| sherpa-onnx | `VOXORCHESTRA_SHERTA_ROOT` | Apache-2.0 |
-| RKLLM Runtime/API | `VOXORCHESTRA_RKLLM_ROOT` | 1.2.0 / 1.3.0，Rockchip 分发包许可 |
-| SummerTTS / Eigen | `VOXORCHESTRA_SUMMERTTS_ROOT` | MIT / Eigen 文件级许可 |
+| sherpa-onnx | `SLOTNEXUS_SHERTA_ROOT` | Apache-2.0 |
+| RKLLM Runtime/API | `SLOTNEXUS_RKLLM_ROOT` | 1.2.0 / 1.3.0，Rockchip 分发包许可 |
+| SummerTTS / Eigen | `SLOTNEXUS_SUMMERTTS_ROOT` | MIT / Eigen 文件级许可 |
 
 模型获取与哈希见 `models/README.md`，完整登记见根目录
 `THIRD_PARTY_NOTICES.md`。任何没有明确许可证的参考工程自有代码都不得

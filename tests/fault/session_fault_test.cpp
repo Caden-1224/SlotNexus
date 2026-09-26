@@ -13,7 +13,7 @@
 //   8. max_run 节点层：工作线程超时收尾，busy 复位，后续推理正常；
 //   9. 重复 cancel：均 ack（幂等），会话存活；
 //   10. 重复 exit：首次 ack、再次结构化错误，同 work_id 可重建。
-#include "voxorchestra/protocol/message_envelope.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
 #include "session_node.hpp"
 
 #include <atomic>
@@ -30,24 +30,24 @@
 
 #include <unistd.h>  // chdir
 
-#include "voxorchestra/backend/backend_event.hpp"
-#include "voxorchestra/backend/fake/fake_audio_sink.hpp"
-#include "voxorchestra/backend/fake/fake_asr_backend.hpp"
-#include "voxorchestra/backend/fake/fake_llm_backend.hpp"
-#include "voxorchestra/backend/fake/fake_tts_backend.hpp"
-#include "voxorchestra/rag/router.hpp"
-#include "voxorchestra/session/session_pipeline.hpp"
+#include "slotnexus/backend/backend_event.hpp"
+#include "slotnexus/backend/fake/fake_audio_sink.hpp"
+#include "slotnexus/backend/fake/fake_asr_backend.hpp"
+#include "slotnexus/backend/fake/fake_llm_backend.hpp"
+#include "slotnexus/backend/fake/fake_tts_backend.hpp"
+#include "slotnexus/rag/router.hpp"
+#include "slotnexus/session/session_pipeline.hpp"
 
 using namespace std::chrono_literals;
 
-namespace ep = voxorchestra::protocol;
+namespace ep = slotnexus::protocol;
 using ep::MessageEnvelope;
 using ep::MessageType;
-namespace app = voxorchestra::app;
-namespace back = voxorchestra::backend;
-namespace fake = voxorchestra::backend::fake;
-namespace rg = voxorchestra::rag;
-namespace sess = voxorchestra::session;
+namespace app = slotnexus::app;
+namespace back = slotnexus::backend;
+namespace fake = slotnexus::backend::fake;
+namespace rg = slotnexus::rag;
+namespace sess = slotnexus::session;
 
 namespace {
 

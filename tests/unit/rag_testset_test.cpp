@@ -16,10 +16,10 @@
 
 #include <nlohmann/json.hpp>
 
-#include "voxorchestra/rag/knowledge_store.hpp"
-#include "voxorchestra/rag/router.hpp"
+#include "slotnexus/rag/knowledge_store.hpp"
+#include "slotnexus/rag/router.hpp"
 
-namespace rg = voxorchestra::rag;
+namespace rg = slotnexus::rag;
 
 namespace {
 

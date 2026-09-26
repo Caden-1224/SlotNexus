@@ -2,7 +2,7 @@
 
 ## 默认 x86 构建
 
-默认配置必须保持 `VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=OFF`。当前 46 个
+默认配置必须保持 `SLOTNEXUS_ENABLE_HARDWARE_BACKENDS=OFF`。当前 46 个
 CTest 覆盖如下：
 
 | 层级 | 覆盖 | 数量/口径 |
@@ -52,11 +52,11 @@ bash <clean-dir>/scripts/check_no_hw_deps.sh <clean-dir>/build-clean
 
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
-| `VOXORCHESTRA_RKLLM_MODEL` | 空（跳过整组） | `.rkllm` 模型路径；由 CMake 缓存变量写入测试环境 |
-| `VOXORCHESTRA_RKLLM_MAX_NEW_TOKENS` / `_MAX_CONTEXT_LEN` | 100 / 256 | 单轮 token 上限与上下文窗口 |
-| `VOXORCHESTRA_RKLLM_TOP_K` / `_TOP_P` / `_TEMPERATURE` / `_REPEAT_PENALTY` | 1 / 0.95 / 0.8 / 1.1 | 采样参数 |
-| `VOXORCHESTRA_RKLLM_ENABLE_THINKING` | 0 | 思考模式开关（Qwen3 系列） |
-| `VOXORCHESTRA_RKLLM_REASONING_END_TAG` | `</think>` | 思考段过滤标记；取值 `-` 或 `off` 表示关闭过滤（模型不输出思考段时必须关闭） |
+| `SLOTNEXUS_RKLLM_MODEL` | 空（跳过整组） | `.rkllm` 模型路径；由 CMake 缓存变量写入测试环境 |
+| `SLOTNEXUS_RKLLM_MAX_NEW_TOKENS` / `_MAX_CONTEXT_LEN` | 100 / 256 | 单轮 token 上限与上下文窗口 |
+| `SLOTNEXUS_RKLLM_TOP_K` / `_TOP_P` / `_TEMPERATURE` / `_REPEAT_PENALTY` | 1 / 0.95 / 0.8 / 1.1 | 采样参数 |
+| `SLOTNEXUS_RKLLM_ENABLE_THINKING` | 0 | 思考模式开关（Qwen3 系列） |
+| `SLOTNEXUS_RKLLM_REASONING_END_TAG` | `</think>` | 思考段过滤标记；取值 `-` 或 `off` 表示关闭过滤（模型不输出思考段时必须关闭） |
 
 Qwen3.5-0.8B 的对照方法与实测结果见
 `artifacts/llm-integration/llm-node-rkllm-qwen35.md`。

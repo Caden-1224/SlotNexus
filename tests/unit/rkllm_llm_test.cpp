@@ -4,12 +4,12 @@
 // kDone（kDone 携带完整输出文本）；固定 prompt 与门禁 smoke 同款
 // （"你好，请用一句话介绍你自己。"，见 artifacts/upstream-baseline/
 // rkllm_smoke.cpp），top_k=1 贪心采样输出确定性，文本与指标（TTFT / tok/s）
-// 记录进证据文档对照。模型路径经环境变量 VOXORCHESTRA_RKLLM_MODEL 注入
-// （tests/unit/CMakeLists.txt 由 VOXORCHESTRA_RKLLM_MODEL 缓存变量设置）；
+// 记录进证据文档对照。模型路径经环境变量 SLOTNEXUS_RKLLM_MODEL 注入
+// （tests/unit/CMakeLists.txt 由 SLOTNEXUS_RKLLM_MODEL 缓存变量设置）；
 // 未配置时整组跳过（返回 0）。
 // 采样参数与思考模式同样可用环境变量覆盖（见 options_from_env），因此同一
-// 块板可以在不改仓库的情况下对比不同模型：例如把 VOXORCHESTRA_RKLLM_MODEL
-// 指向 Qwen3.5-0.8B，配合 VOXORCHESTRA_RKLLM_ENABLE_THINKING=1 观察思考段
+// 块板可以在不改仓库的情况下对比不同模型：例如把 SLOTNEXUS_RKLLM_MODEL
+// 指向 Qwen3.5-0.8B，配合 SLOTNEXUS_RKLLM_ENABLE_THINKING=1 观察思考段
 // 是否被 reasoning_end_tag 过滤干净。
 // 输出文本不作逐字断言（受模型与 max_new_tokens 影响），只断言结构 + 非空；
 // 启用思考段过滤时额外断言事件流中不残留过滤标记。
@@ -24,12 +24,12 @@
 #include <thread>
 #include <vector>
 
-#include "voxorchestra/backend/backend_event.hpp"
-#include "voxorchestra/backend/rkllm/rkllm_llm_backend.hpp"
-#include "voxorchestra/backend/rkllm/rkllm_options.hpp"
+#include "slotnexus/backend/backend_event.hpp"
+#include "slotnexus/backend/rkllm/rkllm_llm_backend.hpp"
+#include "slotnexus/backend/rkllm/rkllm_options.hpp"
 
-namespace eb = voxorchestra::backend;
-namespace er = voxorchestra::backend::rkllm;
+namespace eb = slotnexus::backend;
+namespace er = slotnexus::backend::rkllm;
 
 namespace {
 
@@ -51,7 +51,7 @@ std::string env_or(const char* name, const std::string& fallback) {
 }
 
 std::string model_from_env() {
-  return env_or("VOXORCHESTRA_RKLLM_MODEL", "");
+  return env_or("SLOTNEXUS_RKLLM_MODEL", "");
 }
 
 // 选项来源：环境变量（默认值与 config/taishanpi3m/session.json 一致）。
@@ -60,17 +60,17 @@ er::RkllmOptions options_from_env() {
   er::RkllmOptions o;
   o.model_path = model_from_env();
   o.max_new_tokens =
-      std::atoi(env_or("VOXORCHESTRA_RKLLM_MAX_NEW_TOKENS", "100").c_str());
+      std::atoi(env_or("SLOTNEXUS_RKLLM_MAX_NEW_TOKENS", "100").c_str());
   o.max_context_len =
-      std::atoi(env_or("VOXORCHESTRA_RKLLM_MAX_CONTEXT_LEN", "256").c_str());
-  o.top_k = std::atoi(env_or("VOXORCHESTRA_RKLLM_TOP_K", "1").c_str());
-  o.top_p = std::stof(env_or("VOXORCHESTRA_RKLLM_TOP_P", "0.95"));
-  o.temperature = std::stof(env_or("VOXORCHESTRA_RKLLM_TEMPERATURE", "0.8"));
+      std::atoi(env_or("SLOTNEXUS_RKLLM_MAX_CONTEXT_LEN", "256").c_str());
+  o.top_k = std::atoi(env_or("SLOTNEXUS_RKLLM_TOP_K", "1").c_str());
+  o.top_p = std::stof(env_or("SLOTNEXUS_RKLLM_TOP_P", "0.95"));
+  o.temperature = std::stof(env_or("SLOTNEXUS_RKLLM_TEMPERATURE", "0.8"));
   o.repeat_penalty =
-      std::stof(env_or("VOXORCHESTRA_RKLLM_REPEAT_PENALTY", "1.1"));
-  o.enable_thinking = env_or("VOXORCHESTRA_RKLLM_ENABLE_THINKING", "0") == "1";
+      std::stof(env_or("SLOTNEXUS_RKLLM_REPEAT_PENALTY", "1.1"));
+  o.enable_thinking = env_or("SLOTNEXUS_RKLLM_ENABLE_THINKING", "0") == "1";
   const std::string tag =
-      env_or("VOXORCHESTRA_RKLLM_REASONING_END_TAG", "</think>");
+      env_or("SLOTNEXUS_RKLLM_REASONING_END_TAG", "</think>");
   o.reasoning_end_tag = (tag == "-" || tag == "off") ? std::string() : tag;
   return o;
 }
@@ -233,8 +233,8 @@ int main() {
   std::cout << "rkllm_llm_test:" << std::endl;
   const er::RkllmOptions options = options_from_env();
   if (options.model_path.empty()) {
-    std::cout << "  [skip] 未配置 VOXORCHESTRA_RKLLM_MODEL（板端 ctest 需 "
-                 "-DVOXORCHESTRA_RKLLM_MODEL=<模型路径>）" << std::endl;
+    std::cout << "  [skip] 未配置 SLOTNEXUS_RKLLM_MODEL（板端 ctest 需 "
+                 "-DSLOTNEXUS_RKLLM_MODEL=<模型路径>）" << std::endl;
     return 0;
   }
   if (std::FILE* f = std::fopen(options.model_path.c_str(), "rb")) {

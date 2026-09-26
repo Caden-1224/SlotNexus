@@ -1,9 +1,9 @@
-#include "voxorchestra/network/frame_decoder.hpp"
+#include "slotnexus/network/frame_decoder.hpp"
 
 #include <algorithm>
 #include <utility>
 
-namespace voxorchestra::network {
+namespace slotnexus::network {
 
 NdjsonFrameDecoder::NdjsonFrameDecoder(std::size_t max_frame_bytes)
     : max_frame_bytes_(max_frame_bytes) {}
@@ -47,4 +47,4 @@ std::size_t NdjsonFrameDecoder::partial_size() const { return buffer_.size(); }
 
 void NdjsonFrameDecoder::reset() { buffer_.clear(); }
 
-}  // namespace voxorchestra::network
+}  // namespace slotnexus::network

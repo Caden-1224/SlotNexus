@@ -1,12 +1,12 @@
 // FakeRetriever 单元测试：Top-K 语义、排序确定性、注入知识库与无副作用。
-#include "voxorchestra/backend/fake/fake_retriever.hpp"
+#include "slotnexus/backend/fake/fake_retriever.hpp"
 
 #include <cstddef>
 #include <iostream>
 #include <string>
 #include <vector>
 
-namespace eb = voxorchestra::backend;
+namespace eb = slotnexus::backend;
 
 namespace {
 
@@ -24,9 +24,9 @@ int g_failures = 0;
 // 默认知识库 Top-K：按得分降序返回前 K 条。
 void test_top_k_default_knowledge() {
   eb::fake::FakeRetriever retriever;
-  const auto top2 = retriever.retrieve("VoxOrchestra", 2);
+  const auto top2 = retriever.retrieve("SlotNexus", 2);
   CHECK(top2.size() == 2);
-  CHECK(top2[0].id == "k-voxorchestra");  // 0.95
+  CHECK(top2[0].id == "k-slotnexus");  // 0.95
   CHECK(top2[0].score == 0.95);
   CHECK(top2[1].id == "k-arch");      // 0.90
   CHECK(top2[1].score == 0.90);

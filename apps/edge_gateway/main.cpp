@@ -11,11 +11,11 @@
 #include <string>
 
 #include "edge_gateway.hpp"
-#include "voxorchestra/network/event_loop.hpp"
+#include "slotnexus/network/event_loop.hpp"
 
 namespace {
 
-voxorchestra::network::EventLoop* g_loop = nullptr;
+slotnexus::network::EventLoop* g_loop = nullptr;
 
 void handle_signal(int /*sig*/) {
   // 只做原子置位 + eventfd 唤醒（write 是异步信号安全调用），
@@ -62,10 +62,10 @@ int main(int argc, char** argv) {
   const std::string manager_url = parse_manager_url(argc, argv);
   const long forward_timeout_ms = parse_forward_timeout_ms(argc, argv);
 
-  voxorchestra::network::EventLoop loop;
+  slotnexus::network::EventLoop loop;
   g_loop = &loop;
 
-  voxorchestra::gateway::EdgeGateway gateway(&loop, "127.0.0.1", port,
+  slotnexus::gateway::EdgeGateway gateway(&loop, "127.0.0.1", port,
                                              manager_url,
                                              std::chrono::milliseconds(
                                                  forward_timeout_ms));

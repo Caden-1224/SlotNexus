@@ -1,13 +1,13 @@
 // FakeLlmBackend 单元测试：确定性 token 序列、最终文本、取消语义与会话重置。
-#include "voxorchestra/backend/backend_event.hpp"
-#include "voxorchestra/backend/fake/fake_llm_backend.hpp"
+#include "slotnexus/backend/backend_event.hpp"
+#include "slotnexus/backend/fake/fake_llm_backend.hpp"
 
 #include <iostream>
 #include <string>
 #include <vector>
 
-namespace eb = voxorchestra::backend;
-namespace ef = voxorchestra::backend::fake;
+namespace eb = slotnexus::backend;
+namespace ef = slotnexus::backend::fake;
 
 namespace {
 
@@ -33,15 +33,15 @@ std::vector<eb::BackendEvent> collect(ef::FakeLlmBackend& llm) {
 void test_token_sequence() {
   ef::FakeLlmBackend llm;
   auto events = collect(llm);
-  llm.generate("你好 世界 VoxOrchestra");
+  llm.generate("你好 世界 SlotNexus");
 
   CHECK(events.size() == 4);  // 3 token + 1 done
   CHECK(events[0].kind == eb::BackendEvent::Kind::kToken);
   CHECK(events[0].text == "你好");
   CHECK(events[1].text == "世界");
-  CHECK(events[2].text == "VoxOrchestra");
+  CHECK(events[2].text == "SlotNexus");
   CHECK(events[3].kind == eb::BackendEvent::Kind::kDone);
-  CHECK(events[3].text == "你好 世界 VoxOrchestra");
+  CHECK(events[3].text == "你好 世界 SlotNexus");
   CHECK(events[3].pcm.empty());
   std::cout << "  [ok] token 序列：逐词 kToken + kDone 携带完整输出" << std::endl;
 }

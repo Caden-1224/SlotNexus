@@ -3,7 +3,7 @@
 # →（Fake LLM）→ 分句 → Fake TTS → WAV 输出。
 #
 # 进程拓扑：client --TCP--> edge_gateway --ZMQ--> unit_manager --ZMQ--> session_node
-# 日志与输出落在 /tmp/voxorchestra-session/。
+# 日志与输出落在 /tmp/slotnexus-session/。
 #
 # 演示内容：
 #   1. 四条路由各走对路径（L0 控制 / L1 直答 / L2 带上下文 / L3 闲聊）；
@@ -17,7 +17,7 @@
 set -u
 cd "$(dirname "$0")/.."
 B=build-wsl
-OUT=/tmp/voxorchestra-session
+OUT=/tmp/slotnexus-session
 STAGE_DELAY=${1:-20}
 if [ "$STAGE_DELAY" = "--stage-delay-ms" ]; then STAGE_DELAY=$2; fi
 mkdir -p "$OUT"

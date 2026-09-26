@@ -1,4 +1,4 @@
-#include "voxorchestra/network/poller.hpp"
+#include "slotnexus/network/poller.hpp"
 
 #include <cerrno>
 #include <cstring>
@@ -6,9 +6,9 @@
 
 #include <unistd.h>
 
-#include "voxorchestra/network/channel.hpp"
+#include "slotnexus/network/channel.hpp"
 
-namespace voxorchestra::network {
+namespace slotnexus::network {
 
 namespace {
 
@@ -106,4 +106,4 @@ void Poller::poll(int timeout_ms, std::vector<Channel*>& active) {
   }
 }
 
-}  // namespace voxorchestra::network
+}  // namespace slotnexus::network

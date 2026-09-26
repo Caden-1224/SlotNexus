@@ -1,6 +1,6 @@
 # 第三方组件与许可记录
 
-VoxOrchestra 自有代码使用根目录 MIT License。仓库只内嵌一份
+SlotNexus 自有代码使用根目录 MIT License。仓库只内嵌一份
 nlohmann-json 单头文件；其余第三方组件由系统或部署环境提供。
 
 | 组件 | 版本/来源 | 许可证 | 用途 | 仓库策略 |

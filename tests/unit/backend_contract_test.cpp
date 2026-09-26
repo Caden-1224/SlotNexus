@@ -3,14 +3,14 @@
 // 五类接口（IAsrBackend / IRetriever / ILlmBackend / ITtsBackend /
 // IAudioSink）为纯虚契约，无实现逻辑可测；本测试锁定事件结构与常量，
 // 防止契约演进时破坏既有语义。
-#include "voxorchestra/backend/backend_event.hpp"
+#include "slotnexus/backend/backend_event.hpp"
 
 #include <cstdint>
 #include <iostream>
 #include <string>
 #include <vector>
 
-namespace eb = voxorchestra::backend;
+namespace eb = slotnexus::backend;
 
 namespace {
 

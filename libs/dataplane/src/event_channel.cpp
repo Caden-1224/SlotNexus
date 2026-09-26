@@ -1,7 +1,7 @@
 // 数据面事件通道实现：主题拼接 + 信封编解码，复用 transport 的 PUB/SUB。
-#include "voxorchestra/dataplane/event_channel.hpp"
+#include "slotnexus/dataplane/event_channel.hpp"
 
-namespace voxorchestra::dataplane {
+namespace slotnexus::dataplane {
 
 namespace {
 
@@ -73,4 +73,4 @@ bool EventSubscriber::recv_with_topic(DataplaneEvent& e, std::string& topic,
 
 void EventSubscriber::close() { sub_.close(); }
 
-}  // namespace voxorchestra::dataplane
+}  // namespace slotnexus::dataplane

@@ -1,11 +1,11 @@
-#include "voxorchestra/runtime/task_runtime.hpp"
+#include "slotnexus/runtime/task_runtime.hpp"
 
-#include "voxorchestra/runtime/backends.hpp"
-#include "voxorchestra/task_registry/task_registry.hpp"
+#include "slotnexus/runtime/backends.hpp"
+#include "slotnexus/task_registry/task_registry.hpp"
 
 #include <utility>
 
-namespace voxorchestra::runtime {
+namespace slotnexus::runtime {
 
 namespace {
 std::shared_ptr<IBackend> DefaultBackendFactory() {
@@ -137,4 +137,4 @@ std::shared_ptr<TaskChannel> TaskRuntime::find_locked(
   return it == channels_.end() ? nullptr : it->second;
 }
 
-}  // namespace voxorchestra::runtime
+}  // namespace slotnexus::runtime

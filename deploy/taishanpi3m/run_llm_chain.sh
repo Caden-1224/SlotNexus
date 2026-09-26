@@ -2,7 +2,7 @@
 # 板端核验：gateway → manager → llm_node（rkllm 后端）固定 prompt 全链路。
 # 用法：板端执行（LD_LIBRARY_PATH 指向 SDK aarch64 目录）。
 set -u
-cd ~/workspace/voxorchestra-runtime
+cd ~/workspace/slotnexus-runtime
 export LD_LIBRARY_PATH=/home/lckfb/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api/aarch64
 OUT=/tmp/llm-chain
 mkdir -p "$OUT"

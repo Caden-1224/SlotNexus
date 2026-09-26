@@ -1,13 +1,13 @@
-#include "voxorchestra/backend/net/net_backend_session.hpp"
+#include "slotnexus/backend/net/net_backend_session.hpp"
 
 #include <cstring>
 #include <stdexcept>
 #include <thread>
 #include <utility>
 
-#include "voxorchestra/transport/transport_error.hpp"
+#include "slotnexus/transport/transport_error.hpp"
 
-namespace voxorchestra::backend::net {
+namespace slotnexus::backend::net {
 
 namespace {
 
@@ -206,4 +206,4 @@ std::string NetBackendSession::next_request_id(const std::string& stage) {
   return stage + std::to_string(seq_.fetch_add(1));
 }
 
-}  // namespace voxorchestra::backend::net
+}  // namespace slotnexus::backend::net

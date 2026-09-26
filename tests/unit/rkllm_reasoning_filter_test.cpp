@@ -12,10 +12,10 @@
 #include <limits>
 #include <string>
 
-#include "voxorchestra/backend/rkllm/rkllm_options.hpp"
-#include "voxorchestra/backend/rkllm/rkllm_reasoning_filter.hpp"
+#include "slotnexus/backend/rkllm/rkllm_options.hpp"
+#include "slotnexus/backend/rkllm/rkllm_reasoning_filter.hpp"
 
-namespace er = voxorchestra::backend::rkllm;
+namespace er = slotnexus::backend::rkllm;
 
 namespace {
 

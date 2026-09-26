@@ -2,7 +2,7 @@
 
 ## 60 秒项目介绍
 
-VoxOrchestra 是面向低资源 Linux 边缘设备的单机多进程通信与推理中间件。
+SlotNexus 是面向低资源 Linux 边缘设备的单机多进程通信与推理中间件。
 它把 Gateway、任务管理、Session、ASR、LLM 和 TTS 分成独立进程，用
 版本化消息、带 deadline 的控制面 RPC 和异步数据面事件统一模型生命周期；
 五类可替换后端（ASR / 检索 / LLM / TTS / 音频输出）只按同一套契约接入，

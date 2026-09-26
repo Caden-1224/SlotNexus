@@ -1,11 +1,11 @@
 // SentenceChunker 单元测试：中英文句末标点、连续标点、换行、流式切分与收尾。
-#include "voxorchestra/common/sentence_chunker.hpp"
+#include "slotnexus/common/sentence_chunker.hpp"
 
 #include <iostream>
 #include <string>
 #include <vector>
 
-namespace cq = voxorchestra::common;
+namespace cq = slotnexus::common;
 
 namespace {
 

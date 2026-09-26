@@ -26,13 +26,13 @@ SDK、动态库、板卡地址或凭据；这些资源由部署环境提供。
 SummerTTS 源码及三类模型：
 
 ```bash
-export VOXORCHESTRA_SHERTA_ROOT=<sherpa-onnx 根目录>
-export VOXORCHESTRA_RKLLM_ROOT=<librkllm_api 根目录>
-export VOXORCHESTRA_SUMMERTTS_ROOT=<SummerTTS 根目录>
-export VOXORCHESTRA_ASR_MODEL=<ASR 模型目录>
-export VOXORCHESTRA_RKLLM_MODEL=<RKLLM 模型文件>
-export VOXORCHESTRA_TTS_MODEL=<TTS 模型文件>
-export VOXORCHESTRA_BUILD_JOBS=4
+export SLOTNEXUS_SHERTA_ROOT=<sherpa-onnx 根目录>
+export SLOTNEXUS_RKLLM_ROOT=<librkllm_api 根目录>
+export SLOTNEXUS_SUMMERTTS_ROOT=<SummerTTS 根目录>
+export SLOTNEXUS_ASR_MODEL=<ASR 模型目录>
+export SLOTNEXUS_RKLLM_MODEL=<RKLLM 模型文件>
+export SLOTNEXUS_TTS_MODEL=<TTS 模型文件>
+export SLOTNEXUS_BUILD_JOBS=4
 bash deploy/taishanpi3m/build.sh hardware
 ```
 
@@ -43,8 +43,8 @@ SummerTTS 的 Eigen 模板代码时若内存紧张，应进一步降低为 1 或
 ## 命令入口
 
 ```bash
-export VOXORCHESTRA_RKLLM_ROOT=<librkllm_api 根目录>
-export VOXORCHESTRA_SHERTA_ROOT=<sherpa-onnx 根目录>
+export SLOTNEXUS_RKLLM_ROOT=<librkllm_api 根目录>
+export SLOTNEXUS_SHERTA_ROOT=<sherpa-onnx 根目录>
 bash deploy/taishanpi3m/start.sh
 bash deploy/taishanpi3m/stop.sh
 ```
@@ -58,20 +58,20 @@ bash deploy/taishanpi3m/stop.sh
 
 | 变量 | 必需 | 用途 |
 |---|---|---|
-| `VOXORCHESTRA_RKLLM_ROOT` | 是 | 提供 `aarch64/librkllmrt.so` |
-| `VOXORCHESTRA_SHERTA_ROOT` | 是 | 提供 sherpa-onnx 与 ONNX Runtime 动态库 |
-| `VOXORCHESTRA_DEPLOY_ROOT` | 否 | 部署根目录，默认由脚本位置推导 |
-| `VOXORCHESTRA_BUILD_DIR` | 否 | 硬件构建目录，默认 `build-taishanpi3m-hw` |
-| `VOXORCHESTRA_CONFIG` | 否 | 板端配置，默认 `config/taishanpi3m/session.json` |
-| `VOXORCHESTRA_RUN_DIR` | 否 | PID 与日志目录，默认 `/tmp/voxorchestra-runtime` |
-| `VOXORCHESTRA_SETUP_TIMEOUT_SECONDS` | 否 | `setup` 等待秒数，默认 120 |
+| `SLOTNEXUS_RKLLM_ROOT` | 是 | 提供 `aarch64/librkllmrt.so` |
+| `SLOTNEXUS_SHERTA_ROOT` | 是 | 提供 sherpa-onnx 与 ONNX Runtime 动态库 |
+| `SLOTNEXUS_DEPLOY_ROOT` | 否 | 部署根目录，默认由脚本位置推导 |
+| `SLOTNEXUS_BUILD_DIR` | 否 | 硬件构建目录，默认 `build-taishanpi3m-hw` |
+| `SLOTNEXUS_CONFIG` | 否 | 板端配置，默认 `config/taishanpi3m/session.json` |
+| `SLOTNEXUS_RUN_DIR` | 否 | PID 与日志目录，默认 `/tmp/slotnexus-runtime` |
+| `SLOTNEXUS_SETUP_TIMEOUT_SECONDS` | 否 | `setup` 等待秒数，默认 120 |
 
-运行库搜索路径由 `VOXORCHESTRA_RKLLM_ROOT/aarch64`、
-`VOXORCHESTRA_SHERTA_ROOT/build/lib` 和
-`VOXORCHESTRA_SHERTA_ROOT/build/_deps/onnxruntime-src/lib` 推导，并保留
+运行库搜索路径由 `SLOTNEXUS_RKLLM_ROOT/aarch64`、
+`SLOTNEXUS_SHERTA_ROOT/build/lib` 和
+`SLOTNEXUS_SHERTA_ROOT/build/_deps/onnxruntime-src/lib` 推导，并保留
 调用者已有的 `LD_LIBRARY_PATH`。路径不写死到特定用户主目录。
 
-运行状态保存在 `VOXORCHESTRA_RUN_DIR`：每个服务一个 PID 文件和日志
+运行状态保存在 `SLOTNEXUS_RUN_DIR`：每个服务一个 PID 文件和日志
 文件。停止时删除 PID 文件，日志保留用于诊断。
 
 ## 启动顺序

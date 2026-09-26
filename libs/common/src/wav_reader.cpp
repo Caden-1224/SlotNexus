@@ -1,4 +1,4 @@
-#include "voxorchestra/common/wav_reader.hpp"
+#include "slotnexus/common/wav_reader.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace voxorchestra::common {
+namespace slotnexus::common {
 
 namespace {
 
@@ -136,4 +136,4 @@ WavReadResult WavReader::read(const std::string& path) {
   return result;
 }
 
-}  // namespace voxorchestra::common
+}  // namespace slotnexus::common

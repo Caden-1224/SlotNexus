@@ -12,7 +12,7 @@
 //     （gateway/manager 为同步转发，取消场景直连 session_node 验证）；
 //  4. taskinfo/exit 生命周期正确；
 //  5. SIGTERM 三进程全部优雅退出（退出码 0）。
-#include "voxorchestra/protocol/message_envelope.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -37,7 +37,7 @@
 
 using namespace std::chrono_literals;
 
-namespace ep = voxorchestra::protocol;
+namespace ep = slotnexus::protocol;
 using ep::MessageEnvelope;
 using ep::MessageType;
 
@@ -325,7 +325,7 @@ void test_session_e2e(const std::string& e2e_dir, const std::string& root) {
 
  // 3. 四类路由走对路径（经完整 TCP 链）。
  const char* kAudioAnswer =
-     "VoxOrchestra 音频格式统一为 16kHz 单声道 16-bit PCM，帧长 20 毫秒";
+     "SlotNexus 音频格式统一为 16kHz 单声道 16-bit PCM，帧长 20 毫秒";
 
  CHECK(exchange(c, MakeRequest(MessageType::kInference, "w-0", "r-l0",
                                {{"mode", "text"}, {"text", "停止播放"}}),

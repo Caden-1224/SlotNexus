@@ -1,4 +1,4 @@
-#include "voxorchestra/rag/knowledge_store.hpp"
+#include "slotnexus/rag/knowledge_store.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -7,7 +7,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace voxorchestra::rag {
+namespace slotnexus::rag {
 
 namespace {
 
@@ -76,4 +76,4 @@ KnowledgeStore::KnowledgeStore(const std::string& jsonl_path) {
   }
 }
 
-}  // namespace voxorchestra::rag
+}  // namespace slotnexus::rag

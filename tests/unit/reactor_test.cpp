@@ -1,7 +1,7 @@
 // EventLoop/Channel/Poller 单元测试：
 // 跨线程任务投递、pipe 读写事件、对端关闭错误事件、quit 语义、线程内直接执行。
-#include "voxorchestra/network/channel.hpp"
-#include "voxorchestra/network/event_loop.hpp"
+#include "slotnexus/network/channel.hpp"
+#include "slotnexus/network/event_loop.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -13,7 +13,7 @@
 
 #include <unistd.h>
 
-namespace en = voxorchestra::network;
+namespace en = slotnexus::network;
 using namespace std::chrono_literals;
 
 namespace {

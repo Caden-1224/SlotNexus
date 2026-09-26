@@ -24,13 +24,13 @@ pkill -9 -x tts_node 2>/dev/null || true
 bash deploy/taishanpi3m/start.sh
 ```
 
-日志和 PID 默认位于 `/tmp/voxorchestra-runtime`。启动或 setup 失败会自动
+日志和 PID 默认位于 `/tmp/slotnexus-runtime`。启动或 setup 失败会自动
 回滚，日志保留。不要同时运行旧诊断脚本和发布入口。
 
 ## 动态库错误
 
-- `librkllmrt.so`：检查 `VOXORCHESTRA_RKLLM_ROOT/aarch64/`；
-- `libsherpa-onnx-c-api.so`：检查 `VOXORCHESTRA_SHERTA_ROOT/build/lib/`；
+- `librkllmrt.so`：检查 `SLOTNEXUS_RKLLM_ROOT/aarch64/`；
+- `libsherpa-onnx-c-api.so`：检查 `SLOTNEXUS_SHERTA_ROOT/build/lib/`；
 - ONNX Runtime：检查 sherpa 构建目录的 `_deps/onnxruntime-src/lib/`；
 - 使用 `ldd <binary>` 查找 `not found`，不要把 `.so` 复制进仓库。
 

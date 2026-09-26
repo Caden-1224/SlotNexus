@@ -17,10 +17,10 @@
 //  3. 取消传播：inference 在途时 cancel 生效，晚到 token/PCM 全部过滤，
 //     cancel 后节点任务可复用（新请求正常完成，世代隔离）；
 //  4. SIGTERM 四进程全部优雅退出（退出码 0）。
-#include "voxorchestra/backend/i_asr_backend.hpp"
-#include "voxorchestra/common/base64.hpp"
-#include "voxorchestra/common/wav_reader.hpp"
-#include "voxorchestra/protocol/message_envelope.hpp"
+#include "slotnexus/backend/i_asr_backend.hpp"
+#include "slotnexus/common/base64.hpp"
+#include "slotnexus/common/wav_reader.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -41,7 +41,7 @@
 
 using namespace std::chrono_literals;
 
-namespace ep = voxorchestra::protocol;
+namespace ep = slotnexus::protocol;
 using ep::MessageEnvelope;
 using ep::MessageType;
 
@@ -264,7 +264,7 @@ void test_session_net_e2e(const std::string& e2e_dir, const std::string& root) {
 
  // 3. 四类路由走对路径（模型推理全部经数据面节点）。
  const char* kAudioAnswer =
-     "VoxOrchestra 音频格式统一为 16kHz 单声道 16-bit PCM，帧长 20 毫秒";
+     "SlotNexus 音频格式统一为 16kHz 单声道 16-bit PCM，帧长 20 毫秒";
 
  CHECK(ca.call(MakeRequest(MessageType::kInference, "w-0", "r-l0",
                            {{"mode", "text"}, {"text", "停止播放"}}),
@@ -428,14 +428,14 @@ void test_session_net_uplink_e2e(const std::string& e2e_dir,
  // 固定 WAV 的 PCM → base64 上行负载（voice.wav：16 kHz/16bit/单声道，
  // 16000 采样 = 50 帧）。
  const auto wav =
-     voxorchestra::common::WavReader::read(root + "/data/fixtures/voice.wav");
+     slotnexus::common::WavReader::read(root + "/data/fixtures/voice.wav");
  CHECK(wav.ok);
  const std::uint8_t* raw =
      reinterpret_cast<const std::uint8_t*>(wav.info.samples.data());
- const std::string b64 = voxorchestra::common::base64_encode(
+ const std::string b64 = slotnexus::common::base64_encode(
      raw, wav.info.samples.size() * sizeof(int16_t));
  const std::string pcm_payload =
-     std::string(voxorchestra::backend::kAsrPcmPayloadPrefix) + b64;
+     std::string(slotnexus::backend::kAsrPcmPayloadPrefix) + b64;
  constexpr int kFrames = 50;  // 16000 采样 / 320 采样每帧
  std::string expected_asr;
  for (int i = 1; i <= kFrames; ++i) {

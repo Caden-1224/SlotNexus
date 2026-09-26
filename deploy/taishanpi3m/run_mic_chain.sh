@@ -8,7 +8,7 @@
 # 硬件（default 走 PulseAudio，板上时好时坏，录音流会创建失败）。
 # 用法：板端执行（录音期间请对板载麦克风说话）。输出 /tmp/mic-chain/。
 set -u
-cd ~/workspace/voxorchestra-runtime
+cd ~/workspace/slotnexus-runtime
 export LD_LIBRARY_PATH=/home/lckfb/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api/aarch64
 OUT=/tmp/mic-chain
 rm -rf "$OUT"

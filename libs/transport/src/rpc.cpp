@@ -1,10 +1,10 @@
-#include "voxorchestra/transport/rpc.hpp"
+#include "slotnexus/transport/rpc.hpp"
 
 #include <cerrno>
 #include <chrono>
 #include <utility>
 
-#include "voxorchestra/transport/transport_error.hpp"
+#include "slotnexus/transport/transport_error.hpp"
 
 // RpcServer 线程模型（TSan 回归发现并修复，Mock 冻结阶段）：
 //   serve_once_timeout 在服务线程运行，close() 可在任意线程调用（优雅停机）。
@@ -13,7 +13,7 @@
 //   销毁 socket（此后不再触碰），或由析构在服务线程退出后兜底。
 //   recv 带 timeout，close() 后最迟一个 timeout 窗口内服务循环退出。
 
-namespace voxorchestra::transport {
+namespace slotnexus::transport {
 
 namespace {
 
@@ -220,4 +220,4 @@ void RpcServer::throw_if_closed() const {
   }
 }
 
-}  // namespace voxorchestra::transport
+}  // namespace slotnexus::transport

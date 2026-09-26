@@ -29,10 +29,10 @@
 
 #include <zmq.hpp>
 
-#include "voxorchestra/rag/router.hpp"
-#include "voxorchestra/session/session_pipeline.hpp"
+#include "slotnexus/rag/router.hpp"
+#include "slotnexus/session/session_pipeline.hpp"
 
-namespace voxorchestra::app {
+namespace slotnexus::app {
 
 // session_node 运行配置（由 config/mock/session.json 与命令行注入）。
 struct SessionNodeConfig {
@@ -68,7 +68,7 @@ struct SessionNodeConfig {
  // 真实后端识别）；false 时为 Mock 帧数约定（fake 节点，回归基线）。
  bool asr_audio_uplink = false;
  // 现场麦克风输入（mode=alsa）：录音设备与时长（板端 ES8323 板载麦克风
- // 走 "default"，显式 plughw:0,0 亦可）。仅 VOXORCHESTRA_HAS_ALSA 构建生效。
+ // 走 "default"，显式 plughw:0,0 亦可）。仅 SLOTNEXUS_HAS_ALSA 构建生效。
  std::string record_device = "default";
  std::chrono::milliseconds record_duration{3000};
 };
@@ -121,4 +121,4 @@ private:
  bool closed_ = false;
 };
 
-}  // namespace voxorchestra::app
+}  // namespace slotnexus::app

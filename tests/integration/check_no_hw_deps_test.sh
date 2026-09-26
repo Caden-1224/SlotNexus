@@ -3,7 +3,7 @@ set -euo pipefail
 
 CHECK_SCRIPT=$1
 CXX=$2
-TEST_ROOT=$(mktemp -d /tmp/voxorchestra-no-hw-deps-test.XXXXXX)
+TEST_ROOT=$(mktemp -d /tmp/slotnexus-no-hw-deps-test.XXXXXX)
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
 BUILD_DIR="$TEST_ROOT/build"

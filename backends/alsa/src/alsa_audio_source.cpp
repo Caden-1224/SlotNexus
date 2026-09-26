@@ -13,9 +13,9 @@
 
 #include <alsa/asoundlib.h>
 
-#include "voxorchestra/backend/alsa/alsa_audio_source.hpp"
+#include "slotnexus/backend/alsa/alsa_audio_source.hpp"
 
-namespace voxorchestra::backend::alsa {
+namespace slotnexus::backend::alsa {
 
 struct AlsaAudioSource::Impl {
   std::string device;
@@ -126,4 +126,4 @@ bool AlsaAudioSource::close() {
 
 int AlsaAudioSource::actual_sample_rate() const { return impl_->actual_rate; }
 
-}  // namespace voxorchestra::backend::alsa
+}  // namespace slotnexus::backend::alsa

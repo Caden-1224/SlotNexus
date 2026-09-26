@@ -3,7 +3,7 @@ set -euo pipefail
 
 CASE_NAME=$1
 CHECK_SCRIPT=$2
-TEST_ROOT=$(mktemp -d /tmp/voxorchestra-deploy-check-test.XXXXXX)
+TEST_ROOT=$(mktemp -d /tmp/slotnexus-deploy-check-test.XXXXXX)
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
 mkdir -p \
@@ -46,7 +46,7 @@ chmod +x "$TEST_ROOT/bin/ldd"
 export PATH="$TEST_ROOT/bin:/usr/bin:/bin"
 
 run_check() {
-  VOXORCHESTRA_DEPLOY_ROOT="$TEST_ROOT" /bin/bash "$CHECK_SCRIPT"
+  SLOTNEXUS_DEPLOY_ROOT="$TEST_ROOT" /bin/bash "$CHECK_SCRIPT"
 }
 
 case "$CASE_NAME" in

@@ -1,11 +1,11 @@
-#include "voxorchestra/transport/pubsub.hpp"
+#include "slotnexus/transport/pubsub.hpp"
 
 #include <cerrno>
 #include <utility>
 
-#include "voxorchestra/transport/transport_error.hpp"
+#include "slotnexus/transport/transport_error.hpp"
 
-namespace voxorchestra::transport {
+namespace slotnexus::transport {
 
 namespace {
 
@@ -192,4 +192,4 @@ void SubSocket::throw_if_closed() const {
   }
 }
 
-}  // namespace voxorchestra::transport
+}  // namespace slotnexus::transport

@@ -1,12 +1,12 @@
-#include "voxorchestra/rag/router.hpp"
+#include "slotnexus/rag/router.hpp"
 
 #include <algorithm>
 #include <string>
 #include <utility>
 
-#include "voxorchestra/rag/text_normalizer.hpp"
+#include "slotnexus/rag/text_normalizer.hpp"
 
-namespace voxorchestra::rag {
+namespace slotnexus::rag {
 
 Router::Router(Bm25Index index, std::vector<KnowledgeEntry> entries,
                RouterConfig config)
@@ -72,4 +72,4 @@ std::vector<backend::RetrievedChunk> Router::make_chunks(
   return chunks;
 }
 
-}  // namespace voxorchestra::rag
+}  // namespace slotnexus::rag

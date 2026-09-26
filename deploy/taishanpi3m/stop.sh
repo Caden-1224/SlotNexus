@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SERVICES=(edge_gateway unit_manager session_node asr_node llm_node tts_node)
-RUN_DIR=${VOXORCHESTRA_RUN_DIR:-/tmp/voxorchestra-runtime}
+RUN_DIR=${SLOTNEXUS_RUN_DIR:-/tmp/slotnexus-runtime}
 MODE=${1:-graceful}
 
 if [ "$MODE" != graceful ] && [ "$MODE" != --force ]; then

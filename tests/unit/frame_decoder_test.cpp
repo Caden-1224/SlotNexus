@@ -1,12 +1,12 @@
 // NDJSON 增量解帧器单元测试：
 // 半包/粘包/多帧/CRLF/空行/超长帧/逐字节喂入/UTF-8 跨块。
-#include "voxorchestra/network/frame_decoder.hpp"
+#include "slotnexus/network/frame_decoder.hpp"
 
 #include <iostream>
 #include <string>
 #include <vector>
 
-namespace en = voxorchestra::network;
+namespace en = slotnexus::network;
 
 namespace {
 

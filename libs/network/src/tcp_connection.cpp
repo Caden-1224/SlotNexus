@@ -1,4 +1,4 @@
-#include "voxorchestra/network/tcp_connection.hpp"
+#include "slotnexus/network/tcp_connection.hpp"
 
 #include <cerrno>
 #include <cstring>
@@ -7,10 +7,10 @@
 
 #include <unistd.h>
 
-#include "voxorchestra/network/channel.hpp"
-#include "voxorchestra/network/event_loop.hpp"
+#include "slotnexus/network/channel.hpp"
+#include "slotnexus/network/event_loop.hpp"
 
-namespace voxorchestra::network {
+namespace slotnexus::network {
 
 namespace {
 
@@ -183,4 +183,4 @@ void TcpConnection::close_in_loop() {
   loop_->queue_in_loop([keep = shared_from_this()] { (void)keep; });
 }
 
-}  // namespace voxorchestra::network
+}  // namespace slotnexus::network

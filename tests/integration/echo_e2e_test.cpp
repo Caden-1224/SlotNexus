@@ -7,7 +7,7 @@
 //
 // 验收标准：20 轮 Echo E2E 无跨流；未知任务/取消/重复 exit 语义正确；
 // SIGTERM 后三个进程全部优雅退出（退出码 0）。
-#include "voxorchestra/protocol/message_envelope.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -28,7 +28,7 @@
 
 using namespace std::chrono_literals;
 
-namespace ep = voxorchestra::protocol;
+namespace ep = slotnexus::protocol;
 using ep::MessageEnvelope;
 using ep::MessageType;
 

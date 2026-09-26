@@ -1,10 +1,10 @@
-#include "voxorchestra/protocol/message_envelope.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
 
 #include <array>
 #include <stdexcept>
 #include <utility>
 
-namespace voxorchestra::protocol {
+namespace slotnexus::protocol {
 
 namespace {
 
@@ -132,4 +132,4 @@ MessageEnvelope MessageEnvelope::from_json(const std::string& json) {
   return env;
 }
 
-}  // namespace voxorchestra::protocol
+}  // namespace slotnexus::protocol

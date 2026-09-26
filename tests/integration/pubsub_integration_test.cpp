@@ -1,6 +1,6 @@
 // PUB/SUB 集成测试：订阅握手防丢首条、主题过滤、接收超时。
-#include "voxorchestra/transport/pubsub.hpp"
-#include "voxorchestra/transport/transport_error.hpp"
+#include "slotnexus/transport/pubsub.hpp"
+#include "slotnexus/transport/transport_error.hpp"
 
 #include <chrono>
 #include <iostream>
@@ -8,7 +8,7 @@
 
 #include <zmq.hpp>
 
-namespace et = voxorchestra::transport;
+namespace et = slotnexus::transport;
 using namespace std::chrono_literals;
 
 namespace {

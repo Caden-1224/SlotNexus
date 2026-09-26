@@ -1,7 +1,7 @@
 // TcpServer 集成测试：用真实 socket 客户端验证
 // 半包/粘包/回显、超长帧断开、提前断开、慢客户端写缓冲上限、优雅停止。
-#include "voxorchestra/network/event_loop.hpp"
-#include "voxorchestra/network/tcp_server.hpp"
+#include "slotnexus/network/event_loop.hpp"
+#include "slotnexus/network/tcp_server.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -17,7 +17,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-namespace en = voxorchestra::network;
+namespace en = slotnexus::network;
 using namespace std::chrono_literals;
 
 namespace {

@@ -1,10 +1,10 @@
-#include "voxorchestra/network/channel.hpp"
+#include "slotnexus/network/channel.hpp"
 
 #include <utility>
 
-#include "voxorchestra/network/event_loop.hpp"
+#include "slotnexus/network/event_loop.hpp"
 
-namespace voxorchestra::network {
+namespace slotnexus::network {
 
 Channel::Channel(EventLoop* loop, int fd) : loop_(loop), fd_(fd) {}
 
@@ -42,4 +42,4 @@ void Channel::update() {
   loop_->update_channel(this);
 }
 
-}  // namespace voxorchestra::network
+}  // namespace slotnexus::network

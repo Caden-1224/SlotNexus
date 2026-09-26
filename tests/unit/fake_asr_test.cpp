@@ -2,17 +2,17 @@
 //
 // Fake 的确定性是协议与编排测试的前提：相同输入必须产出完全相同的
 // partial/final 序列，且取消后不得再产出事件。
-#include "voxorchestra/backend/backend_event.hpp"
-#include "voxorchestra/backend/fake/fake_asr_backend.hpp"
-#include "voxorchestra/backend/fake/fake_audio_source.hpp"
+#include "slotnexus/backend/backend_event.hpp"
+#include "slotnexus/backend/fake/fake_asr_backend.hpp"
+#include "slotnexus/backend/fake/fake_audio_source.hpp"
 
 #include <cstdint>
 #include <iostream>
 #include <string>
 #include <vector>
 
-namespace eb = voxorchestra::backend;
-namespace ef = voxorchestra::backend::fake;
+namespace eb = slotnexus::backend;
+namespace ef = slotnexus::backend::fake;
 
 namespace {
 

@@ -2,13 +2,13 @@
 # Mock 全链路演示：五节点（echo/asr/rag/llm/tts）+ Manager + 网关。
 #
 # 展示真实运行效果：进程启动、work_id 轮转路由、逐节点推理输出、
-# TTS 产出的 WAV 文件、SIGTERM 优雅退出。日志落在 /tmp/voxorchestra-demo/。
+# TTS 产出的 WAV 文件、SIGTERM 优雅退出。日志落在 /tmp/slotnexus-demo/。
 #
 # 用法：scripts/demo_mock_chain.sh
 set -u
 cd "$(dirname "$0")/.."
 B=build-wsl
-OUT=/tmp/voxorchestra-demo
+OUT=/tmp/slotnexus-demo
 mkdir -p "$OUT"
 
 echo "== 清理残留进程 =="
@@ -55,7 +55,7 @@ echo "-- rag（19202）：查询 -> L0-L3 路由证据（级别/Top-2 知识块/
 python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"inference","work_id":"w-2","request_id":"r-rag","payload":{"text":"多进程架构怎么实现"}}' \
   | python3 -c "import sys,json; r=json.load(sys.stdin); print(r['request_id'], '->', r['payload'].get('text','(error)'))"
 echo "-- llm（19203）：prompt -> 逐词 token 回显"
-python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"inference","work_id":"w-3","request_id":"r-llm","payload":{"text":"你好 世界 VoxOrchestra"}}' \
+python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"inference","work_id":"w-3","request_id":"r-llm","payload":{"text":"你好 世界 SlotNexus"}}' \
   | python3 -c "import sys,json; r=json.load(sys.stdin); print(r['request_id'], '->', r['payload'].get('text','(error)'))"
 echo "-- tts（19204）：长文本 -> 约 1 秒可听 WAV"
 TTS_PAYLOAD=$(python3 -c "import json; print(json.dumps({'version':1,'type':'inference','work_id':'w-4','request_id':'r-tts','payload':{'text':'滴'*600}}))")

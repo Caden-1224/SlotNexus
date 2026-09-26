@@ -3,9 +3,9 @@
 #include <utility>
 
 #include "action_helpers.hpp"
-#include "voxorchestra/protocol/message_envelope.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
 
-namespace voxorchestra::node {
+namespace slotnexus::node {
 
 using protocol::MessageEnvelope;
 using protocol::MessageType;
@@ -118,4 +118,4 @@ std::string RuntimeNode::handle_request(const std::string& request_json) {
   }
 }
 
-}  // namespace voxorchestra::node
+}  // namespace slotnexus::node

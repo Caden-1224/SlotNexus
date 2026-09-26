@@ -5,7 +5,7 @@
 //   - 取消后旧数据为 0（队列为空、sink 不再写入、计数归零）；
 //   - 队列峰值不超过配置容量；
 //   - 满队列行为明确（超时丢弃并计数）。
-#include "voxorchestra/session/session_pipeline.hpp"
+#include "slotnexus/session/session_pipeline.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -23,17 +23,17 @@
 
 #include <unistd.h>
 
-#include "voxorchestra/backend/backend_event.hpp"
-#include "voxorchestra/backend/fake/fake_audio_sink.hpp"
-#include "voxorchestra/backend/fake/fake_asr_backend.hpp"
-#include "voxorchestra/backend/fake/fake_llm_backend.hpp"
-#include "voxorchestra/backend/fake/fake_tts_backend.hpp"
-#include "voxorchestra/rag/router.hpp"
+#include "slotnexus/backend/backend_event.hpp"
+#include "slotnexus/backend/fake/fake_audio_sink.hpp"
+#include "slotnexus/backend/fake/fake_asr_backend.hpp"
+#include "slotnexus/backend/fake/fake_llm_backend.hpp"
+#include "slotnexus/backend/fake/fake_tts_backend.hpp"
+#include "slotnexus/rag/router.hpp"
 
-namespace sess = voxorchestra::session;
-namespace back = voxorchestra::backend;
-namespace fake = voxorchestra::backend::fake;
-namespace rg = voxorchestra::rag;
+namespace sess = slotnexus::session;
+namespace back = slotnexus::backend;
+namespace fake = slotnexus::backend::fake;
+namespace rg = slotnexus::rag;
 
 using namespace std::chrono_literals;
 

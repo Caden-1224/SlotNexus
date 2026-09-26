@@ -1,5 +1,5 @@
 // TaskRegistry 单元测试：分配唯一性、查询、幂等释放、容量上限、并发安全。
-#include "voxorchestra/task_registry/task_registry.hpp"
+#include "slotnexus/task_registry/task_registry.hpp"
 
 #include <iostream>
 #include <set>
@@ -7,7 +7,7 @@
 #include <thread>
 #include <vector>
 
-namespace etr = voxorchestra::task_registry;
+namespace etr = slotnexus::task_registry;
 
 namespace {
 

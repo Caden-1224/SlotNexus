@@ -9,8 +9,8 @@
 //      std::terminate；服务循环统一走 serve_until_stopped，把 kClosed 当作
 //      约定的优雅退出。
 // 两处都只改变"失败如何被报告"，不改变被测语义与断言内容。
-#include "voxorchestra/transport/rpc.hpp"
-#include "voxorchestra/transport/transport_error.hpp"
+#include "slotnexus/transport/rpc.hpp"
+#include "slotnexus/transport/transport_error.hpp"
 
 #include <chrono>
 #include <iostream>
@@ -20,7 +20,7 @@
 
 #include <zmq.hpp>
 
-namespace et = voxorchestra::transport;
+namespace et = slotnexus::transport;
 using namespace std::chrono_literals;
 
 namespace {

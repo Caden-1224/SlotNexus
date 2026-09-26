@@ -1,9 +1,9 @@
 // RAG 单元测试：文本规范化、BM25 打分（与手算公式对照）、JSONL 知识库、
 // L0-L3 分级路由（阈值可配、空知识库、控制关键词绕过检索）。
-#include "voxorchestra/rag/bm25.hpp"
-#include "voxorchestra/rag/knowledge_store.hpp"
-#include "voxorchestra/rag/router.hpp"
-#include "voxorchestra/rag/text_normalizer.hpp"
+#include "slotnexus/rag/bm25.hpp"
+#include "slotnexus/rag/knowledge_store.hpp"
+#include "slotnexus/rag/router.hpp"
+#include "slotnexus/rag/text_normalizer.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -16,7 +16,7 @@
 
 #include <unistd.h>  // getpid（临时文件唯一名）
 
-namespace rg = voxorchestra::rag;
+namespace rg = slotnexus::rag;
 using rg::RouteLevel;
 
 namespace {
@@ -48,8 +48,8 @@ void test_normalize_and_tokenize() {
   // CJK 逐字、ASCII 单词整体、大小写折叠。
   CHECK(rg::tokenize("你好世界") == std::vector<std::string>(
                                          {"你", "好", "世", "界"}));
-  CHECK(rg::tokenize("VoxOrchestra 是什么") ==
-        std::vector<std::string>({"voxorchestra", "是", "什", "么"}));
+  CHECK(rg::tokenize("SlotNexus 是什么") ==
+        std::vector<std::string>({"slotnexus", "是", "什", "么"}));
   // 全角折叠：全角字母折半角并小写。
   CHECK(rg::normalize_text("ＡＢＣ") == "abc");
   // 标点不是 token，但分隔相邻词。
@@ -328,24 +328,24 @@ void test_route_empty_knowledge() {
 void test_route_chinese_kb() {
   // 中文知识库 + 中文查询（接近真实演示场景）。
   rg::Bm25Index index;
-  index.add_document("VoxOrchestra 是端侧全离线语音交互中间件");
-  index.add_document("VoxOrchestra 使用多进程架构，网关、管理器与节点各自独立");
-  index.add_document("VoxOrchestra 的 RAG 路由分为 L0 到 L3 四层");
+  index.add_document("SlotNexus 是端侧全离线语音交互中间件");
+  index.add_document("SlotNexus 使用多进程架构，网关、管理器与节点各自独立");
+  index.add_document("SlotNexus 的 RAG 路由分为 L0 到 L3 四层");
   index.build();
   rg::RouterConfig c;
   c.direct_threshold = 0.8;
   c.context_threshold = 0.2;
   c.top_k = 2;
   const rg::Router router(index,
-                          {{"k1", "VoxOrchestra 是端侧全离线语音交互中间件"},
-                           {"k2", "VoxOrchestra 使用多进程架构，网关、管理器与节点各自独立"},
-                           {"k3", "VoxOrchestra 的 RAG 路由分为 L0 到 L3 四层"}},
+                          {{"k1", "SlotNexus 是端侧全离线语音交互中间件"},
+                           {"k2", "SlotNexus 使用多进程架构，网关、管理器与节点各自独立"},
+                           {"k3", "SlotNexus 的 RAG 路由分为 L0 到 L3 四层"}},
                           c);
-  // "VoxOrchestra 是 什 么"：与 k1 命中 2 个 token，其余文档仅 1 个 → L1。
-  const auto d = router.route("VoxOrchestra 是什么");
+  // "SlotNexus 是 什 么"：与 k1 命中 2 个 token，其余文档仅 1 个 → L1。
+  const auto d = router.route("SlotNexus 是什么");
   CHECK(d.level == RouteLevel::kL1);
   CHECK(d.chunks[0].id == "k1");
-  CHECK(d.answer == "VoxOrchestra 是端侧全离线语音交互中间件");
+  CHECK(d.answer == "SlotNexus 是端侧全离线语音交互中间件");
   // "多进程架构 怎么 实现"：与 k2 命中 "多进程架构" 子集 → L2/L1 视得分。
   const auto d2 = router.route("多进程架构怎么实现");
   CHECK(d2.level == RouteLevel::kL2 || d2.level == RouteLevel::kL1);

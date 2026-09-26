@@ -32,13 +32,13 @@
 
 #include <nlohmann/json.hpp>
 
-#include "voxorchestra/protocol/message_envelope.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
 
 namespace {
 
-using voxorchestra::protocol::MessageEnvelope;
-using voxorchestra::protocol::MessageType;
-using voxorchestra::protocol::ProtocolError;
+using slotnexus::protocol::MessageEnvelope;
+using slotnexus::protocol::MessageType;
+using slotnexus::protocol::ProtocolError;
 
 // 最小 TCP 客户端：连接、整帧发送、按行接收（带超时）。
 // 与测试客户端/脚本一致：NDJSON 一行一帧，超时由调用方控制。
@@ -228,7 +228,7 @@ bool send_cancel(const std::string& host, std::uint16_t port,
 void print_summary(const std::string& tag, const MessageEnvelope& reply) {
  std::cout << tag
            << " type="
-           << voxorchestra::protocol::message_type_to_string(reply.type());
+           << slotnexus::protocol::message_type_to_string(reply.type());
  if (!reply.work_id().empty()) {
    std::cout << " work_id=" << reply.work_id();
  }

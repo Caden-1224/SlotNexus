@@ -1,8 +1,8 @@
 // AlsaAudioSink / AlsaAudioSource 单元测试（板端真实声卡；仅硬件后端
 // 构建时编译，见 tests/unit/CMakeLists.txt）。
 //
-// 设备名经环境变量 VOXORCHESTRA_ALSA_DEVICE 注入（tests/unit/CMakeLists.txt
-// 由 VOXORCHESTRA_ALSA_DEVICE 缓存变量设置；未配置时测试用 "default"）；
+// 设备名经环境变量 SLOTNEXUS_ALSA_DEVICE 注入（tests/unit/CMakeLists.txt
+// 由 SLOTNEXUS_ALSA_DEVICE 缓存变量设置；未配置时测试用 "default"）；
 // 无模型 env 依赖，不跳过条件只依赖硬件可用——open 失败记录并跳过
 // （板端无声卡时不能挂死）。
 //
@@ -19,10 +19,10 @@
 #include <string>
 #include <vector>
 
-#include "voxorchestra/backend/alsa/alsa_audio_sink.hpp"
-#include "voxorchestra/backend/alsa/alsa_audio_source.hpp"
+#include "slotnexus/backend/alsa/alsa_audio_sink.hpp"
+#include "slotnexus/backend/alsa/alsa_audio_source.hpp"
 
-namespace eas = voxorchestra::backend::alsa;
+namespace eas = slotnexus::backend::alsa;
 
 namespace {
 
@@ -38,7 +38,7 @@ int g_failures = 0;
   } while (0)
 
 std::string device_from_env() {
-  const char* p = std::getenv("VOXORCHESTRA_ALSA_DEVICE");
+  const char* p = std::getenv("SLOTNEXUS_ALSA_DEVICE");
   return (p != nullptr && *p != '\0') ? p : "default";
 }
 

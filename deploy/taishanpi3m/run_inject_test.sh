@@ -9,7 +9,7 @@
 #   5. taskinfo 收尾   → 会话仍健康可查询
 # 用法：板端执行。输出 /tmp/inject-test/。
 set -u
-cd ~/workspace/voxorchestra-runtime
+cd ~/workspace/slotnexus-runtime
 export LD_LIBRARY_PATH=/home/lckfb/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api/aarch64
 OUT=/tmp/inject-test
 rm -rf "$OUT"

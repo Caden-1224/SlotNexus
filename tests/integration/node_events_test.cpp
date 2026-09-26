@@ -10,9 +10,9 @@
 //  3. tts 合成 PCM 帧实时发布（640 字节/帧），done 收尾；
 //  4. 事件流按 work_id/request_id 主题隔离，三条流互不串扰；
 //  5. SIGTERM 后三节点全部优雅退出（退出码 0）。
-#include "voxorchestra/dataplane/event_channel.hpp"
-#include "voxorchestra/protocol/message_envelope.hpp"
-#include "voxorchestra/transport/rpc.hpp"
+#include "slotnexus/dataplane/event_channel.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
+#include "slotnexus/transport/rpc.hpp"
 
 #include <chrono>
 #include <csignal>
@@ -29,9 +29,9 @@
 
 using namespace std::chrono_literals;
 
-namespace vd = voxorchestra::dataplane;
-namespace et = voxorchestra::transport;
-namespace ep = voxorchestra::protocol;
+namespace vd = slotnexus::dataplane;
+namespace et = slotnexus::transport;
+namespace ep = slotnexus::protocol;
 
 namespace {
 
@@ -200,7 +200,7 @@ void test_node_events(const char* argv0) {
  rpc_tts.connect("tcp://127.0.0.1:19204");
  SetupAndInfer(rpc_asr, "w-a", "s-a1", "r-a1", {{"text", "3"}});
  SetupAndInfer(rpc_llm, "w-l", "s-l1", "r-l1", {{"text", "你好"}});
- SetupAndInfer(rpc_tts, "w-t", "s-t1", "r-t1", {{"text", "VoxOrchestra"}});
+ SetupAndInfer(rpc_tts, "w-t", "s-t1", "r-t1", {{"text", "SlotNexus"}});
 
  // 4. 收集三条流并断言（各流独立收集，主题过滤保证互不串扰）。
  std::vector<vd::DataplaneEvent> ev_asr, ev_llm, ev_tts;

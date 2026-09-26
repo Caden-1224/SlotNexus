@@ -30,30 +30,30 @@
 #include <nlohmann/json.hpp>
 #include <zmq.hpp>
 
-#include "voxorchestra/rag/knowledge_store.hpp"
-#include "voxorchestra/rag/router.hpp"
-#include "voxorchestra/runtime/ibackend.hpp"
+#include "slotnexus/rag/knowledge_store.hpp"
+#include "slotnexus/rag/router.hpp"
+#include "slotnexus/runtime/ibackend.hpp"
 #include "runtime_node.hpp"
 
 namespace {
 
 // IBackend 适配器：查询 → Router.route() → 路由决策 JSON（含级别与证据）。
-class RagNodeBackend final : public voxorchestra::runtime::IBackend {
+class RagNodeBackend final : public slotnexus::runtime::IBackend {
  public:
-  explicit RagNodeBackend(std::shared_ptr<const voxorchestra::rag::Router> router)
+  explicit RagNodeBackend(std::shared_ptr<const slotnexus::rag::Router> router)
       : router_(std::move(router)) {}
 
-  voxorchestra::runtime::BackendResult infer(
+  slotnexus::runtime::BackendResult infer(
       const std::string& payload,
       std::chrono::steady_clock::time_point /*deadline*/,
       const std::atomic<bool>& cancelled,
-      const voxorchestra::runtime::EventSink& /*events*/) override {
+      const slotnexus::runtime::EventSink& /*events*/) override {
     if (cancelled.load()) {
-      return {voxorchestra::runtime::BackendResult::Code::kCancelled, {}};
+      return {slotnexus::runtime::BackendResult::Code::kCancelled, {}};
     }
     const auto d = router_->route(payload);
     nlohmann::json out;
-    out["level"] = voxorchestra::rag::to_string(d.level);
+    out["level"] = slotnexus::rag::to_string(d.level);
     out["top1_score"] = d.top1_score;
     out["answer"] = d.answer;
     out["prompt"] = d.prompt;
@@ -62,11 +62,11 @@ class RagNodeBackend final : public voxorchestra::runtime::IBackend {
       chunks.push_back({{"id", c.id}, {"text", c.text}, {"score", c.score}});
     }
     out["chunks"] = std::move(chunks);
-    return {voxorchestra::runtime::BackendResult::Code::kOk, out.dump()};
+    return {slotnexus::runtime::BackendResult::Code::kOk, out.dump()};
   }
 
  private:
-  std::shared_ptr<const voxorchestra::rag::Router> router_;
+  std::shared_ptr<const slotnexus::rag::Router> router_;
 };
 
 volatile std::sig_atomic_t g_stop = 0;
@@ -86,7 +86,7 @@ double parse_double(const char* s, double fallback) {
 int main(int argc, char** argv) {
   std::string listen = "tcp://127.0.0.1:19202";
   std::string knowledge_path = "data/knowledge/knowledge.jsonl";
-  voxorchestra::rag::RouterConfig router_cfg;  // 默认阈值；命令行可覆盖
+  slotnexus::rag::RouterConfig router_cfg;  // 默认阈值；命令行可覆盖
   for (int i = 1; i < argc - 1; ++i) {
     const std::string arg = argv[i];
     const std::string val = argv[i + 1];
@@ -110,15 +110,15 @@ int main(int argc, char** argv) {
   }
 
   // 知识库 → BM25 索引 → L0-L3 路由（进程级只读，与 session_node 同源组装）。
-  std::shared_ptr<const voxorchestra::rag::Router> router;
+  std::shared_ptr<const slotnexus::rag::Router> router;
   try {
-    const voxorchestra::rag::KnowledgeStore store(knowledge_path);
-    voxorchestra::rag::Bm25Index index;
+    const slotnexus::rag::KnowledgeStore store(knowledge_path);
+    slotnexus::rag::Bm25Index index;
     for (const auto& e : store.entries()) {
       index.add_document(e.text);
     }
     index.build();
-    router = std::make_shared<const voxorchestra::rag::Router>(
+    router = std::make_shared<const slotnexus::rag::Router>(
         std::move(index), store.entries(), router_cfg);
     std::cout << "rag_node 知识库 " << knowledge_path << "（" << store.size()
               << " 条）direct=" << router_cfg.direct_threshold
@@ -133,9 +133,9 @@ int main(int argc, char** argv) {
   std::signal(SIGTERM, handle_signal);
 
   zmq::context_t ctx(1);
-  auto runtime = std::make_unique<voxorchestra::runtime::TaskRuntime>(
+  auto runtime = std::make_unique<slotnexus::runtime::TaskRuntime>(
       [router] { return std::make_shared<RagNodeBackend>(router); });
-  voxorchestra::node::RuntimeNode node(ctx, std::move(runtime));
+  slotnexus::node::RuntimeNode node(ctx, std::move(runtime));
   try {
     node.bind(listen);
     std::cout << "rag_node 监听 " << listen << "（真实 BM25 L0-L3 路由）"

@@ -1,14 +1,14 @@
 // FakeTtsBackend 单元测试：确定性 PCM 块序列、取消语义与会话重置。
-#include "voxorchestra/backend/backend_event.hpp"
-#include "voxorchestra/backend/fake/fake_tts_backend.hpp"
+#include "slotnexus/backend/backend_event.hpp"
+#include "slotnexus/backend/fake/fake_tts_backend.hpp"
 
 #include <cstdint>
 #include <iostream>
 #include <string>
 #include <vector>
 
-namespace eb = voxorchestra::backend;
-namespace ef = voxorchestra::backend::fake;
+namespace eb = slotnexus::backend;
+namespace ef = slotnexus::backend::fake;
 
 namespace {
 

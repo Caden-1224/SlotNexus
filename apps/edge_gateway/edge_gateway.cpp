@@ -2,11 +2,11 @@
 
 #include <utility>
 
-#include "voxorchestra/common/log.hpp"
-#include "voxorchestra/protocol/message_envelope.hpp"
-#include "voxorchestra/transport/transport_error.hpp"
+#include "slotnexus/common/log.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
+#include "slotnexus/transport/transport_error.hpp"
 
-namespace voxorchestra::gateway {
+namespace slotnexus::gateway {
 
 using protocol::MessageEnvelope;
 using protocol::MessageType;
@@ -147,4 +147,4 @@ void EdgeGateway::handle_protocol_error(
   (void)message;
 }
 
-}  // namespace voxorchestra::gateway
+}  // namespace slotnexus::gateway

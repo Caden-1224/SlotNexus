@@ -18,9 +18,9 @@
 #include "SynthesizerTrn.h"
 #include "utils.h"
 
-#include "voxorchestra/backend/summer_tts/summer_tts_backend.hpp"
+#include "slotnexus/backend/summer_tts/summer_tts_backend.hpp"
 
-namespace voxorchestra::backend::summer_tts {
+namespace slotnexus::backend::summer_tts {
 
 struct SummerTtsBackend::Impl {
   Impl(float* model_data, int32_t model_size, float scale)
@@ -86,4 +86,4 @@ void SummerTtsBackend::synthesize(const std::string& text) {
 
 void SummerTtsBackend::cancel() { impl_->cancelled.store(true); }
 
-}  // namespace voxorchestra::backend::summer_tts
+}  // namespace slotnexus::backend::summer_tts

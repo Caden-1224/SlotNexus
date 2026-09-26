@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(voxorchestra
+project(slotnexus
   VERSION 0.1.0
-  DESCRIPTION "VoxOrchestra: 端侧多进程通信与推理中间件（统一后端契约、有界数据面、进程隔离）"
+  DESCRIPTION "SlotNexus: 端侧多进程通信与推理中间件（统一后端契约、有界数据面、进程隔离）"
   LANGUAGES CXX)
 
 # 统一使用 C++17：本项目所有库与可执行文件共用的语言标准。
@@ -16,7 +16,7 @@ endif()
 
 # 硬件 Backend（RKLLM/sherpa-onnx/SummerTTS/ALSA）默认关闭，
 # 保证 x86 开发环境不需要任何厂商 SDK 或声卡即可构建和测试。
-option(VOXORCHESTRA_ENABLE_HARDWARE_BACKENDS
+option(SLOTNEXUS_ENABLE_HARDWARE_BACKENDS
   "构建硬件 Backend（需要厂商 SDK 与目标硬件）" OFF)
 
 enable_testing()

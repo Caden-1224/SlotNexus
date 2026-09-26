@@ -1,9 +1,9 @@
-#include "voxorchestra/rag/text_normalizer.hpp"
+#include "slotnexus/rag/text_normalizer.hpp"
 
 #include <cstdint>
 #include <cctype>
 
-namespace voxorchestra::rag {
+namespace slotnexus::rag {
 
 namespace {
 
@@ -153,4 +153,4 @@ std::vector<std::string> tokenize(const std::string& text) {
   return tokens;
 }
 
-}  // namespace voxorchestra::rag
+}  // namespace slotnexus::rag

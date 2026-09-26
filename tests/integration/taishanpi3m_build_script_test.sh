@@ -3,7 +3,7 @@ set -euo pipefail
 
 CASE_NAME=$1
 BUILD_SCRIPT=$2
-TEST_ROOT=$(mktemp -d /tmp/voxorchestra-board-build-test.XXXXXX)
+TEST_ROOT=$(mktemp -d /tmp/slotnexus-board-build-test.XXXXXX)
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
 FAKE_BIN="$TEST_ROOT/bin"
@@ -29,7 +29,7 @@ export PATH="$FAKE_BIN:/usr/bin:/bin"
 case "$CASE_NAME" in
   default)
     /bin/bash "$BUILD_SCRIPT" default
-    grep -Fq -- 'cmake -S . -B build-taishanpi3m -DCMAKE_BUILD_TYPE=Release -DVOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=OFF' "$COMMAND_LOG"
+    grep -Fq -- 'cmake -S . -B build-taishanpi3m -DCMAKE_BUILD_TYPE=Release -DSLOTNEXUS_ENABLE_HARDWARE_BACKENDS=OFF' "$COMMAND_LOG"
     grep -Fq -- 'cmake --build build-taishanpi3m -j4' "$COMMAND_LOG"
     grep -Fq -- 'ctest --test-dir build-taishanpi3m --output-on-failure' "$COMMAND_LOG"
     grep -Fq -- 'bash scripts/check_no_hw_deps.sh build-taishanpi3m' "$COMMAND_LOG"
@@ -53,21 +53,21 @@ case "$CASE_NAME" in
       "$RKLLM_ROOT/aarch64/librkllmrt.so" \
       "$RKLLM_MODEL" "$TTS_MODEL"
 
-    VOXORCHESTRA_SHERTA_ROOT="$SHERPA_ROOT" \
-    VOXORCHESTRA_RKLLM_ROOT="$RKLLM_ROOT" \
-    VOXORCHESTRA_SUMMERTTS_ROOT="$TTS_ROOT" \
-    VOXORCHESTRA_ASR_MODEL="$ASR_MODEL" \
-    VOXORCHESTRA_RKLLM_MODEL="$RKLLM_MODEL" \
-    VOXORCHESTRA_TTS_MODEL="$TTS_MODEL" \
+    SLOTNEXUS_SHERTA_ROOT="$SHERPA_ROOT" \
+    SLOTNEXUS_RKLLM_ROOT="$RKLLM_ROOT" \
+    SLOTNEXUS_SUMMERTTS_ROOT="$TTS_ROOT" \
+    SLOTNEXUS_ASR_MODEL="$ASR_MODEL" \
+    SLOTNEXUS_RKLLM_MODEL="$RKLLM_MODEL" \
+    SLOTNEXUS_TTS_MODEL="$TTS_MODEL" \
       /bin/bash "$BUILD_SCRIPT" hardware
 
-    grep -Fq -- 'cmake -S . -B build-taishanpi3m-hw -DCMAKE_BUILD_TYPE=Release -DVOXORCHESTRA_ENABLE_HARDWARE_BACKENDS=ON' "$COMMAND_LOG"
-    grep -Fq -- "-DVOXORCHESTRA_SHERTA_ROOT=$SHERPA_ROOT" "$COMMAND_LOG"
-    grep -Fq -- "-DVOXORCHESTRA_RKLLM_ROOT=$RKLLM_ROOT" "$COMMAND_LOG"
-    grep -Fq -- "-DVOXORCHESTRA_SUMMERTTS_ROOT=$TTS_ROOT" "$COMMAND_LOG"
-    grep -Fq -- "-DVOXORCHESTRA_ASR_MODEL=$ASR_MODEL" "$COMMAND_LOG"
-    grep -Fq -- "-DVOXORCHESTRA_RKLLM_MODEL=$RKLLM_MODEL" "$COMMAND_LOG"
-    grep -Fq -- "-DVOXORCHESTRA_TTS_MODEL=$TTS_MODEL" "$COMMAND_LOG"
+    grep -Fq -- 'cmake -S . -B build-taishanpi3m-hw -DCMAKE_BUILD_TYPE=Release -DSLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON' "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_SHERTA_ROOT=$SHERPA_ROOT" "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_RKLLM_ROOT=$RKLLM_ROOT" "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_SUMMERTTS_ROOT=$TTS_ROOT" "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_ASR_MODEL=$ASR_MODEL" "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_RKLLM_MODEL=$RKLLM_MODEL" "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_TTS_MODEL=$TTS_MODEL" "$COMMAND_LOG"
     grep -Fq -- 'cmake --build build-taishanpi3m-hw -j4' "$COMMAND_LOG"
     grep -Fq -- 'ctest --test-dir build-taishanpi3m-hw --output-on-failure' "$COMMAND_LOG"
     if grep -Fq 'check_no_hw_deps.sh' "$COMMAND_LOG"; then
@@ -78,12 +78,12 @@ case "$CASE_NAME" in
   missing)
     set +e
     OUTPUT=$(env \
-      -u VOXORCHESTRA_SHERTA_ROOT \
-      -u VOXORCHESTRA_RKLLM_ROOT \
-      -u VOXORCHESTRA_SUMMERTTS_ROOT \
-      -u VOXORCHESTRA_ASR_MODEL \
-      -u VOXORCHESTRA_RKLLM_MODEL \
-      -u VOXORCHESTRA_TTS_MODEL \
+      -u SLOTNEXUS_SHERTA_ROOT \
+      -u SLOTNEXUS_RKLLM_ROOT \
+      -u SLOTNEXUS_SUMMERTTS_ROOT \
+      -u SLOTNEXUS_ASR_MODEL \
+      -u SLOTNEXUS_RKLLM_MODEL \
+      -u SLOTNEXUS_TTS_MODEL \
       /bin/bash "$BUILD_SCRIPT" hardware 2>&1)
     STATUS=$?
     set -e
@@ -92,7 +92,7 @@ case "$CASE_NAME" in
       echo '缺失硬件依赖时构建脚本错误返回成功' >&2
       exit 1
     fi
-    grep -Fq '缺少硬件构建参数 VOXORCHESTRA_SHERTA_ROOT' <<< "$OUTPUT"
+    grep -Fq '缺少硬件构建参数 SLOTNEXUS_SHERTA_ROOT' <<< "$OUTPUT"
     if grep -q '^cmake ' "$COMMAND_LOG"; then
       echo '硬件依赖预检失败后不应执行 CMake' >&2
       exit 1

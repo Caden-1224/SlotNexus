@@ -10,7 +10,7 @@
 //  2. 每类 Fake 的确定性输出经全链路可精确断言；
 //  3. tts 产出真实 WAV 文件（44 字节头 + PCM 数据）；
 //  4. SIGTERM 后七个进程全部优雅退出（退出码 0）。
-#include "voxorchestra/protocol/message_envelope.hpp"
+#include "slotnexus/protocol/message_envelope.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -33,7 +33,7 @@
 
 using namespace std::chrono_literals;
 
-namespace ep = voxorchestra::protocol;
+namespace ep = slotnexus::protocol;
 using ep::MessageEnvelope;
 using ep::MessageType;
 
@@ -308,14 +308,14 @@ void test_fake_nodes_e2e(const char* argv0) {
  }
 
  CHECK(exchange(c, MakeRequest(MessageType::kInference, "w-3", "r-llm",
-                               {{"text", "你好 世界 VoxOrchestra"}}),
+                               {{"text", "你好 世界 SlotNexus"}}),
                 reply, 3000ms));
  CHECK(reply.type() == MessageType::kAck);
  CHECK(reply.request_id() == "r-llm");
- CHECK(reply.payload().value("text", std::string()) == "你好 世界 VoxOrchestra");
+ CHECK(reply.payload().value("text", std::string()) == "你好 世界 SlotNexus");
 
  CHECK(exchange(c, MakeRequest(MessageType::kInference, "w-4", "r-tts",
-                               {{"text", "VoxOrchestra"}}),
+                               {{"text", "SlotNexus"}}),
                 reply, 3000ms));
  CHECK(reply.type() == MessageType::kAck);
  CHECK(reply.request_id() == "r-tts");
