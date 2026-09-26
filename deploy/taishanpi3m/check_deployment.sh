@@ -46,26 +46,36 @@ except (OSError, json.JSONDecodeError) as error:
     print(f"部署预检失败: 无法解析板端配置: {error}", file=sys.stderr)
     raise SystemExit(1)
 
-expected_backends = {
-    "asr": "sherpa_onnx",
-    "llm": "rkllm",
-    "tts": "summertts",
+allowed_backends = {
+    "asr": ("sherpa_onnx",),
+    "llm": ("rkllm",),
+    "tts": ("melotts", "summertts"),
 }
-for section, expected in expected_backends.items():
+for section, allowed in allowed_backends.items():
     actual = config.get(section, {}).get("backend")
-    if actual != expected:
+    if actual not in allowed:
         print(
-            f"部署预检失败: {section.upper()} Backend 应为 {expected}，实际为 {actual!r}",
+            f"部署预检失败: {section.upper()} Backend 应为 {'/'.join(allowed)}，实际为 {actual!r}",
             file=sys.stderr,
         )
         raise SystemExit(1)
 
-path_specs = (
+tts = config.get("tts", {})
+path_specs = [
     ("知识库", config.get("knowledge"), "file"),
     ("ASR 模型", config.get("asr", {}).get("model"), "directory"),
     ("LLM 模型", config.get("llm", {}).get("model"), "file"),
-    ("TTS 模型", config.get("tts", {}).get("model"), "file"),
-)
+]
+if tts.get("backend") == "melotts":
+    path_specs += [
+        ("MeloTTS 编码器模型", tts.get("encoder_model"), "file"),
+        ("MeloTTS 解码器模型", tts.get("decoder_model"), "file"),
+        ("MeloTTS 词典", tts.get("lexicon"), "file"),
+        ("MeloTTS token 表", tts.get("tokens"), "file"),
+        ("MeloTTS g 向量", tts.get("g_vector"), "file"),
+    ]
+else:
+    path_specs.append(("TTS 模型", tts.get("model"), "file"))
 
 for label, configured_path, expected_type in path_specs:
     if not isinstance(configured_path, str) or not configured_path:

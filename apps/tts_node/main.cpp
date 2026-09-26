@@ -1,8 +1,11 @@
 // tts_node 可执行入口：语音合成节点（WAV 输出 / ALSA 声卡播放）。
 //
 // 用法：tts_node [--listen tcp://127.0.0.1:19204] [--output-dir <目录>]
-//                [--config <session.json>] [--backend fake|summertts]
+//                [--config <session.json>] [--backend fake|melotts|summertts]
 //                [--model <模型路径>] [--length-scale <倍率>]
+//                [--encoder-model <onnx>] [--decoder-model <rknn>]
+//                [--lexicon <txt>] [--tokens <txt>] [--g-vector <bin>]
+//                [--speed <倍率>]
 //                [--sink wav|alsa] [--sink-device <设备名>]
 //                [--infer-timeout-ms <ms>]
 // 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204。
@@ -17,16 +20,15 @@
 //   - --sink alsa：改走 AlsaAudioSink（板端声卡实时播放，不落盘），
 //     返回 {"device": ..., "pcm_bytes": N, "sample_rate": 实际值}。
 //     sink 采样率 = 合成端输出率 = 契约 kSampleRateHz（16 kHz mono S16）：
-//     SummerTTS 中文模型（single_speaker_fast.bin，标贝语料）与 Fake 同为
-//     16 kHz（板端 F0 实测 ~213 Hz，年轻女声正常，证实非 22050）。
+//     MeloTTS 原生 44.1 kHz 由后端内部线性重采样到 16 kHz，Fake 同为 16 kHz。
 //     --sink-device 默认 "default"，板端显式 plughw:0,0（ES8323）；
 //     x86 默认构建在 --sink alsa 时拒绝启动（SLOTNEXUS_HAS_ALSA 门控）。
 //
-// 后端经工厂注入：--backend fake（默认，x86/Mock 回归基线）或 summertts
-// （板端真实 vits，需 SLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON 构建）。
-// 模型路径经 --model 或 session.json::tts.model 参数化，不硬编码；
-// 每次 setup 产出独立后端实例（TaskRuntime 工厂语义），SummerTTS 实例
-// 持有独立模型上下文（峰值 RSS ~408 MB/实例，见 artifacts/upstream-baseline/）。
+// 后端经工厂注入：--backend fake（默认，x86/Mock 回归基线）、melotts
+// （板端真实合成：ONNX Runtime CPU 编码器 + RKNN NPU 解码器，当前默认）或
+// summertts（板端真实 vits，需显式提供 SummerTTS 源码根目录）。
+// 模型路径经 session.json::tts 或命令行参数注入，不硬编码；每次 setup 产出
+// 独立后端实例（TaskRuntime 工厂语义），真实后端实例持有独立模型上下文。
 // SIGINT/SIGTERM 优雅退出（退出码 0）。
 #include <atomic>
 #include <chrono>
@@ -48,6 +50,9 @@
 #include "slotnexus/backend/backend_event.hpp"
 #include "slotnexus/backend/fake/fake_audio_sink.hpp"
 #include "slotnexus/backend/fake/fake_tts_backend.hpp"
+#ifdef SLOTNEXUS_HAS_MELOTTS
+#include "slotnexus/backend/melotts/melotts_tts_backend.hpp"
+#endif
 #ifdef SLOTNEXUS_HAS_SUMMERTTS
 #include "slotnexus/backend/summer_tts/summer_tts_backend.hpp"
 #endif
@@ -171,6 +176,30 @@ volatile std::sig_atomic_t g_stop = 0;
 
 void handle_signal(int /*sig*/) { g_stop = 1; }
 
+// MeloTTS 后端的运行时配置取值（与 session.json::tts 对应）。
+// 单独抽成一份纯数据，避免在未启用硬件构建时把厂商头引入节点外壳。
+struct MeloConfigValues {
+  std::string encoder_model;
+  std::string decoder_model;
+  std::string lexicon;
+  std::string tokens;
+  std::string g_vector;
+  float speed = 0.8f;
+  float noise_scale = 0.3f;
+  float noise_scale_w = 0.6f;
+  float sdp_ratio = 0.2f;
+  int intra_op_threads = 1;
+  int native_sample_rate = 44100;
+  int max_encoder_phones = 240;
+  int run_timeout_ms = 30000;
+
+  // 五个资源路径是否齐全（backend=melotts 启动前置条件）。
+  bool complete() const {
+    return !encoder_model.empty() && !decoder_model.empty() && !lexicon.empty() &&
+           !tokens.empty() && !g_vector.empty();
+  }
+};
+
 float parse_float(const char* s, float fallback) {
   try {
     return std::stof(s);
@@ -195,6 +224,7 @@ int main(int argc, char** argv) {
   std::string backend_name = "fake";  // 默认 Fake（x86/Mock 回归基线）
   std::string model_path;             // summertts 后端必填
   float length_scale = 1.0f;          // 语速倍率（门禁基线 1.0）
+  MeloConfigValues melo;              // melotts 后端配置
   std::string sink_name = "wav";      // 输出目标：wav（默认）/ alsa
   std::string sink_device = "default";  // alsa 设备名（板端 plughw:0,0）
   int infer_timeout_ms = 0;           // 节点内推理超时；0 = 默认 5000 ms
@@ -220,6 +250,22 @@ int main(int argc, char** argv) {
         length_scale = t.value("length_scale", length_scale);
         sink_name = t.value("sink", sink_name);            // 可选，缺省 wav
         sink_device = t.value("sink_device", sink_device);
+        // MeloTTS 段（backend=melotts 时使用）。
+        melo.encoder_model = t.value("encoder_model", melo.encoder_model);
+        melo.decoder_model = t.value("decoder_model", melo.decoder_model);
+        melo.lexicon = t.value("lexicon", melo.lexicon);
+        melo.tokens = t.value("tokens", melo.tokens);
+        melo.g_vector = t.value("g_vector", melo.g_vector);
+        melo.speed = t.value("speed", melo.speed);
+        melo.noise_scale = t.value("noise_scale", melo.noise_scale);
+        melo.noise_scale_w = t.value("noise_scale_w", melo.noise_scale_w);
+        melo.sdp_ratio = t.value("sdp_ratio", melo.sdp_ratio);
+        melo.intra_op_threads = t.value("intra_op_threads", melo.intra_op_threads);
+        melo.native_sample_rate =
+            t.value("native_sample_rate", melo.native_sample_rate);
+        melo.max_encoder_phones =
+            t.value("max_encoder_phones", melo.max_encoder_phones);
+        melo.run_timeout_ms = t.value("run_timeout_ms", melo.run_timeout_ms);
       }
     }
   }
@@ -234,6 +280,18 @@ int main(int argc, char** argv) {
       model_path = argv[i + 1];
     } else if (std::string(argv[i]) == "--length-scale") {
       length_scale = parse_float(argv[i + 1], 1.0f);
+    } else if (std::string(argv[i]) == "--encoder-model") {
+      melo.encoder_model = argv[i + 1];
+    } else if (std::string(argv[i]) == "--decoder-model") {
+      melo.decoder_model = argv[i + 1];
+    } else if (std::string(argv[i]) == "--lexicon") {
+      melo.lexicon = argv[i + 1];
+    } else if (std::string(argv[i]) == "--tokens") {
+      melo.tokens = argv[i + 1];
+    } else if (std::string(argv[i]) == "--g-vector") {
+      melo.g_vector = argv[i + 1];
+    } else if (std::string(argv[i]) == "--speed") {
+      melo.speed = parse_float(argv[i + 1], melo.speed);
     } else if (std::string(argv[i]) == "--sink") {
       sink_name = argv[i + 1];
     } else if (std::string(argv[i]) == "--sink-device") {
@@ -250,11 +308,25 @@ int main(int argc, char** argv) {
     std::cerr << "--events 与 --events-sync 须成对指定" << std::endl;
     return 1;
   }
-  if (backend_name != "fake" && backend_name != "summertts") {
+  if (backend_name != "fake" && backend_name != "melotts" &&
+      backend_name != "summertts") {
     std::cerr << "未知后端: " << backend_name
-              << "（支持 fake / summertts）" << std::endl;
+              << "（支持 fake / melotts / summertts）" << std::endl;
     return 1;
   }
+#ifdef SLOTNEXUS_HAS_MELOTTS
+  if (backend_name == "melotts" && !melo.complete()) {
+    std::cerr << "melotts 后端需要 --encoder-model/--decoder-model/--lexicon/"
+                 "--tokens/--g-vector（或 session.json::tts 同名项）" << std::endl;
+    return 1;
+  }
+#else
+  if (backend_name == "melotts") {
+    std::cerr << "当前构建未启用 MeloTTS 后端（需 "
+                 "-DSLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON）" << std::endl;
+    return 1;
+  }
+#endif
 #ifdef SLOTNEXUS_HAS_SUMMERTTS
   if (backend_name == "summertts" && model_path.empty()) {
     std::cerr << "summertts 后端需要 --model（或 session.json::tts.model）" << std::endl;
@@ -283,6 +355,37 @@ int main(int argc, char** argv) {
 
   // 后端工厂：每次 setup 产出独立实例（每任务一个模型上下文）。
   auto make_tts = [&]() -> std::unique_ptr<slotnexus::backend::ITtsBackend> {
+    if (backend_name == "melotts") {
+#ifdef SLOTNEXUS_HAS_MELOTTS
+      slotnexus::backend::melotts::MeloTtsConfig config;
+      config.encoder_model_path = melo.encoder_model;
+      config.decoder_model_path = melo.decoder_model;
+      config.lexicon_path = melo.lexicon;
+      config.tokens_path = melo.tokens;
+      config.g_path = melo.g_vector;
+      config.speed = melo.speed;
+      config.noise_scale = melo.noise_scale;
+      config.noise_scale_w = melo.noise_scale_w;
+      config.sdp_ratio = melo.sdp_ratio;
+      config.intra_op_num_threads = melo.intra_op_threads;
+      if (melo.native_sample_rate > 0) {
+        config.native_sample_rate_hz =
+            static_cast<std::uint32_t>(melo.native_sample_rate);
+      }
+      if (melo.max_encoder_phones > 0) {
+        config.max_encoder_phones =
+            static_cast<std::size_t>(melo.max_encoder_phones);
+      }
+      if (melo.run_timeout_ms > 0) {
+        config.run_timeout_ms = static_cast<std::uint32_t>(melo.run_timeout_ms);
+      }
+      return std::make_unique<slotnexus::backend::melotts::MeloTtsBackend>(
+          std::move(config));
+#else
+      throw std::runtime_error(
+          "当前构建未启用 MeloTTS 后端（需 -DSLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON）");
+#endif
+    }
     if (backend_name == "summertts") {
 #ifdef SLOTNEXUS_HAS_SUMMERTTS
       if (model_path.empty()) {
@@ -337,6 +440,10 @@ int main(int argc, char** argv) {
   try {
     node.bind(listen);
     std::cout << "tts_node 监听 " << listen << "（" << backend_name << " 后端";
+    if (backend_name == "melotts") {
+      std::cout << "，编码器 " << melo.encoder_model << "，解码器 "
+                << melo.decoder_model << "，语速 " << melo.speed;
+    }
     if (backend_name == "summertts") {
       std::cout << "，模型 " << model_path << "，语速 " << length_scale;
     }

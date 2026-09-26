@@ -103,15 +103,57 @@ temperature=0.8 / enable_thinking=0 / reasoning_end_tag=""`。
 即：这是配置错误导致的性能退化，不是数据丢失，也不是后端缺陷；告警与用例
 失败都是该退化模式的可见信号。
 
+## 六进程全链路重跑（2026-09-26）
+
+> 依赖恢复过程见 `artifacts/environment-preflight/board-runtime-restore.md`；
+> TTS 侧证据见 `artifacts/tts-integration/tts-node-melotts.md`；30 轮统计见
+> `docs/benchmark.md`。
+
+本轮把缺依赖补回后，用 `deploy/taishanpi3m/run_real_wav_chain.sh` 跑通了
+六进程全真实链路：ASR（sherpa-onnx v1.13.8 预编译件）→ Session BM25/L0-L3 →
+RKLLM（Qwen3.5-0.8B，RKLLM 1.3.0）→ TTS（MeloTTS，ONNX Runtime CPU 编码器 +
+RKNN NPU 解码器），输出 16 kHz WAV。固定负载 `data/fixtures/demo_zh.wav`
+（3.328 s）。
+
+| 项 | 实测 |
+|---|---|
+| setup | ack，三真实节点模型全部加载（`llm.log` 打印 RKLLM 1.3.0 / RKNPU 0.9.8 / W4A16_G128 / Enabled cpus [0,2]） |
+| ASR 文本 | `你好这是语OUS乘 MONEY` |
+| 路由 | `l2`（带知识库上下文调 LLM） |
+| token 数 | 152 |
+| PCM 帧数 | 2379（`dropped_pcm_frames=0`、`dropped_sentences=0`） |
+| 队列峰值 | `text_queue_peak=6`、`pcm_queue_peak=32`（达到 `pcm_capacity=32`，但无丢弃） |
+| 端到端单轮 | 60.34 s（21:34:17.365 → 21:35:17.709） |
+| WAV | `/tmp/wav-chain/session-out/session_377421f6.wav`，1,522,604 B，`RIFF` 校验通过 |
+| 节点峰值 RSS | ASR 113,600 kB / LLM 891,148 kB / TTS 221,752 kB |
+| 优雅退出 | 六进程 SIGTERM 后 4 s 全部退出 |
+
+单后端指标（本轮用 `rkllm_llm_test` 重新采集，固定 prompt，`reasoning_end_tag`
+关闭）：
+
+| 配置 | tokens | TTFT | 单轮总耗时 | decode |
+|---|---:|---:|---:|---:|
+| `max_new_tokens=120 / ctx=256` | 39 | 2925.8 ms | 8.31 s | 7.24 tok/s |
+| 同上（会话重置轮） | 39 | 2972.5 ms | 8.63 s | 6.89 tok/s |
+| `max_new_tokens=256 / ctx=256` | 39 | 2844.5 ms | 8.24 s | 7.23 tok/s |
+| 同上（会话重置轮） | 39 | 2938.2 ms | 9.45 s | 5.99 tok/s |
+
+模型在 39 个 token 后自然结束（贪心输出逐字稳定），因此 120 与 256 两个预算
+给出同一段文本；`max_new_tokens` 不是本轮的耗时瓶颈，**回答长度**才是：
+链路里 L2 上下文把回答拉长到 152 token，端到端因此约 60 s，与上一代 1.5B
+基线的 p50 56.3 s 同量级——差异来自回答长度与 TTS 句数，不能归因于模型换代。
+
 ## 未测量 / 边界
 
-- 六进程全链路（gateway → manager → session → llm）未跑：板上没有本次改动后
-  的 SlotNexus 部署，基线 SDK 目录缺失，且 ASR/TTS 仍是旧模型链；本次只
-  证明 LLM 后端在 Qwen3.5-0.8B 上可用。
-- 未测 NPU/CPU 争用：Qwen3.5-0.8B 单后端独占时可用，与 ASR/TTS 并发时的
-  首 token 延迟、吞吐与 RSS 均无数据。
-- 未测长时运行（温度/频率劣化）、未测 30 轮。
-- TTS 朗读链路未验证，Qwen3.5 输出中的英文与数字标点的分词行为未评估。
+- 单后端已重跑；六进程全链路与 30 轮稳定性已在本轮完成（见上节与
+  `docs/benchmark.md`）。仍未测：并发请求、更大 `max_context_len` 的 A/B、
+  CPU 绑核 A/B、warmup 前后对比。
+- NPU/CPU 争用：ASR/TTS 与 LLM 同驻时，MeloTTS 解码器与 RKLLM 共享 NPU；
+  链路内 TTS 的 RTF（0.488–0.717）明显高于单后端（0.670 量级）之外的额外
+  等待没有单独拆分。
+- 长时运行（温度/频率劣化）：30 轮口径已采集，更长时间未测。
+- TTS 朗读链路已用 MeloTTS 验证；Qwen3.5 输出中的英文与数字标点的分词行为
+  仍未单独评估（`unknown_units` 在日志中可见）。
 - 待跟进风险（本次未定位到后端内部）：400 token 的探针在 30 s 等待上限内没有
   等到 `FINISH`，超时后直接 `rkllm_destroy`，此时厂商线程仍投递回调，进程以
   exit 139（段错误）结束。后端的析构路径同样只在 `running` 为真时

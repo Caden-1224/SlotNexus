@@ -1,14 +1,22 @@
 #!/bin/bash
 # 板端核验：真机固定 WAV 全链路基线。
 # gateway → manager → session_node（--backend net --asr-uplink）→ 三真实节点：
-#   asr_node（sherpa_onnx 识别）/ llm_node（rkllm 推理）/ tts_node（summertts 合成）。
-# 固定负载：data/fixtures/demo_zh.wav（板端 summertts 合成中文语音，
-# 16 kHz/16-bit/单声道，经会话侧 PCM 累积上行 asr 节点）。
+#   asr_node（sherpa_onnx 识别）/ llm_node（rkllm 推理）/ tts_node（melotts 合成）。
+# 固定负载：data/fixtures/demo_zh.wav（固定中文语音，16 kHz/16-bit/单声道，
+# 经会话侧 PCM 累积上行 asr 节点）。
 # 输出 /tmp/wav-chain/，逐项核验后优雅退出。
+#
+# 依赖根可用环境变量覆盖（缺省与本机板端目录一致）：
+#   SLOTNEXUS_DEPLOY_ROOT / SLOTNEXUS_RKLLM_ROOT / SLOTNEXUS_SHERTA_ROOT /
+#   SLOTNEXUS_MELOTTS_ROOT
 # 用法：板端执行。
 set -u
-cd ~/workspace/slotnexus-runtime
-export LD_LIBRARY_PATH=/home/lckfb/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api/aarch64
+DEPLOY_ROOT=${SLOTNEXUS_DEPLOY_ROOT:-$HOME/workspace/slotnexus-runtime}
+RKLLM_ROOT=${SLOTNEXUS_RKLLM_ROOT:-$HOME/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api}
+SHERTA_ROOT=${SLOTNEXUS_SHERTA_ROOT:-$HOME/workspace/upstream_rkllm/sherpa-root}
+MELOTTS_ROOT=${SLOTNEXUS_MELOTTS_ROOT:-$HOME/workspace/upstream_melotts}
+cd "$DEPLOY_ROOT" || exit 1
+export LD_LIBRARY_PATH="$RKLLM_ROOT/aarch64:$SHERTA_ROOT/build/lib:$SHERTA_ROOT/build/_deps/onnxruntime-src/lib:$MELOTTS_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 OUT=/tmp/wav-chain
 rm -rf "$OUT"
 mkdir -p "$OUT/session-out" "$OUT/tts-node"

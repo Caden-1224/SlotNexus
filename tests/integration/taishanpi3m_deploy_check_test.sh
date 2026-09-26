@@ -11,6 +11,7 @@ mkdir -p \
   "$TEST_ROOT/config/taishanpi3m" \
   "$TEST_ROOT/data/knowledge" \
   "$TEST_ROOT/models/asr" \
+  "$TEST_ROOT/models/melotts" \
   "$TEST_ROOT/bin"
 
 for app in edge_gateway unit_manager session_node asr_node llm_node tts_node; do
@@ -23,14 +24,25 @@ touch \
   "$TEST_ROOT/data/knowledge/knowledge.jsonl" \
   "$TEST_ROOT/models/asr/tokens.txt" \
   "$TEST_ROOT/models/model.rkllm" \
-  "$TEST_ROOT/models/tts.bin"
+  "$TEST_ROOT/models/melotts/encoder-zh.onnx" \
+  "$TEST_ROOT/models/melotts/decoder-zh.rknn" \
+  "$TEST_ROOT/models/melotts/lexicon.txt" \
+  "$TEST_ROOT/models/melotts/tokens.txt" \
+  "$TEST_ROOT/models/melotts/g-zh_mix_en.bin"
 
 cat > "$TEST_ROOT/config/taishanpi3m/session.json" <<'EOF'
 {
   "knowledge": "data/knowledge/knowledge.jsonl",
   "asr": {"backend": "sherpa_onnx", "model": "models/asr"},
   "llm": {"backend": "rkllm", "model": "models/model.rkllm"},
-  "tts": {"backend": "summertts", "model": "models/tts.bin"}
+  "tts": {
+    "backend": "melotts",
+    "encoder_model": "models/melotts/encoder-zh.onnx",
+    "decoder_model": "models/melotts/decoder-zh.rknn",
+    "lexicon": "models/melotts/lexicon.txt",
+    "tokens": "models/melotts/tokens.txt",
+    "g_vector": "models/melotts/g-zh_mix_en.bin"
+  }
 }
 EOF
 

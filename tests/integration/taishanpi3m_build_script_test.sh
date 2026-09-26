@@ -37,37 +37,54 @@ case "$CASE_NAME" in
   hardware)
     SHERPA_ROOT="$TEST_ROOT/sherpa"
     RKLLM_ROOT="$TEST_ROOT/rkllm"
-    TTS_ROOT="$TEST_ROOT/summertts"
+    MELOTTS_ROOT="$TEST_ROOT/melotts"
     ASR_MODEL="$TEST_ROOT/models/asr"
     RKLLM_MODEL="$TEST_ROOT/models/model.rkllm"
-    TTS_MODEL="$TEST_ROOT/models/tts.bin"
+    MELOTTS_ENCODER="$TEST_ROOT/models/encoder-zh.onnx"
+    MELOTTS_DECODER="$TEST_ROOT/models/decoder-zh.rknn"
+    MELOTTS_LEXICON="$TEST_ROOT/models/lexicon.txt"
+    MELOTTS_TOKENS="$TEST_ROOT/models/tokens.txt"
+    MELOTTS_G="$TEST_ROOT/models/g-zh_mix_en.bin"
     mkdir -p \
       "$SHERPA_ROOT/sherpa-onnx/c-api" "$SHERPA_ROOT/build/lib" \
       "$RKLLM_ROOT/include" "$RKLLM_ROOT/aarch64" \
-      "$TTS_ROOT/src" "$TTS_ROOT/include" "$TTS_ROOT/eigen-3.4.0" \
+      "$MELOTTS_ROOT/include" "$MELOTTS_ROOT/lib" \
       "$ASR_MODEL"
     touch \
       "$SHERPA_ROOT/sherpa-onnx/c-api/c-api.h" \
       "$SHERPA_ROOT/build/lib/libsherpa-onnx-c-api.so" \
       "$RKLLM_ROOT/include/rkllm.h" \
       "$RKLLM_ROOT/aarch64/librkllmrt.so" \
-      "$RKLLM_MODEL" "$TTS_MODEL"
+      "$MELOTTS_ROOT/include/onnxruntime_c_api.h" \
+      "$MELOTTS_ROOT/include/rknn_api.h" \
+      "$MELOTTS_ROOT/lib/libonnxruntime.so" \
+      "$MELOTTS_ROOT/lib/librknnrt.so" \
+      "$RKLLM_MODEL" "$MELOTTS_ENCODER" "$MELOTTS_DECODER" \
+      "$MELOTTS_LEXICON" "$MELOTTS_TOKENS" "$MELOTTS_G"
 
     SLOTNEXUS_SHERTA_ROOT="$SHERPA_ROOT" \
     SLOTNEXUS_RKLLM_ROOT="$RKLLM_ROOT" \
-    SLOTNEXUS_SUMMERTTS_ROOT="$TTS_ROOT" \
+    SLOTNEXUS_MELOTTS_ROOT="$MELOTTS_ROOT" \
     SLOTNEXUS_ASR_MODEL="$ASR_MODEL" \
     SLOTNEXUS_RKLLM_MODEL="$RKLLM_MODEL" \
-    SLOTNEXUS_TTS_MODEL="$TTS_MODEL" \
+    SLOTNEXUS_MELOTTS_ENCODER="$MELOTTS_ENCODER" \
+    SLOTNEXUS_MELOTTS_DECODER="$MELOTTS_DECODER" \
+    SLOTNEXUS_MELOTTS_LEXICON="$MELOTTS_LEXICON" \
+    SLOTNEXUS_MELOTTS_TOKENS="$MELOTTS_TOKENS" \
+    SLOTNEXUS_MELOTTS_G="$MELOTTS_G" \
       /bin/bash "$BUILD_SCRIPT" hardware
 
     grep -Fq -- 'cmake -S . -B build-taishanpi3m-hw -DCMAKE_BUILD_TYPE=Release -DSLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON' "$COMMAND_LOG"
     grep -Fq -- "-DSLOTNEXUS_SHERTA_ROOT=$SHERPA_ROOT" "$COMMAND_LOG"
     grep -Fq -- "-DSLOTNEXUS_RKLLM_ROOT=$RKLLM_ROOT" "$COMMAND_LOG"
-    grep -Fq -- "-DSLOTNEXUS_SUMMERTTS_ROOT=$TTS_ROOT" "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_MELOTTS_ROOT=$MELOTTS_ROOT" "$COMMAND_LOG"
     grep -Fq -- "-DSLOTNEXUS_ASR_MODEL=$ASR_MODEL" "$COMMAND_LOG"
     grep -Fq -- "-DSLOTNEXUS_RKLLM_MODEL=$RKLLM_MODEL" "$COMMAND_LOG"
-    grep -Fq -- "-DSLOTNEXUS_TTS_MODEL=$TTS_MODEL" "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_MELOTTS_ENCODER=$MELOTTS_ENCODER" "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_MELOTTS_DECODER=$MELOTTS_DECODER" "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_MELOTTS_LEXICON=$MELOTTS_LEXICON" "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_MELOTTS_TOKENS=$MELOTTS_TOKENS" "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_MELOTTS_G=$MELOTTS_G" "$COMMAND_LOG"
     grep -Fq -- 'cmake --build build-taishanpi3m-hw -j4' "$COMMAND_LOG"
     grep -Fq -- 'ctest --test-dir build-taishanpi3m-hw --output-on-failure' "$COMMAND_LOG"
     if grep -Fq 'check_no_hw_deps.sh' "$COMMAND_LOG"; then
@@ -80,9 +97,15 @@ case "$CASE_NAME" in
     OUTPUT=$(env \
       -u SLOTNEXUS_SHERTA_ROOT \
       -u SLOTNEXUS_RKLLM_ROOT \
+      -u SLOTNEXUS_MELOTTS_ROOT \
       -u SLOTNEXUS_SUMMERTTS_ROOT \
       -u SLOTNEXUS_ASR_MODEL \
       -u SLOTNEXUS_RKLLM_MODEL \
+      -u SLOTNEXUS_MELOTTS_ENCODER \
+      -u SLOTNEXUS_MELOTTS_DECODER \
+      -u SLOTNEXUS_MELOTTS_LEXICON \
+      -u SLOTNEXUS_MELOTTS_TOKENS \
+      -u SLOTNEXUS_MELOTTS_G \
       -u SLOTNEXUS_TTS_MODEL \
       /bin/bash "$BUILD_SCRIPT" hardware 2>&1)
     STATUS=$?

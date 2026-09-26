@@ -64,3 +64,28 @@ TTS 模型 SHA256: 87b774813258a3636b3f1d9adddd3652ede503b4e8f4eb3c39065cba2a495
 
 说明: 上述板端链已经完成真实模型加载、固定 WAV、现场麦克风、故障注入
 和 30 轮稳定性。模型、Runtime、SDK 和动态库均由部署环境提供，不入库。
+
+== 当前板端版本链（2026-09-26 重跑，RKLLM 1.3.0 + MeloTTS）==
+板卡: 立创·泰山派 3M，RK3576，4 GB LPDDR5 + 64 GB
+镜像: 官方 Ubuntu 24.04.4 LTS (Noble Numbat)
+BSP: RK_BUILD_INFO root@ubuntu22 Sat Jul 4 17:35:54 CST 2026
+内核: Linux 6.1.99 #1 SMP Sat Jul 4 15:29:50 CST 2026 aarch64
+编译器: g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0，cmake 3.28.3
+RKNPU 驱动: 0.9.8 20240828（dmesg: Initialized rknpu）
+RKLLM Runtime: 1.3.0（llm.log: rkllm-runtime version: 1.3.0, rknpu driver version: 0.9.8, platform: RK3576）
+librkllmrt.so SHA256: 6a9e4fc5324c68921c3a900340361e107af7599fe34dc8fa7759b2c5ae22a6e6
+LLM 模型: Qwen3.5-0.8B_w4a16_g128_rk3576.rkllm（1125915612 B，max_context_limit 4096 / npu_core_num 2 / W4A16_G128 / Using mrope）
+LLM 模型 SHA256: e3ec6b45e9e888063a6ee56d79ba4474c4416ec8db17f0ca7026a624e1c940d6
+ASR: sherpa-onnx v1.13.8 官方 linux-aarch64 shared-cpu 预编译件 + 自带 ONNX Runtime 1.28.2
+sherpa-onnx C API SHA256: 11378e1aea169aecb59a4d41ca8da6f5ee4f3614c34a4b908dd78de7646a518d
+sherpa-onnx c-api.h (v1.13.8) SHA256: 2a1b95084be8fd1deb3228fcad2fd3f7f0258b64582f7402281ec174c7b7f4ce
+ASR 模型: sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16（int8）
+ASR 模型 SHA256: encoder db6f51551762e40e549166fe041ea3e45464370b595e9ad23f06478ec3794fbb / decoder 4b618d383af304cfae281dbf0a53e8bf442c2f0502256cd5694bd6567ebdd834 / joiner bdda356d6f9b8c2d7cee9ee0e26075fa537490f7fd06520be408d287073667b9
+TTS: MeloTTS（编码器 ONNX Runtime 1.22.1 CPU + 解码器 RKNN NPU）
+TTS 编码器 SHA256: a2b0a5bc2789faef16b4bfc56ab4905364f8163a59f2db3d071b4a14792bfee5 (encoder-zh.onnx, 31397760 B)
+TTS 解码器 SHA256: 071d8dd5e67803eeb54c4d75b875c2ed11900a28c398f281fdc613af43e8a537 (decoder-zh.rknn, 78360973 B)
+TTS 文本资源 SHA256: lexicon 7236884b02435ac5d10cf69b4be40a61b45aa676b5300f0e412f185748fee528 / tokens d18664a7e12bd7ea1022ddaf951e534e136815016c5a809d6b64156bffb4369d / g c70d897674847882bd35e780aee696ddaff8d04d5c57e4f9cf37611b6821879f
+TTS 运行时 SHA256: libonnxruntime.so.1.22.1 7b28635814a0810407791b3e26aff9dccf1b4563210baf3b71133231a35c5f2e / librknnrt.so d31fc19c85b85f6091b2bd0f6af9d962d5264a4e410bfb536402ec92bac738e8
+
+说明: 本条版本链与上一条（1.5B + SummerTTS）是两条独立链路，性能数字不可互算。
+依赖恢复过程、网络约束与哈希清单见 artifacts/environment-preflight/board-runtime-restore.md。

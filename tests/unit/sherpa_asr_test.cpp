@@ -83,9 +83,17 @@ void test_fixed_wav_matches_baseline(const std::string& model_dir) {
                   !events[i].text.empty();
   }
   CHECK(partials_ok);
-  // 门禁基线最终文本（4 threads，见 upstream-baseline.md；换模型/线程数
-  // 需重新核验后更新）。
-  CHECK(events.back().text == "昨天是 MONDAY TODAYS TOMORROW是星");
+  // 门禁基线最终文本（4 threads）。该字符串与 **ASR 运行时版本链** 绑定：
+  //   - 上一代链（板端源码编译的 sherpa-onnx + ONNX Runtime 1.17.1）：
+  //     "昨天是 MONDAY TODAYS TOMORROW是星"
+  //   - 当前链（sherpa-onnx v1.13.8 官方 linux-aarch64 shared-cpu 预编译件，
+  //     自带 ONNX Runtime 1.28.2，tokens.txt 取同版本官方模型包）：
+  //     "昨天是 MONDAY TODAY IS THE AFTER TOMORROW是星"
+  // 两者用的是同一份 int8 模型（encoder/decoder/joiner 的 SHA256 与
+  // upstream-baseline.md 逐项一致），差异来自词典与运行时版本，不是模型替换。
+  // 换模型、tokens.txt 或 ASR 运行时后必须重新核验并同步更新本行。
+  // 证据见 artifacts/environment-preflight/board-runtime-restore.md。
+  CHECK(events.back().text == "昨天是 MONDAY TODAY IS THE AFTER TOMORROW是星");
 
   const auto r = WavReader::read(wav_path);
   const double audio_s =

@@ -1,15 +1,20 @@
 #!/bin/bash
 # 板端核验：现场麦克风闭环——语音 → ALSA 录音（ES8323 板载
-# 麦克风）→ sherpa 识别 → 路由 → rkllm 回答 → summertts 合成输出。
+# 麦克风）→ sherpa 识别 → 路由 → rkllm 回答 → melotts 合成输出。
 # 输入负载 {"mode":"alsa"}：session_node 按 --record-ms 阻塞采集录音，
 # 样本随管线 kMic 输入（音频上行模式 → asr 节点 pcm64 上行）。
 # 录音通路：板载 MIC 为单端接法（Line Mux=MicL + PGA Mux=Line 2L + 增益
 # 拉满），ES8388 默认差分配置采不到信号；录音设备用 plughw:0,0 直通
 # 硬件（default 走 PulseAudio，板上时好时坏，录音流会创建失败）。
+# 依赖根可用环境变量覆盖（与 run_real_wav_chain.sh 一致）。
 # 用法：板端执行（录音期间请对板载麦克风说话）。输出 /tmp/mic-chain/。
 set -u
-cd ~/workspace/slotnexus-runtime
-export LD_LIBRARY_PATH=/home/lckfb/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api/aarch64
+DEPLOY_ROOT=${SLOTNEXUS_DEPLOY_ROOT:-$HOME/workspace/slotnexus-runtime}
+RKLLM_ROOT=${SLOTNEXUS_RKLLM_ROOT:-$HOME/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api}
+SHERTA_ROOT=${SLOTNEXUS_SHERTA_ROOT:-$HOME/workspace/upstream_rkllm/sherpa-root}
+MELOTTS_ROOT=${SLOTNEXUS_MELOTTS_ROOT:-$HOME/workspace/upstream_melotts}
+cd "$DEPLOY_ROOT" || exit 1
+export LD_LIBRARY_PATH="$RKLLM_ROOT/aarch64:$SHERTA_ROOT/build/lib:$SHERTA_ROOT/build/_deps/onnxruntime-src/lib:$MELOTTS_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 OUT=/tmp/mic-chain
 rm -rf "$OUT"
 mkdir -p "$OUT/tts-node" "$OUT/session-out"

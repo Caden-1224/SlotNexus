@@ -39,9 +39,20 @@
     "base_domain_id": 0
   },
   "tts": {
-    "backend": "summertts",
-    "model": "models/single_speaker_fast.bin",
-    "length_scale": 1.0
+    "backend": "melotts",
+    "encoder_model": "models/melotts/encoder-zh.onnx",
+    "decoder_model": "models/melotts/decoder-zh.rknn",
+    "lexicon": "models/melotts/lexicon.txt",
+    "tokens": "models/melotts/tokens.txt",
+    "g_vector": "models/melotts/g-zh_mix_en.bin",
+    "native_sample_rate": 44100,
+    "speed": 0.8,
+    "noise_scale": 0.3,
+    "noise_scale_w": 0.6,
+    "sdp_ratio": 0.2,
+    "intra_op_threads": 1,
+    "max_encoder_phones": 240,
+    "run_timeout_ms": 30000
   },
   "tts_min_duration_ms": 1000,
   "max_run_ms": 180000

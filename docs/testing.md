@@ -44,7 +44,7 @@ bash <clean-dir>/scripts/check_no_hw_deps.sh <clean-dir>/build-clean
 | 构建入口参数与缺失依赖 | `taishanpi3m_build_*` | 板端原生构建，最多 `-j4` |
 | 部署预检 | `taishanpi3m_deploy_*` | 六个程序、配置、三类模型和动态库 |
 | 启停与回滚 | `taishanpi3m_*start/stop*` | setup、PID 身份、停止后零残留 |
-| Backend 契约 | x86 Fake/协议回归、`rkllm_reasoning_filter_test` 纯逻辑 | sherpa-onnx、RKLLM、SummerTTS、ALSA 各自板端核验 |
+| Backend 契约 | x86 Fake/协议回归、`rkllm_reasoning_filter_test` 纯逻辑 | sherpa-onnx、RKLLM、MeloTTS、ALSA 各自板端核验 |
 | 全真实 E2E | 不以 Fake 结果代替 | 固定 WAV、现场麦克风、故障注入、30 轮稳定性 |
 
 `rkllm_llm_test`（硬件后端构建）的模型与取样参数全部经环境变量注入，因此
@@ -56,10 +56,29 @@ bash <clean-dir>/scripts/check_no_hw_deps.sh <clean-dir>/build-clean
 | `SLOTNEXUS_RKLLM_MAX_NEW_TOKENS` / `_MAX_CONTEXT_LEN` | 100 / 256 | 单轮 token 上限与上下文窗口 |
 | `SLOTNEXUS_RKLLM_TOP_K` / `_TOP_P` / `_TEMPERATURE` / `_REPEAT_PENALTY` | 1 / 0.95 / 0.8 / 1.1 | 采样参数 |
 | `SLOTNEXUS_RKLLM_ENABLE_THINKING` | 0 | 思考模式开关（Qwen3 系列） |
-| `SLOTNEXUS_RKLLM_REASONING_END_TAG` | `</think>` | 思考段过滤标记；取值 `-` 或 `off` 表示关闭过滤（模型不输出思考段时必须关闭） |
+| `SLOTNEXUS_RKLLM_REASONING_END_TAG` | `off`（由 CMake 缓存变量写入测试环境） | 思考段过滤标记；取值 `-` 或 `off` 表示关闭过滤（当前 Qwen3.5 不输出思考段标记，必须关闭；留成 `</think>` 会让"生成中取消"用例的前提失效） |
 
 Qwen3.5-0.8B 的对照方法与实测结果见
 `artifacts/llm-integration/llm-node-rkllm-qwen35.md`。
+
+`melotts_tts_test`（硬件后端构建）的五个资源路径同样经环境变量注入，
+任一缺失即整组跳过（返回 0），因此没有 MeloTTS 依赖的机器不会挂死 ctest：
+
+| 环境变量 | 默认 | 说明 |
+|---|---|---|
+| `SLOTNEXUS_MELOTTS_ENCODER` / `_DECODER` | 空（跳过整组） | `encoder-zh.onnx` / `decoder-zh.rknn` |
+| `SLOTNEXUS_MELOTTS_LEXICON` / `_TOKENS` | 空（跳过整组） | `lexicon.txt` / `tokens.txt` |
+| `SLOTNEXUS_MELOTTS_G` | 空（跳过整组） | 说话人 g 向量（恰好 1024 字节） |
+
+`build.sh hardware` 会把这些缓存变量一并传给 ctest；`melotts_tts_test`
+在板端实测 13.0 s 通过（含一次完整合成、取消语义与会话重置）。
+
+`sherpa_asr_test` 的固定文本基线与 **ASR 运行时版本链** 绑定：同一份 int8
+模型在旧的板端源码编译链（ONNX Runtime 1.17.1）与当前的 v1.13.8 官方
+预编译链（ONNX Runtime 1.28.2、官方 `tokens.txt`）上，`test_wavs/0.wav`
+的最终文本不同。换 ASR 运行时或 `tokens.txt` 后必须重新核验并同步更新
+`tests/unit/sherpa_asr_test.cpp` 中的期望值，证据见
+`artifacts/environment-preflight/board-runtime-restore.md`。
 
 脚本运行前清理 `edge_gateway`、`unit_manager`、`session_node`、`asr_node`、
 `llm_node`、`tts_node` 六个精确进程名。板端同步只逐文件使用 `scp`，不使用

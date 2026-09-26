@@ -12,13 +12,15 @@ flowchart LR
     Manager -->|"REQ/REP :19310"| Session["Session Node<br/>状态机 + RAG"]
     Session -->|"控制 :19201<br/>事件 :19421"| ASR["ASR Node<br/>sherpa-onnx"]
     Session -->|"控制 :19203<br/>事件 :19431"| LLM["LLM Node<br/>RKLLM"]
-    Session -->|"控制 :19204<br/>事件 :19441"| TTS["TTS Node<br/>SummerTTS"]
+    Session -->|"控制 :19204<br/>事件 :19441"| TTS["TTS Node<br/>MeloTTS"]
     Session --> Output["16 kHz WAV"]
     TTS -.-> Optional["ALSA 输出<br/>诊断入口可选"]
 ```
 
 默认 x86 构建保持相同进程和协议边界，但 Backend 使用确定性 Fake，不会
-配置、编译或链接 RKLLM、sherpa-onnx、ONNX Runtime、SummerTTS 或 ALSA。
+配置、编译或链接 RKLLM、sherpa-onnx、ONNX Runtime、MeloTTS 或 ALSA。
+MeloTTS 的编码器走 ONNX Runtime CPU，解码器走 RKNN NPU；两者与 RKLLM
+共享同一块 NPU 时的争用属于真实链路的一部分，单后端指标需单独测量。
 
 ## 控制面与数据面
 

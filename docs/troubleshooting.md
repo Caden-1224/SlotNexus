@@ -59,9 +59,11 @@ Backend 协作式取消、generation 过滤晚到 token/PCM，以及 L0 停止/�
 ## 麦克风与音频
 
 麦克风入口当前固定采集 3 秒，不是 VAD 常驻流。先用固定 WAV 复现模型链，
-再检查 `arecord -l`、声卡设备和录音 RMS。SummerTTS 输出为 16 kHz mono
-S16；ES8323 使用 `plughw:0,0` 时支持 16 kHz，其他采样率可能触发回退和
-重采样。发布入口默认保留 WAV 作为可复现输出，ALSA 用单独诊断入口核验。
+再检查 `arecord -l`、声卡设备和录音 RMS。TTS 侧对所有后端统一输出 16 kHz
+mono S16：MeloTTS 模型原生 44.1 kHz，由 `MeloTtsBackend` 内部线性重采样到
+16 kHz（SummerTTS 后端原生即为 16 kHz）；ES8323 使用 `plughw:0,0` 时支持
+16 kHz，其他采样率可能触发回退和重采样。发布入口默认保留 WAV 作为可复现
+输出，ALSA 用单独诊断入口核验。
 
 ## 停止与残留
 

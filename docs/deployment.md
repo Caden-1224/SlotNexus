@@ -23,22 +23,30 @@ SDK、动态库、板卡地址或凭据；这些资源由部署环境提供。
 
 先安装系统依赖：CMake、C++17 编译器、ZeroMQ、nlohmann-json 和 ALSA
 开发包。硬件构建还需要在板端外部准备 sherpa-onnx、RKLLM Runtime、
-SummerTTS 源码及三类模型：
+MeloTTS 依赖（ONNX Runtime + RKNN 头文件与动态库）及模型：
 
 ```bash
 export SLOTNEXUS_SHERTA_ROOT=<sherpa-onnx 根目录>
 export SLOTNEXUS_RKLLM_ROOT=<librkllm_api 根目录>
-export SLOTNEXUS_SUMMERTTS_ROOT=<SummerTTS 根目录>
+export SLOTNEXUS_MELOTTS_ROOT=<MeloTTS 依赖根（include/ 与 lib/）>
 export SLOTNEXUS_ASR_MODEL=<ASR 模型目录>
 export SLOTNEXUS_RKLLM_MODEL=<RKLLM 模型文件>
-export SLOTNEXUS_TTS_MODEL=<TTS 模型文件>
+export SLOTNEXUS_MELOTTS_ENCODER=<encoder-zh.onnx>
+export SLOTNEXUS_MELOTTS_DECODER=<decoder-zh.rknn>
+export SLOTNEXUS_MELOTTS_LEXICON=<lexicon.txt>
+export SLOTNEXUS_MELOTTS_TOKENS=<tokens.txt>
+export SLOTNEXUS_MELOTTS_G=<g-zh_mix_en.bin>
 export SLOTNEXUS_BUILD_JOBS=4
 bash deploy/taishanpi3m/build.sh hardware
 ```
 
-`build.sh` 即使检测到更多 CPU 也把并行度限制为 4。4 GB 板卡编译
-SummerTTS 的 Eigen 模板代码时若内存紧张，应进一步降低为 1 或 2，不提高
-上限。默认构建使用 `build.sh default`，并额外执行无硬件依赖门禁。
+`build.sh` 即使检测到更多 CPU 也把并行度限制为 4。4 GB 板卡上如遇内存紧张
+应进一步降低为 1 或 2，不提高上限。MeloTTS 的编码器走 ONNX Runtime CPU、
+解码器走 RKNN NPU，因此 `SLOTNEXUS_MELOTTS_ROOT` 需同时提供
+`include/onnxruntime_c_api.h`、`include/rknn_api.h`、`lib/libonnxruntime.so`
+与 `lib/librknnrt.so`。SummerTTS 后端保留兼容但默认不构建：只有额外提供
+`SLOTNEXUS_SUMMERTTS_ROOT` 时才检查其 `src/`、`include/` 与
+`eigen-3.4.0/`。默认构建使用 `build.sh default`，并额外执行无硬件依赖门禁。
 
 ## 命令入口
 
@@ -60,6 +68,7 @@ bash deploy/taishanpi3m/stop.sh
 |---|---|---|
 | `SLOTNEXUS_RKLLM_ROOT` | 是 | 提供 `aarch64/librkllmrt.so` |
 | `SLOTNEXUS_SHERTA_ROOT` | 是 | 提供 sherpa-onnx 与 ONNX Runtime 动态库 |
+| `SLOTNEXUS_MELOTTS_ROOT` | 是 | 提供 MeloTTS 的 ONNX Runtime 与 RKNN 动态库 |
 | `SLOTNEXUS_DEPLOY_ROOT` | 否 | 部署根目录，默认由脚本位置推导 |
 | `SLOTNEXUS_BUILD_DIR` | 否 | 硬件构建目录，默认 `build-taishanpi3m-hw` |
 | `SLOTNEXUS_CONFIG` | 否 | 板端配置，默认 `config/taishanpi3m/session.json` |
@@ -67,9 +76,10 @@ bash deploy/taishanpi3m/stop.sh
 | `SLOTNEXUS_SETUP_TIMEOUT_SECONDS` | 否 | `setup` 等待秒数，默认 120 |
 
 运行库搜索路径由 `SLOTNEXUS_RKLLM_ROOT/aarch64`、
-`SLOTNEXUS_SHERTA_ROOT/build/lib` 和
-`SLOTNEXUS_SHERTA_ROOT/build/_deps/onnxruntime-src/lib` 推导，并保留
-调用者已有的 `LD_LIBRARY_PATH`。路径不写死到特定用户主目录。
+`SLOTNEXUS_SHERTA_ROOT/build/lib`、
+`SLOTNEXUS_SHERTA_ROOT/build/_deps/onnxruntime-src/lib` 和
+`SLOTNEXUS_MELOTTS_ROOT/lib` 推导，并保留调用者已有的
+`LD_LIBRARY_PATH`。路径不写死到特定用户主目录。
 
 运行状态保存在 `SLOTNEXUS_RUN_DIR`：每个服务一个 PID 文件和日志
 文件。停止时删除 PID 文件，日志保留用于诊断。
@@ -117,10 +127,14 @@ ALSA 设备和端到端推理仍必须在泰山派 3M 上核验。
 
 | 组件 | 配置路径 | 运行版本 |
 |---|---|---|
-| ASR | `models/sherpa-zipformer-bilingual-zh-en-2023-02-16/` | sherpa-onnx + ONNX Runtime 1.17.1 |
+| ASR | `models/sherpa-zipformer-bilingual-zh-en-2023-02-16/` | sherpa-onnx streaming zipformer int8（源码板端编译）+ ONNX Runtime |
 | LLM | `models/Qwen3.5-0.8B_w4a16_g128_rk3576.rkllm` | RKLLM Runtime 1.3.0 / RKNPU 0.9.8 |
-| TTS | `models/single_speaker_fast.bin` | SummerTTS vits-based |
+| TTS（编码器） | `models/melotts/encoder-zh.onnx` | MeloTTS 文本/声学编码器，ONNX Runtime CPU |
+| TTS（解码器） | `models/melotts/decoder-zh.rknn` | MeloTTS 声码器，RKNN NPU |
+| TTS（文本资源） | `models/melotts/{lexicon,tokens}.txt`、`models/melotts/g-zh_mix_en.bin` | 词典 + token 表 + 说话人 g 向量 |
 
+MeloTTS 原生输出 44.1 kHz，`MeloTtsBackend` 内部线性重采样到契约
+16 kHz 单声道 PCM；`session.json::tts` 的 `speed` 等参数由配置驱动。
 路径可由部署环境覆盖，但不得只替换模型而混用不兼容的 Runtime/驱动版本链。
 RKLLM 的 `rkllm_init` 回调形态在 SDK 版本间变过（1.2.0 build 2025-04-08 为裸
 函数指针，之后为 `RKLLMCallback*`），`backends/rkllm/CMakeLists.txt` 在配置期

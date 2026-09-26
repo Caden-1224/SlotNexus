@@ -43,6 +43,7 @@ trap 'exit 143' TERM
 
 require_parameter SLOTNEXUS_RKLLM_ROOT
 require_parameter SLOTNEXUS_SHERTA_ROOT
+require_parameter SLOTNEXUS_MELOTTS_ROOT
 if ! [[ "$SETUP_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
   fail "SLOTNEXUS_SETUP_TIMEOUT_SECONDS 必须是正整数"
 fi
@@ -51,13 +52,16 @@ require_path "$ROOT" "部署根目录"
 RKLLM_LIB="$SLOTNEXUS_RKLLM_ROOT/aarch64"
 SHERPA_LIB="$SLOTNEXUS_SHERTA_ROOT/build/lib"
 ONNX_LIB="$SLOTNEXUS_SHERTA_ROOT/build/_deps/onnxruntime-src/lib"
+MELOTTS_LIB="$SLOTNEXUS_MELOTTS_ROOT/lib"
 require_path "$RKLLM_LIB/librkllmrt.so" " RKLLM Runtime"
 require_path "$SHERPA_LIB/libsherpa-onnx-c-api.so" " sherpa-onnx 动态库"
-require_path "$ONNX_LIB" " ONNX Runtime 动态库目录"
+require_path "$ONNX_LIB" " ONNX Runtime 动态库目录（sherpa-onnx）"
+require_path "$MELOTTS_LIB/libonnxruntime.so" " ONNX Runtime 动态库（MeloTTS）"
+require_path "$MELOTTS_LIB/librknnrt.so" " RKNN Runtime（MeloTTS 解码器）"
 command -v nohup >/dev/null || fail "缺少命令 nohup"
 command -v python3 >/dev/null || fail "缺少命令 python3"
 
-export LD_LIBRARY_PATH="$RKLLM_LIB:$SHERPA_LIB:$ONNX_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="$RKLLM_LIB:$SHERPA_LIB:$ONNX_LIB:$MELOTTS_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export SLOTNEXUS_DEPLOY_ROOT="$ROOT"
 export SLOTNEXUS_BUILD_DIR="$BUILD_DIR"
 export SLOTNEXUS_CONFIG="$CONFIG"

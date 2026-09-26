@@ -87,16 +87,20 @@ prepare_deploy_fixture() {
   CONFIG="$TEST_ROOT/config/taishanpi3m/session.json"
   RKLLM_ROOT="$TEST_ROOT/sdk/rkllm"
   SHERPA_ROOT="$TEST_ROOT/sdk/sherpa"
+  MELOTTS_ROOT="$TEST_ROOT/sdk/melotts"
 
   mkdir -p \
     "$TEST_ROOT/config/taishanpi3m" \
     "$TEST_ROOT/data/fixtures" \
     "$TEST_ROOT/data/knowledge" \
     "$TEST_ROOT/models/asr" \
+    "$TEST_ROOT/models/melotts" \
     "$TEST_ROOT/scripts" \
     "$RKLLM_ROOT/aarch64" \
     "$SHERPA_ROOT/build/lib" \
-    "$SHERPA_ROOT/build/_deps/onnxruntime-src/lib"
+    "$SHERPA_ROOT/build/_deps/onnxruntime-src/lib" \
+    "$MELOTTS_ROOT/include" \
+    "$MELOTTS_ROOT/lib"
 
   for service in "${SERVICES[@]}"; do
     mkdir -p "$BUILD_DIR/apps/$service"
@@ -107,16 +111,31 @@ prepare_deploy_fixture() {
     "$TEST_ROOT/data/knowledge/knowledge.jsonl" \
     "$TEST_ROOT/models/asr/tokens.txt" \
     "$TEST_ROOT/models/model.rkllm" \
-    "$TEST_ROOT/models/tts.bin" \
+    "$TEST_ROOT/models/melotts/encoder-zh.onnx" \
+    "$TEST_ROOT/models/melotts/decoder-zh.rknn" \
+    "$TEST_ROOT/models/melotts/lexicon.txt" \
+    "$TEST_ROOT/models/melotts/tokens.txt" \
+    "$TEST_ROOT/models/melotts/g-zh_mix_en.bin" \
     "$RKLLM_ROOT/aarch64/librkllmrt.so" \
-    "$SHERPA_ROOT/build/lib/libsherpa-onnx-c-api.so"
+    "$SHERPA_ROOT/build/lib/libsherpa-onnx-c-api.so" \
+    "$MELOTTS_ROOT/include/onnxruntime_c_api.h" \
+    "$MELOTTS_ROOT/include/rknn_api.h" \
+    "$MELOTTS_ROOT/lib/libonnxruntime.so" \
+    "$MELOTTS_ROOT/lib/librknnrt.so"
 
   cat > "$CONFIG" <<'EOF'
 {
   "knowledge": "data/knowledge/knowledge.jsonl",
   "asr": {"backend": "sherpa_onnx", "model": "models/asr"},
   "llm": {"backend": "rkllm", "model": "models/model.rkllm"},
-  "tts": {"backend": "summertts", "model": "models/tts.bin"}
+  "tts": {
+    "backend": "melotts",
+    "encoder_model": "models/melotts/encoder-zh.onnx",
+    "decoder_model": "models/melotts/decoder-zh.rknn",
+    "lexicon": "models/melotts/lexicon.txt",
+    "tokens": "models/melotts/tokens.txt",
+    "g_vector": "models/melotts/g-zh_mix_en.bin"
+  }
 }
 EOF
 
@@ -138,6 +157,7 @@ run_start() {
   SLOTNEXUS_RUN_DIR="$RUN_DIR" \
   SLOTNEXUS_RKLLM_ROOT="$RKLLM_ROOT" \
   SLOTNEXUS_SHERTA_ROOT="$SHERPA_ROOT" \
+  SLOTNEXUS_MELOTTS_ROOT="$MELOTTS_ROOT" \
   SLOTNEXUS_SETUP_TIMEOUT_SECONDS=1 \
     /bin/bash "$START_SCRIPT"
 }
@@ -192,6 +212,7 @@ case "$CASE_NAME" in
       SLOTNEXUS_CONFIG="$CONFIG" \
       SLOTNEXUS_RUN_DIR="$RUN_DIR" \
       SLOTNEXUS_SHERTA_ROOT="$SHERPA_ROOT" \
+      SLOTNEXUS_MELOTTS_ROOT="$MELOTTS_ROOT" \
       SLOTNEXUS_SETUP_TIMEOUT_SECONDS=1 \
         /bin/bash "$START_SCRIPT" 2>&1)
     STATUS=$?

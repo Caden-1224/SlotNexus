@@ -5,10 +5,15 @@
 # （4GB 板内存吃紧）+ 超时放宽（llm 节点 120s）。每轮采集：gateway 往返
 # 耗时、路由、token/pcm 帧数、三节点 RSS、板卡温度。
 # 输出 /tmp/stability/：stability.csv + 每轮日志目录 + 汇总。
+# 依赖根可用环境变量覆盖（与 run_real_wav_chain.sh 一致）。
 # 用法：板端执行（约 45-60 分钟）。中途 Ctrl+C 可停，CSV 已落盘。
 set -u
-cd ~/workspace/slotnexus-runtime
-export LD_LIBRARY_PATH=/home/lckfb/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api/aarch64
+DEPLOY_ROOT=${SLOTNEXUS_DEPLOY_ROOT:-$HOME/workspace/slotnexus-runtime}
+RKLLM_ROOT=${SLOTNEXUS_RKLLM_ROOT:-$HOME/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api}
+SHERTA_ROOT=${SLOTNEXUS_SHERTA_ROOT:-$HOME/workspace/upstream_rkllm/sherpa-root}
+MELOTTS_ROOT=${SLOTNEXUS_MELOTTS_ROOT:-$HOME/workspace/upstream_melotts}
+cd "$DEPLOY_ROOT" || exit 1
+export LD_LIBRARY_PATH="$RKLLM_ROOT/aarch64:$SHERTA_ROOT/build/lib:$SHERTA_ROOT/build/_deps/onnxruntime-src/lib:$MELOTTS_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ROUNDS=${1:-30}
 BASE=/tmp/stability
 rm -rf "$BASE"

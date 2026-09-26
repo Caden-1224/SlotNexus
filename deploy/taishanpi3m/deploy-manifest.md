@@ -3,7 +3,7 @@
 ## 适用范围
 
 本清单对应 板端发布候选的泰山派 3M 部署。板端运行六个进程，接入
-sherpa-onnx、RKLLM 和 SummerTTS 真实 Backend；默认 x86 构建继续使用
+sherpa-onnx、RKLLM 和 MeloTTS 真实 Backend；默认 x86 构建继续使用
 Fake Backend 做确定性回归，二者不得混为同一运行证据。
 
 ## 目标版本链
@@ -16,6 +16,7 @@ Fake Backend 做确定性回归，二者不得混为同一运行证据。
 | NPU 驱动 | RKNPU 0.9.8（20240828） |
 | LLM Runtime | RKLLM 1.3.0；`rkllm_init` 回调形态在 SDK 版本间变过，构建期试编译探测 |
 | LLM 模型 | Qwen3.5-0.8B W4A16 G128 RK3576 |
+| TTS Runtime | MeloTTS（ONNX Runtime CPU 编码器 + RKNN NPU 解码器） |
 
 ## 包内内容
 
@@ -37,7 +38,8 @@ Fake Backend 做确定性回归，二者不得混为同一运行证据。
 | ZeroMQ / cppzmq / ALSA | Ubuntu 系统包 | 动态链接，不复制库 |
 | sherpa-onnx / ONNX Runtime | 板端外部构建目录 | 不提交源码、构建树或 `.so` |
 | RKLLM Runtime / 头文件 | Rockchip SDK 目录 | 不提交 SDK 或动态库 |
-| SummerTTS / Eigen | 外部源码目录 | 不提交上游源码或构建产物 |
+| MeloTTS / ONNX Runtime / RKNN | 外部依赖根 + 上游模型 | 不提交依赖根、模型或构建产物 |
+| SummerTTS / Eigen | 外部源码目录（可选，默认不构建） | 不提交上游源码或构建产物 |
 | ASR / LLM / TTS 模型 | 部署环境按哈希提供 | 不提交模型 |
 
 ## 明确排除

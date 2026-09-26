@@ -42,3 +42,9 @@ third_party/*
 
 # CTest 运行目录
 Testing/
+
+# 运行输出（可重新生成）
+build/
+out/
+session-out/
+tts-out/

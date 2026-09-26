@@ -86,22 +86,45 @@ endif()
 # 固定 prompt（与门禁 smoke 同款）→ kToken 流 + 末事件 kDone，结构断言
 # + TTFT/tok/s 指标打印，输出与 smoke 对照记录进证据文档。
 # 模型路径经 SLOTNEXUS_RKLLM_MODEL 注入；未配置时测试跳过（返回 0）。
+# 思考段过滤标记经 SLOTNEXUS_RKLLM_REASONING_END_TAG 注入，默认 "off"
+# （与 config/taishanpi3m/session.json 一致：当前 Qwen3.5-0.8B 不输出
+# <think> 标记，留成 </think> 会把整段回答缓冲到生成结束，导致
+# "生成中取消" 用例的前提不成立）。
 set(SLOTNEXUS_RKLLM_MODEL ""
     CACHE PATH "RKLLM 单元测试用模型路径（.rkllm）")
+set(SLOTNEXUS_RKLLM_REASONING_END_TAG "off"
+    CACHE STRING "RKLLM 单元测试用思考段过滤标记（off 表示关闭过滤）")
 if(SLOTNEXUS_ENABLE_HARDWARE_BACKENDS)
   add_executable(rkllm_llm_test rkllm_llm_test.cpp)
   target_link_libraries(rkllm_llm_test PRIVATE slotnexus::rkllm)
   add_test(NAME rkllm_llm_test COMMAND rkllm_llm_test)
   set_tests_properties(rkllm_llm_test PROPERTIES
-    ENVIRONMENT "SLOTNEXUS_RKLLM_MODEL=${SLOTNEXUS_RKLLM_MODEL}")
+    ENVIRONMENT "SLOTNEXUS_RKLLM_MODEL=${SLOTNEXUS_RKLLM_MODEL};SLOTNEXUS_RKLLM_REASONING_END_TAG=${SLOTNEXUS_RKLLM_REASONING_END_TAG}")
 endif()
 
-# SummerTTS 真实合成（板端；仅硬件后端构建时编译）：
-# 固定文本 → kPcm 帧 + kDone，dataLen 与门禁基线（53248）对齐。
+# MeloTTS 真实合成（板端；仅硬件后端构建时编译）：
+# 固定文本 → kPcm 帧（≤320 采样/帧）+ kDone，帧总采样与音频时长自洽。
+# 五个资源路径经 SLOTNEXUS_MELOTTS_* 环境变量注入；任一未配置时跳过（返回 0）。
+set(SLOTNEXUS_MELOTTS_ENCODER "" CACHE PATH "MeloTTS 编码器 onnx（encoder-zh.onnx）")
+set(SLOTNEXUS_MELOTTS_DECODER "" CACHE PATH "MeloTTS 解码器 rknn（decoder-zh.rknn）")
+set(SLOTNEXUS_MELOTTS_LEXICON "" CACHE PATH "MeloTTS lexicon.txt")
+set(SLOTNEXUS_MELOTTS_TOKENS  "" CACHE PATH "MeloTTS tokens.txt")
+set(SLOTNEXUS_MELOTTS_G       "" CACHE PATH "MeloTTS g 向量（g-zh_mix_en.bin）")
+if(SLOTNEXUS_ENABLE_HARDWARE_BACKENDS)
+  add_executable(melotts_tts_test melotts_tts_test.cpp)
+  target_link_libraries(melotts_tts_test PRIVATE slotnexus::melotts)
+  add_test(NAME melotts_tts_test COMMAND melotts_tts_test)
+  set_tests_properties(melotts_tts_test PROPERTIES
+    ENVIRONMENT
+      "SLOTNEXUS_MELOTTS_ENCODER=${SLOTNEXUS_MELOTTS_ENCODER};SLOTNEXUS_MELOTTS_DECODER=${SLOTNEXUS_MELOTTS_DECODER};SLOTNEXUS_MELOTTS_LEXICON=${SLOTNEXUS_MELOTTS_LEXICON};SLOTNEXUS_MELOTTS_TOKENS=${SLOTNEXUS_MELOTTS_TOKENS};SLOTNEXUS_MELOTTS_G=${SLOTNEXUS_MELOTTS_G}")
+endif()
+
+# SummerTTS 真实合成（板端；仅显式提供上游源码根目录时编译）：
+# 固定文本 → kPcm 帧 + kDone，dataLen 与历史门禁基线（53248）对齐。
 # 模型路径经 SLOTNEXUS_TTS_MODEL 注入；未配置时测试跳过（返回 0）。
 set(SLOTNEXUS_TTS_MODEL ""
     CACHE PATH "SummerTTS 单元测试用模型路径（single_speaker_fast.bin）")
-if(SLOTNEXUS_ENABLE_HARDWARE_BACKENDS)
+if(SLOTNEXUS_ENABLE_HARDWARE_BACKENDS AND TARGET slotnexus::summer_tts)
   add_executable(summer_tts_test summer_tts_test.cpp)
   target_link_libraries(summer_tts_test PRIVATE slotnexus::summer_tts)
   add_test(NAME summer_tts_test COMMAND summer_tts_test)

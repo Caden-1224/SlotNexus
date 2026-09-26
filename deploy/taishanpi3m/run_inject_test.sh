@@ -7,10 +7,15 @@
 #   3. 推理中 cancel    → cancelled 响应
 #   4. 节点推理超时     → 会话 error（节点 kTimeout）
 #   5. taskinfo 收尾   → 会话仍健康可查询
-# 用法：板端执行。输出 /tmp/inject-test/。
+# 用法：板端执行。输出 /tmp/inject-test/。依赖根可用环境变量覆盖
+# （与 run_real_wav_chain.sh 一致）。
 set -u
-cd ~/workspace/slotnexus-runtime
-export LD_LIBRARY_PATH=/home/lckfb/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api/aarch64
+DEPLOY_ROOT=${SLOTNEXUS_DEPLOY_ROOT:-$HOME/workspace/slotnexus-runtime}
+RKLLM_ROOT=${SLOTNEXUS_RKLLM_ROOT:-$HOME/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api}
+SHERTA_ROOT=${SLOTNEXUS_SHERTA_ROOT:-$HOME/workspace/upstream_rkllm/sherpa-root}
+MELOTTS_ROOT=${SLOTNEXUS_MELOTTS_ROOT:-$HOME/workspace/upstream_melotts}
+cd "$DEPLOY_ROOT" || exit 1
+export LD_LIBRARY_PATH="$RKLLM_ROOT/aarch64:$SHERTA_ROOT/build/lib:$SHERTA_ROOT/build/_deps/onnxruntime-src/lib:$MELOTTS_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 OUT=/tmp/inject-test
 rm -rf "$OUT"
 mkdir -p "$OUT/tts-node" "$OUT/session-out"

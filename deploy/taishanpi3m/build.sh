@@ -52,10 +52,14 @@ if [ "$MODE" = hardware ]; then
   for name in \
     SLOTNEXUS_SHERTA_ROOT \
     SLOTNEXUS_RKLLM_ROOT \
-    SLOTNEXUS_SUMMERTTS_ROOT \
+    SLOTNEXUS_MELOTTS_ROOT \
     SLOTNEXUS_ASR_MODEL \
     SLOTNEXUS_RKLLM_MODEL \
-    SLOTNEXUS_TTS_MODEL; do
+    SLOTNEXUS_MELOTTS_ENCODER \
+    SLOTNEXUS_MELOTTS_DECODER \
+    SLOTNEXUS_MELOTTS_LEXICON \
+    SLOTNEXUS_MELOTTS_TOKENS \
+    SLOTNEXUS_MELOTTS_G; do
     require_hardware_parameter "$name"
   done
 
@@ -63,12 +67,24 @@ if [ "$MODE" = hardware ]; then
   require_path "$SLOTNEXUS_SHERTA_ROOT/build/lib/libsherpa-onnx-c-api.so" " sherpa-onnx 动态库"
   require_path "$SLOTNEXUS_RKLLM_ROOT/include/rkllm.h" " RKLLM 头文件"
   require_path "$SLOTNEXUS_RKLLM_ROOT/aarch64/librkllmrt.so" " RKLLM Runtime"
-  require_path "$SLOTNEXUS_SUMMERTTS_ROOT/src" " SummerTTS 源码目录"
-  require_path "$SLOTNEXUS_SUMMERTTS_ROOT/include" " SummerTTS 头文件目录"
-  require_path "$SLOTNEXUS_SUMMERTTS_ROOT/eigen-3.4.0" " Eigen 目录"
+  require_path "$SLOTNEXUS_MELOTTS_ROOT/include/onnxruntime_c_api.h" " ONNX Runtime 头文件"
+  require_path "$SLOTNEXUS_MELOTTS_ROOT/include/rknn_api.h" " RKNN 头文件"
+  require_path "$SLOTNEXUS_MELOTTS_ROOT/lib/libonnxruntime.so" " ONNX Runtime 动态库"
+  require_path "$SLOTNEXUS_MELOTTS_ROOT/lib/librknnrt.so" " RKNN Runtime"
   require_path "$SLOTNEXUS_ASR_MODEL" " ASR 模型目录"
   require_path "$SLOTNEXUS_RKLLM_MODEL" " RKLLM 模型"
-  require_path "$SLOTNEXUS_TTS_MODEL" " TTS 模型"
+  require_path "$SLOTNEXUS_MELOTTS_ENCODER" " MeloTTS 编码器模型"
+  require_path "$SLOTNEXUS_MELOTTS_DECODER" " MeloTTS 解码器模型"
+  require_path "$SLOTNEXUS_MELOTTS_LEXICON" " MeloTTS 词典"
+  require_path "$SLOTNEXUS_MELOTTS_TOKENS" " MeloTTS token 表"
+  require_path "$SLOTNEXUS_MELOTTS_G" " MeloTTS g 向量"
+
+  # SummerTTS 后端保留兼容：只有显式提供上游源码根目录时才检查并构建。
+  if [ -n "${SLOTNEXUS_SUMMERTTS_ROOT:-}" ]; then
+    require_path "$SLOTNEXUS_SUMMERTTS_ROOT/src" " SummerTTS 源码目录"
+    require_path "$SLOTNEXUS_SUMMERTTS_ROOT/include" " SummerTTS 头文件目录"
+    require_path "$SLOTNEXUS_SUMMERTTS_ROOT/eigen-3.4.0" " Eigen 目录"
+  fi
 fi
 
 echo "== 依赖检查 =="
@@ -94,11 +110,22 @@ if [ "$MODE" = hardware ]; then
   CMAKE_ARGS+=(
     "-DSLOTNEXUS_SHERTA_ROOT=$SLOTNEXUS_SHERTA_ROOT"
     "-DSLOTNEXUS_RKLLM_ROOT=$SLOTNEXUS_RKLLM_ROOT"
-    "-DSLOTNEXUS_SUMMERTTS_ROOT=$SLOTNEXUS_SUMMERTTS_ROOT"
+    "-DSLOTNEXUS_MELOTTS_ROOT=$SLOTNEXUS_MELOTTS_ROOT"
     "-DSLOTNEXUS_ASR_MODEL=$SLOTNEXUS_ASR_MODEL"
     "-DSLOTNEXUS_RKLLM_MODEL=$SLOTNEXUS_RKLLM_MODEL"
-    "-DSLOTNEXUS_TTS_MODEL=$SLOTNEXUS_TTS_MODEL"
+    "-DSLOTNEXUS_MELOTTS_ENCODER=$SLOTNEXUS_MELOTTS_ENCODER"
+    "-DSLOTNEXUS_MELOTTS_DECODER=$SLOTNEXUS_MELOTTS_DECODER"
+    "-DSLOTNEXUS_MELOTTS_LEXICON=$SLOTNEXUS_MELOTTS_LEXICON"
+    "-DSLOTNEXUS_MELOTTS_TOKENS=$SLOTNEXUS_MELOTTS_TOKENS"
+    "-DSLOTNEXUS_MELOTTS_G=$SLOTNEXUS_MELOTTS_G"
+    "-DSLOTNEXUS_RKLLM_REASONING_END_TAG=${SLOTNEXUS_RKLLM_REASONING_END_TAG:-off}"
   )
+  if [ -n "${SLOTNEXUS_SUMMERTTS_ROOT:-}" ]; then
+    CMAKE_ARGS+=(
+      "-DSLOTNEXUS_SUMMERTTS_ROOT=$SLOTNEXUS_SUMMERTTS_ROOT"
+      "-DSLOTNEXUS_TTS_MODEL=${SLOTNEXUS_TTS_MODEL:-}"
+    )
+  fi
   if [ -n "${SLOTNEXUS_ALSA_DEVICE:-}" ]; then
     CMAKE_ARGS+=("-DSLOTNEXUS_ALSA_DEVICE=$SLOTNEXUS_ALSA_DEVICE")
   fi

@@ -1,9 +1,13 @@
 #!/bin/bash
 # 板端核验：gateway → manager → llm_node（rkllm 后端）固定 prompt 全链路。
-# 用法：板端执行（LD_LIBRARY_PATH 指向 SDK aarch64 目录）。
+# 依赖根可用环境变量覆盖（与 run_real_wav_chain.sh 一致）。
 set -u
-cd ~/workspace/slotnexus-runtime
-export LD_LIBRARY_PATH=/home/lckfb/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api/aarch64
+DEPLOY_ROOT=${SLOTNEXUS_DEPLOY_ROOT:-$HOME/workspace/slotnexus-runtime}
+RKLLM_ROOT=${SLOTNEXUS_RKLLM_ROOT:-$HOME/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api}
+SHERTA_ROOT=${SLOTNEXUS_SHERTA_ROOT:-$HOME/workspace/upstream_rkllm/sherpa-root}
+MELOTTS_ROOT=${SLOTNEXUS_MELOTTS_ROOT:-$HOME/workspace/upstream_melotts}
+cd "$DEPLOY_ROOT" || exit 1
+export LD_LIBRARY_PATH="$RKLLM_ROOT/aarch64:$MELOTTS_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 OUT=/tmp/llm-chain
 mkdir -p "$OUT"
 for p in edge_gateway unit_manager llm_node; do pkill -TERM -x "$p" 2>/dev/null; done

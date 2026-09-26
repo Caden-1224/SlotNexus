@@ -59,6 +59,12 @@ int g_failures = 0;
  } while (0)
 
 // 子进程句柄：spawn / SIGTERM / 带超时等待退出码（与 session_e2e_test 相同）。
+//
+// 优雅退出等待上限：产品侧 stop.sh 的契约是 SIGTERM 后最多等 20 s 再升级
+// SIGKILL，因此这里取 10 s——足够容纳 4 GB aarch64 板在全量 ctest 之后的
+// 负载尖峰（实测 5 s 上限时 session_node 在整套连跑中偶发 5–6 s 才退出，
+// 单独运行则稳定 <5 s），又不放松"必须优雅退出且退出码为 0"的断言。
+constexpr auto kGracefulExitWait = std::chrono::milliseconds(10000);
 struct ChildProc {
  pid_t pid = -1;
 
@@ -387,13 +393,13 @@ void test_session_net_e2e(const std::string& e2e_dir, const std::string& root) {
  llm_node.kill();
  tts_node.kill();
  int code = -1;
- CHECK(session_node.wait_for(5000ms, &code));
+ CHECK(session_node.wait_for(kGracefulExitWait, &code));
  CHECK(code == 0);
- CHECK(asr_node.wait_for(5000ms, &code));
+ CHECK(asr_node.wait_for(kGracefulExitWait, &code));
  CHECK(code == 0);
- CHECK(llm_node.wait_for(5000ms, &code));
+ CHECK(llm_node.wait_for(kGracefulExitWait, &code));
  CHECK(code == 0);
- CHECK(tts_node.wait_for(5000ms, &code));
+ CHECK(tts_node.wait_for(kGracefulExitWait, &code));
  CHECK(code == 0);
  std::cout << "  [ok] SIGTERM 四进程全部优雅退出（退出码 0）" << std::endl;
 }
@@ -549,13 +555,13 @@ void test_session_net_uplink_e2e(const std::string& e2e_dir,
  llm_node.kill();
  tts_node.kill();
  int code = -1;
- CHECK(session_node.wait_for(5000ms, &code));
+ CHECK(session_node.wait_for(kGracefulExitWait, &code));
  CHECK(code == 0);
- CHECK(asr_node.wait_for(5000ms, &code));
+ CHECK(asr_node.wait_for(kGracefulExitWait, &code));
  CHECK(code == 0);
- CHECK(llm_node.wait_for(5000ms, &code));
+ CHECK(llm_node.wait_for(kGracefulExitWait, &code));
  CHECK(code == 0);
- CHECK(tts_node.wait_for(5000ms, &code));
+ CHECK(tts_node.wait_for(kGracefulExitWait, &code));
  CHECK(code == 0);
  std::cout << "  [ok] SIGTERM 四进程全部优雅退出（退出码 0）" << std::endl;
 }
@@ -599,7 +605,7 @@ void test_node_infer_timeout(const std::string& e2e_dir,
 
  asr_node.kill();
  int code = -1;
- CHECK(asr_node.wait_for(5000ms, &code));
+ CHECK(asr_node.wait_for(kGracefulExitWait, &code));
  CHECK(code == 0);
  std::cout << "  [ok] SIGTERM 节点优雅退出（退出码 0）" << std::endl;
 }
