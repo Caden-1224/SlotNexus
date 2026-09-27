@@ -108,7 +108,7 @@ ASR、LLM、TTS 节点复用 Core 的 `RuntimeNode`、`TaskRuntime` 和 `IBacken
 
 - Linux 或 WSL2；C++17 编译器；CMake ≥ 3.22；Python 3。
 - ZeroMQ C 库与 cppzmq 头文件。Ubuntu 可安装 `libzmq3-dev` 和 `cppzmq-dev`。
-- `nlohmann/json` 单头文件已包含在 [`third_party/`](third_party/)，默认构建无需 NPU SDK、模型或音频设备。
+- `nlohmann/json` 3.10.5 完整 multi-header 头文件集合已包含在 [`third_party/nlohmann/`](third_party/nlohmann/)，默认构建无需 NPU SDK、模型或音频设备。
 
 ### 构建并测试
 

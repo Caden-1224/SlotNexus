@@ -3,7 +3,8 @@
 //
 // 用法：asr_node [--listen tcp://127.0.0.1:19201] [--config <session.json>]
 //                [--backend fake|sherpa_onnx] [--model <模型目录>]
-//                [--num-threads <n>] [--infer-timeout-ms <ms>]
+//                [--model-precision fp32|int8] [--num-threads <n>]
+//                [--infer-timeout-ms <ms>]
 //                [--fixture-dir <目录>]
 // 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204。
 //
@@ -270,6 +271,7 @@ int main(int argc, char** argv) {
   std::string listen = "tcp://127.0.0.1:19201";
   std::string backend_name = "fake";  // 默认 Fake（x86/Mock 回归基线）
   std::string model_path;             // sherpa_onnx 后端必填（模型目录）
+  std::string model_precision = "fp32";  // sherpa_onnx 精度：fp32 | int8
   int num_threads = 4;                // ONNX Runtime 线程数（门禁基线 4）
   int infer_timeout_ms = 0;           // 节点内推理超时；0 = 默认 5000 ms
   std::string fixture_dir;            // 相对 WAV 路径解析根
@@ -292,6 +294,7 @@ int main(int argc, char** argv) {
         const auto& a = file_cfg["asr"];
         backend_name = a.value("backend", backend_name);
         model_path = a.value("model", model_path);
+        model_precision = a.value("model_precision", model_precision);
         num_threads = a.value("num_threads", num_threads);
         fixture_dir = a.value("fixture_dir", fixture_dir);
       }
@@ -304,6 +307,8 @@ int main(int argc, char** argv) {
       backend_name = argv[i + 1];
     } else if (std::string(argv[i]) == "--model") {
       model_path = argv[i + 1];
+    } else if (std::string(argv[i]) == "--model-precision") {
+      model_precision = argv[i + 1];
     } else if (std::string(argv[i]) == "--num-threads") {
       num_threads = parse_int(argv[i + 1], num_threads);
     } else if (std::string(argv[i]) == "--infer-timeout-ms") {
@@ -330,6 +335,12 @@ int main(int argc, char** argv) {
     std::cerr << "sherpa_onnx 后端需要 --model（或 session.json::asr.model）" << std::endl;
     return 1;
   }
+  if (backend_name == "sherpa_onnx" && model_precision != "fp32" &&
+      model_precision != "int8") {
+    std::cerr << "未知 ASR 模型精度: " << model_precision
+              << "（支持 fp32 / int8）" << std::endl;
+    return 1;
+  }
 #else
   if (backend_name == "sherpa_onnx") {
     std::cerr << "当前构建未启用 sherpa-onnx 后端（需 "
@@ -346,7 +357,7 @@ int main(int argc, char** argv) {
         throw std::runtime_error("sherpa_onnx 后端需要 --model（或 session.json::asr.model）");
       }
       return std::make_unique<slotnexus::backend::sherpa_onnx::SherpaAsrBackend>(
-          model_path, num_threads);
+          model_path, num_threads, model_precision);
 #else
       throw std::runtime_error(
           "当前构建未启用 sherpa-onnx 后端（需 -DSLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON）");
@@ -378,7 +389,8 @@ int main(int argc, char** argv) {
     node.bind(listen);
     std::cout << "asr_node 监听 " << listen << "（" << backend_name << " 后端";
     if (backend_name == "sherpa_onnx") {
-      std::cout << "，模型 " << model_path << "，线程 " << num_threads;
+      std::cout << "，模型 " << model_path << "，精度 " << model_precision
+                << "，线程 " << num_threads;
     }
     std::cout << "）" << std::endl;
   } catch (const std::exception& e) {

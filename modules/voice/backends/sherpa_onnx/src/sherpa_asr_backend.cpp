@@ -32,10 +32,21 @@ constexpr int kTailPadSamples = 4800;
 }  // namespace
 
 struct SherpaAsrBackend::Impl {
-  Impl(const std::string& model_dir, int num_threads) {
-    const std::string enc = model_dir + "/encoder-epoch-99-avg-1.int8.onnx";
-    const std::string dec = model_dir + "/decoder-epoch-99-avg-1.int8.onnx";
-    const std::string jnr = model_dir + "/joiner-epoch-99-avg-1.int8.onnx";
+  Impl(const std::string& model_dir, int num_threads,
+       const std::string& model_precision) {
+    if (model_precision != "fp32" && model_precision != "int8") {
+      throw std::invalid_argument(
+          "ASR 模型精度只支持 fp32 或 int8，实际: " + model_precision);
+    }
+    // 官方 int8 推理配方（sherpa-onnx 模型页：encoder int8 + decoder fp32 +
+    // joiner int8）不是“三个 int8”，全 int8 会在短句上出现更多量化误差。
+    const std::string enc_suffix =
+        model_precision == "int8" ? ".int8.onnx" : ".onnx";
+    const std::string jnr_suffix =
+        model_precision == "int8" ? ".int8.onnx" : ".onnx";
+    const std::string enc = model_dir + "/encoder-epoch-99-avg-1" + enc_suffix;
+    const std::string dec = model_dir + "/decoder-epoch-99-avg-1.onnx";
+    const std::string jnr = model_dir + "/joiner-epoch-99-avg-1" + jnr_suffix;
     const std::string tok = model_dir + "/tokens.txt";
 
     SherpaOnnxOnlineTransducerModelConfig transducer;
@@ -85,8 +96,10 @@ struct SherpaAsrBackend::Impl {
   std::string last_partial;    // 上次已发出的 kPartial 文本（避免重复投递）
 };
 
-SherpaAsrBackend::SherpaAsrBackend(std::string model_dir, int num_threads) {
-  impl_ = std::make_unique<Impl>(model_dir, num_threads);
+SherpaAsrBackend::SherpaAsrBackend(std::string model_dir, int num_threads,
+                                   std::string model_precision) {
+  impl_ = std::make_unique<Impl>(std::move(model_dir), num_threads,
+                                 model_precision);
 }
 
 SherpaAsrBackend::~SherpaAsrBackend() = default;

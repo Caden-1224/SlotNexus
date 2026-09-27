@@ -52,7 +52,11 @@ Demo：`examples/DeepSeek-R1-Distill-Qwen-1.5B_Demo/`
 | `tokens.txt` | 62574 | cba59a352b6f0b99c36a7b4ea7a6a210d2270cb3e5b5d8556d98277213d5f709 |
 | `bpe.model` | 244836 | bcae393dbc5611be5ffa4c7ae0841558978a5a4f484008cb9dff3a2cc97ebe01 |
 
-fp32 版本同目录并存（encoder 88MB / decoder 13MB / joiner 12MB），板端默认不用。
+fp32 版本同目录并存（encoder 88MB / decoder 13MB / joiner 12MB）。
+当前板端 `asr.model_precision=fp32` 默认使用 fp32 三元组。官方 int8 配方
+（encoder int8 + decoder fp32 + joiner int8）在 `test_wavs/0.wav` 上与 fp32
+输出一致，但在本项目短句 `demo_zh.wav` 上仍会把“合成”识别成“合乘”；
+int8 因此只保留为内存/带宽优先的可选精度，发布 fixture 默认 fp32。
 `test_wavs/`：0/1/2/3/4/46.wav（固定测试音频）。
 sherpa-onnx 源码：`voice/sherpa-onnx/`（含 c-api-examples、cxx-api-examples、CMakeLists）。
 

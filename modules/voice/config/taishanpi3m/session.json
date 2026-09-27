@@ -16,6 +16,7 @@
   "asr": {
     "backend": "sherpa_onnx",
     "model": "models/sherpa-zipformer-bilingual-zh-en-2023-02-16",
+    "model_precision": "fp32",
     "num_threads": 4
   },
   "llm": {

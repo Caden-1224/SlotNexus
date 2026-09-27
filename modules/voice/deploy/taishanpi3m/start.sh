@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-DEFAULT_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
+DEFAULT_ROOT=$(cd "$SCRIPT_DIR/../../../.." && pwd)
 ROOT=${SLOTNEXUS_DEPLOY_ROOT:-$DEFAULT_ROOT}
 BUILD_DIR=${SLOTNEXUS_BUILD_DIR:-$ROOT/build-taishanpi3m-hw}
 CONFIG=${SLOTNEXUS_CONFIG:-$ROOT/modules/voice/config/taishanpi3m/session.json}

@@ -7,8 +7,10 @@
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-# 内置 nlohmann/json（MIT，third_party/nlohmann/json.hpp）。核心公开头使用
-# <nlohmann/json.hpp>，通过该 interface target 同时支持构建树与安装树。
+# 内置 nlohmann/json 3.10.5 完整头文件集合（MIT，third_party/nlohmann/）。
+# 不能只内嵌顶层 json.hpp：multi-header 版会继续 include nlohmann/detail/...，
+# 缺少子头时会被系统其它版本的 nlohmann 头污染，造成版本混用编译错误。
+# 核心公开头使用 <nlohmann/json.hpp>，通过该 interface target 同时支持构建树与安装树。
 add_library(slotnexus_json INTERFACE)
 add_library(slotnexus::json ALIAS slotnexus_json)
 set_target_properties(slotnexus_json PROPERTIES EXPORT_NAME json)
@@ -17,8 +19,9 @@ target_include_directories(slotnexus_json INTERFACE
   $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/third_party>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 install(TARGETS slotnexus_json EXPORT slotnexus-core-targets)
-install(FILES ${CMAKE_SOURCE_DIR}/third_party/nlohmann/json.hpp
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/nlohmann)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/nlohmann
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILES_MATCHING PATTERN "*.hpp")
 
 add_subdirectory(common)
 add_subdirectory(protocol)

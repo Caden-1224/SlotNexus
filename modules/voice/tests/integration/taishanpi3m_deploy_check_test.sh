@@ -23,7 +23,11 @@ done
 
 touch \
   "$TEST_ROOT/data/knowledge/knowledge.jsonl" \
+  "$TEST_ROOT/models/asr/encoder-epoch-99-avg-1.onnx" \
+  "$TEST_ROOT/models/asr/decoder-epoch-99-avg-1.onnx" \
+  "$TEST_ROOT/models/asr/joiner-epoch-99-avg-1.onnx" \
   "$TEST_ROOT/models/asr/tokens.txt" \
+  "$TEST_ROOT/models/asr/bpe.model" \
   "$TEST_ROOT/models/model.rkllm" \
   "$TEST_ROOT/models/melotts/encoder-zh.onnx" \
   "$TEST_ROOT/models/melotts/decoder-zh.rknn" \
@@ -34,7 +38,7 @@ touch \
 cat > "$TEST_ROOT/modules/voice/config/taishanpi3m/session.json" <<'EOF'
 {
   "knowledge": "data/knowledge/knowledge.jsonl",
-  "asr": {"backend": "sherpa_onnx", "model": "models/asr"},
+  "asr": {"backend": "sherpa_onnx", "model": "models/asr", "model_precision": "fp32"},
   "llm": {"backend": "rkllm", "model": "models/model.rkllm"},
   "tts": {
     "backend": "melotts",

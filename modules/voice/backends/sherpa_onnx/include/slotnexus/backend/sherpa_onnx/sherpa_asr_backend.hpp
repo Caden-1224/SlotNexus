@@ -10,9 +10,9 @@
 //     会话（ASR 会话结束标记即 kFinal，与 Fake 一致，无 kDone）；
 //   - cancel() 后 feed_audio 为空操作，不产出任何事件；
 //   - set_event_callback 开启新会话：重建流并重置累计状态。
-// 上游解码为同步阻塞；事件在 feed_audio 调用线程同步产出。模型目录与
-// ONNX Runtime 线程数由构造注入（不硬编码）；int16 PCM 内部按 /32768.0f
-// 归一化为 float（sherpa 的 AcceptWaveform 要求 float[-1,1]）。
+// 上游解码为同步阻塞；事件在 feed_audio 调用线程同步产出。模型目录、
+// ONNX Runtime 线程数与模型精度由构造注入（不硬编码）；int16 PCM 内部按
+// /32768.0f 归一化为 float（sherpa 的 AcceptWaveform 要求 float[-1,1]）。
 //
 // 上游源码不随仓库分发（third_party/README.md 约定），构建时由
 // SLOTNEXUS_SHERTA_ROOT 指向板端源码目录；模型文件不入库，
@@ -28,11 +28,15 @@ namespace slotnexus::backend::sherpa_onnx {
 
 class SherpaAsrBackend final : public IAsrBackend {
  public:
-  // model_dir：模型目录（encoder/decoder/joiner 的 int8 onnx + tokens.txt）。
-  // 加载失败抛出 std::runtime_error。
-  // num_threads：ONNX Runtime 线程数（门禁基线 4，RTF ~1.07；线程数影响
-  // 浮点归约顺序，最终识别文本以对应线程数的门禁基线为准）。
-  SherpaAsrBackend(std::string model_dir, int num_threads = 4);
+  // model_dir：模型目录（encoder/decoder/joiner onnx + tokens.txt）。
+  // num_threads：ONNX Runtime 线程数；线程数影响浮点归约顺序，最终识别
+  // 文本以对应线程数的门禁基线为准。
+  // model_precision："fp32"（默认，准确率优先）或 "int8"（内存/带宽优先）。
+  // fp32 = 三个 *.onnx；int8 = 官方配方 encoder int8 + decoder fp32 +
+  // joiner int8。非法值抛 std::invalid_argument；模型文件缺失/加载失败抛
+  // std::runtime_error。
+  SherpaAsrBackend(std::string model_dir, int num_threads = 4,
+                   std::string model_precision = "fp32");
   ~SherpaAsrBackend() override;
 
   SherpaAsrBackend(const SherpaAsrBackend&) = delete;

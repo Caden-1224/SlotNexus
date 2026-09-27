@@ -62,7 +62,46 @@ echo "== setup =="
 python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"setup","request_id":"s-0"}' 60
 
 echo "== 现场麦克风推理（3s 录音，请对板载麦克风说话）=="
-python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"inference","work_id":"w-0","request_id":"r-mic","payload":{"mode":"alsa"}}' 180
+RESULT=$(python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"inference","work_id":"w-0","request_id":"r-mic","payload":{"mode":"alsa"}}' 180)
+echo "$RESULT"
+python3 - "$RESULT" <<'PY'
+import json
+import os
+import sys
+
+raw = sys.argv[1]
+try:
+    reply = json.loads(raw)
+except json.JSONDecodeError as error:
+    print("麦克风响应不是合法 JSON: %s" % error, file=sys.stderr)
+    raise SystemExit(2)
+
+payload = reply.get("payload", {})
+asr_text = (payload.get("asr_text") or "").strip()
+status = payload.get("status")
+if not asr_text or status != "ok":
+    print("MIC_UNVERIFIED: 无真人语音输入或 ASR 未识别到文本 "
+          "(status=%r asr_text=%r)；请对板载麦克风说话后重跑，本次不得计为通过"
+          % (status, payload.get("asr_text")))
+    raise SystemExit(2)
+
+errors = []
+if payload.get("route") != "l2":
+    errors.append("route=%r（应为 l2）" % payload.get("route"))
+if int(payload.get("token_count") or 0) <= 0:
+    errors.append("token_count=%r（应 >0）" % payload.get("token_count"))
+if int(payload.get("pcm_frames") or 0) <= 0:
+    errors.append("pcm_frames=%r（应 >0）" % payload.get("pcm_frames"))
+wav_path = payload.get("wav_path") or ""
+if not wav_path or not os.path.isfile(wav_path):
+    errors.append("wav_path 不存在: %r" % wav_path)
+if errors:
+    for item in errors:
+        print("麦克风回归失败: " + item, file=sys.stderr)
+    raise SystemExit(1)
+print("MIC_VERIFIED: asr_text=%r route/llm/tts/RIFF 路径字段齐备" % asr_text)
+PY
+MIC_CHECK=$?
 
 echo "== taskinfo =="
 python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"taskinfo","work_id":"w-0","request_id":"t-1"}' 30
@@ -80,8 +119,8 @@ else:
 EOF
 done
 
-echo "== session 日志（输入/路由/完成）=="
-grep -E "session (req|run|done)" "$OUT/session.log" | tail -5
+echo "== session 日志（输入/麦克风采集/路由/完成）=="
+grep -E "session (req|run|mic|done)" "$OUT/session.log" | tail -8
 
 echo "== 优雅退出 =="
 for p in edge_gateway unit_manager session_node asr_node llm_node tts_node; do pkill -TERM -x "$p" 2>/dev/null; done
@@ -97,4 +136,13 @@ for i in $(seq 1 40); do
 done
 T1=$(date +%s%N)
 echo "退出耗时: $(( (T1 - T0) / 1000000000 ))s（20s 上限）"
-[ "$ALIVE" = 1 ] && echo "仍有进程存活" || echo "全部进程已退出"
+if [ "$ALIVE" = 1 ]; then
+ echo "仍有进程存活" >&2
+ exit 1
+fi
+echo "全部进程已退出"
+if [ "$MIC_CHECK" -ne 0 ]; then
+ echo "麦克风链路未验证：没有可核验的真人语音 ASR 文本（exit=$MIC_CHECK）" >&2
+ exit "$MIC_CHECK"
+fi
+exit 0

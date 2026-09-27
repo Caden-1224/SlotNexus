@@ -40,6 +40,7 @@ case "$CASE_NAME" in
     RKLLM_ROOT="$TEST_ROOT/rkllm"
     MELOTTS_ROOT="$TEST_ROOT/melotts"
     ASR_MODEL="$TEST_ROOT/models/asr"
+    VOICE_FIXTURE_DIR="$TEST_ROOT/fixtures"
     RKLLM_MODEL="$TEST_ROOT/models/model.rkllm"
     MELOTTS_ENCODER="$TEST_ROOT/models/encoder-zh.onnx"
     MELOTTS_DECODER="$TEST_ROOT/models/decoder-zh.rknn"
@@ -50,7 +51,7 @@ case "$CASE_NAME" in
       "$SHERPA_ROOT/sherpa-onnx/c-api" "$SHERPA_ROOT/build/lib" \
       "$RKLLM_ROOT/include" "$RKLLM_ROOT/aarch64" \
       "$MELOTTS_ROOT/include" "$MELOTTS_ROOT/lib" \
-      "$ASR_MODEL"
+      "$ASR_MODEL" "$VOICE_FIXTURE_DIR"
     touch \
       "$SHERPA_ROOT/sherpa-onnx/c-api/c-api.h" \
       "$SHERPA_ROOT/build/lib/libsherpa-onnx-c-api.so" \
@@ -61,12 +62,14 @@ case "$CASE_NAME" in
       "$MELOTTS_ROOT/lib/libonnxruntime.so" \
       "$MELOTTS_ROOT/lib/librknnrt.so" \
       "$RKLLM_MODEL" "$MELOTTS_ENCODER" "$MELOTTS_DECODER" \
-      "$MELOTTS_LEXICON" "$MELOTTS_TOKENS" "$MELOTTS_G"
+      "$MELOTTS_LEXICON" "$MELOTTS_TOKENS" "$MELOTTS_G" \
+      "$VOICE_FIXTURE_DIR/demo_zh.wav"
 
     SLOTNEXUS_SHERTA_ROOT="$SHERPA_ROOT" \
     SLOTNEXUS_RKLLM_ROOT="$RKLLM_ROOT" \
     SLOTNEXUS_MELOTTS_ROOT="$MELOTTS_ROOT" \
     SLOTNEXUS_ASR_MODEL="$ASR_MODEL" \
+    SLOTNEXUS_VOICE_FIXTURE_DIR="$VOICE_FIXTURE_DIR" \
     SLOTNEXUS_RKLLM_MODEL="$RKLLM_MODEL" \
     SLOTNEXUS_MELOTTS_ENCODER="$MELOTTS_ENCODER" \
     SLOTNEXUS_MELOTTS_DECODER="$MELOTTS_DECODER" \
@@ -80,6 +83,8 @@ case "$CASE_NAME" in
     grep -Fq -- "-DSLOTNEXUS_RKLLM_ROOT=$RKLLM_ROOT" "$COMMAND_LOG"
     grep -Fq -- "-DSLOTNEXUS_MELOTTS_ROOT=$MELOTTS_ROOT" "$COMMAND_LOG"
     grep -Fq -- "-DSLOTNEXUS_ASR_MODEL=$ASR_MODEL" "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_ASR_PRECISION=fp32" "$COMMAND_LOG"
+    grep -Fq -- "-DSLOTNEXUS_VOICE_FIXTURE_DIR=$VOICE_FIXTURE_DIR" "$COMMAND_LOG"
     grep -Fq -- "-DSLOTNEXUS_RKLLM_MODEL=$RKLLM_MODEL" "$COMMAND_LOG"
     grep -Fq -- "-DSLOTNEXUS_MELOTTS_ENCODER=$MELOTTS_ENCODER" "$COMMAND_LOG"
     grep -Fq -- "-DSLOTNEXUS_MELOTTS_DECODER=$MELOTTS_DECODER" "$COMMAND_LOG"
@@ -106,6 +111,7 @@ case "$CASE_NAME" in
       -u SLOTNEXUS_MELOTTS_LEXICON \
       -u SLOTNEXUS_MELOTTS_TOKENS \
       -u SLOTNEXUS_MELOTTS_G \
+      -u SLOTNEXUS_VOICE_FIXTURE_DIR \
       /bin/bash "$BUILD_SCRIPT" hardware 2>&1)
     STATUS=$?
     set -e

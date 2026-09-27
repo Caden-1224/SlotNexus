@@ -1,7 +1,9 @@
 # 第三方源码与 SDK 边界
 
 本目录只允许存放经许可核验、适合再分发的小型依赖。目前唯一内嵌内容是
-`nlohmann/json.hpp`（nlohmann-json 3.10.5，MIT，许可头保留）。
+`nlohmann/` 完整 3.10.5 multi-header 头文件集合（MIT，许可头保留）。
+只内嵌顶层 `json.hpp` 会继续 include `nlohmann/detail/...`，缺少子头时
+会落到系统其它版本，造成无法预期的版本混用，因此必须整套提供。
 
 以下依赖由部署环境提供，不复制到本目录：
 

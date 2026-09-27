@@ -34,6 +34,8 @@ set_target_properties(rkllm_reasoning_filter_test PROPERTIES
 
 if(SLOTNEXUS_ENABLE_HARDWARE_BACKENDS)
   set(SLOTNEXUS_ASR_MODEL "" CACHE PATH "sherpa-onnx ASR 测试模型目录")
+  set(SLOTNEXUS_ASR_PRECISION "fp32" CACHE STRING "sherpa-onnx ASR 测试模型精度（fp32/int8）")
+  set(SLOTNEXUS_VOICE_FIXTURE_DIR "" CACHE PATH "demo_zh.wav 端到端固定 fixture 目录")
   set(SLOTNEXUS_RKLLM_MODEL "" CACHE PATH "RKLLM 测试模型路径")
   set(SLOTNEXUS_RKLLM_REASONING_END_TAG "off" CACHE STRING "RKLLM 思考段过滤标记")
   set(SLOTNEXUS_MELOTTS_ENCODER "" CACHE PATH "MeloTTS 编码器 onnx")
@@ -48,7 +50,7 @@ if(SLOTNEXUS_ENABLE_HARDWARE_BACKENDS)
     slotnexus::sherpa_asr slotnexus::voice_common)
   add_test(NAME sherpa_asr_test COMMAND sherpa_asr_test)
   set_tests_properties(sherpa_asr_test PROPERTIES
-    ENVIRONMENT "SLOTNEXUS_ASR_MODEL=${SLOTNEXUS_ASR_MODEL}")
+    ENVIRONMENT "SLOTNEXUS_ASR_MODEL=${SLOTNEXUS_ASR_MODEL};SLOTNEXUS_ASR_PRECISION=${SLOTNEXUS_ASR_PRECISION};SLOTNEXUS_VOICE_FIXTURE_DIR=${SLOTNEXUS_VOICE_FIXTURE_DIR}")
 
   add_executable(rkllm_llm_test rkllm_llm_test.cpp)
   target_link_libraries(rkllm_llm_test PRIVATE slotnexus::rkllm)

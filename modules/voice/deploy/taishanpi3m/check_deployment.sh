@@ -4,7 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-DEFAULT_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
+DEFAULT_ROOT=$(cd "$SCRIPT_DIR/../../../.." && pwd)
 ROOT=${SLOTNEXUS_DEPLOY_ROOT:-$DEFAULT_ROOT}
 BUILD_DIR=${SLOTNEXUS_BUILD_DIR:-$ROOT/build-taishanpi3m-hw}
 CONFIG=${SLOTNEXUS_CONFIG:-$ROOT/modules/voice/config/taishanpi3m/session.json}
@@ -61,10 +61,26 @@ for section, allowed in allowed_backends.items():
         )
         raise SystemExit(1)
 
+asr = config.get("asr", {})
+precision = asr.get("model_precision", "fp32")
+if precision not in ("fp32", "int8"):
+    print(
+        f"部署预检失败: asr.model_precision 应为 fp32/int8，实际为 {precision!r}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+
+
+def resolve(path):
+    if not isinstance(path, str) or not path:
+        return None
+    return path if os.path.isabs(path) else os.path.join(root, path)
+
+
 tts = config.get("tts", {})
 path_specs = [
     ("知识库", config.get("knowledge"), "file"),
-    ("ASR 模型", config.get("asr", {}).get("model"), "directory"),
+    ("ASR 模型目录", asr.get("model"), "directory"),
     ("LLM 模型", config.get("llm", {}).get("model"), "file"),
 ]
 if tts.get("backend") == "melotts":
@@ -76,20 +92,43 @@ if tts.get("backend") == "melotts":
         ("MeloTTS g 向量", tts.get("g_vector"), "file"),
     ]
 for label, configured_path, expected_type in path_specs:
-    if not isinstance(configured_path, str) or not configured_path:
+    resolved_path = resolve(configured_path)
+    if resolved_path is None:
         print(f"部署预检失败: 配置缺少 {label}路径", file=sys.stderr)
         raise SystemExit(1)
-
-    resolved_path = configured_path
-    if not os.path.isabs(resolved_path):
-        resolved_path = os.path.join(root, resolved_path)
-
-    exists = os.path.isdir(resolved_path) if expected_type == "directory" else os.path.isfile(resolved_path)
+    exists = (
+        os.path.isdir(resolved_path)
+        if expected_type == "directory"
+        else os.path.isfile(resolved_path)
+    )
     if not exists:
         print(f"部署预检失败: 缺少 {label}: {configured_path}", file=sys.stderr)
         raise SystemExit(1)
-
     print(f"{label}: {configured_path}")
+
+# ASR 后端按精度选择 fp32 或 int8 的 encoder/decoder/joiner 三元组；
+# bpe.model/tokens.txt 必须与模型包同批提供，避免路径或版本链错配。
+asr_dir = resolve(asr.get("model"))
+suffix = ".int8.onnx" if precision == "int8" else ".onnx"
+# 官方 int8 配方固定使用 fp32 decoder；encoder/joiner 按精度切换。
+asr_files = [
+    f"encoder-epoch-99-avg-1{suffix}",
+    "decoder-epoch-99-avg-1.onnx",
+    f"joiner-epoch-99-avg-1{suffix}",
+    "tokens.txt",
+    "bpe.model",
+]
+for name in asr_files:
+    candidate = os.path.join(asr_dir, name)
+    if not os.path.isfile(candidate):
+        print(
+            f"部署预检失败: ASR 精度 {precision} 缺少模型文件 {name}: {candidate}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    print(f"ASR 模型文件: {name}")
+
+print(f"ASR 模型精度: {precision}")
 PY
 
 echo "部署预检通过: 六个程序、板端配置、模型与动态库均已就绪"

@@ -55,6 +55,7 @@ if [ "$MODE" = hardware ]; then
     SLOTNEXUS_RKLLM_ROOT \
     SLOTNEXUS_MELOTTS_ROOT \
     SLOTNEXUS_ASR_MODEL \
+    SLOTNEXUS_VOICE_FIXTURE_DIR \
     SLOTNEXUS_RKLLM_MODEL \
     SLOTNEXUS_MELOTTS_ENCODER \
     SLOTNEXUS_MELOTTS_DECODER \
@@ -73,6 +74,7 @@ if [ "$MODE" = hardware ]; then
   require_path "$SLOTNEXUS_MELOTTS_ROOT/lib/libonnxruntime.so" " ONNX Runtime 动态库"
   require_path "$SLOTNEXUS_MELOTTS_ROOT/lib/librknnrt.so" " RKNN Runtime"
   require_path "$SLOTNEXUS_ASR_MODEL" " ASR 模型目录"
+  require_path "$SLOTNEXUS_VOICE_FIXTURE_DIR/demo_zh.wav" "固定 WAV fixture demo_zh.wav"
   require_path "$SLOTNEXUS_RKLLM_MODEL" " RKLLM 模型"
   require_path "$SLOTNEXUS_MELOTTS_ENCODER" " MeloTTS 编码器模型"
   require_path "$SLOTNEXUS_MELOTTS_DECODER" " MeloTTS 解码器模型"
@@ -85,7 +87,7 @@ fi
 echo "== 依赖检查 =="
 for cmd in cmake g++; do
   if ! command -v "$cmd" >/dev/null; then
-    echo "缺少 $cmd：请先安装（sudo apt install -y cmake g++ libzmq3-dev nlohmann-json3-dev）"
+    echo "缺少 $cmd：请先安装（sudo apt install -y cmake g++ libzmq3-dev）"
     exit 1
   fi
 done
@@ -107,6 +109,8 @@ if [ "$MODE" = hardware ]; then
     "-DSLOTNEXUS_RKLLM_ROOT=$SLOTNEXUS_RKLLM_ROOT"
     "-DSLOTNEXUS_MELOTTS_ROOT=$SLOTNEXUS_MELOTTS_ROOT"
     "-DSLOTNEXUS_ASR_MODEL=$SLOTNEXUS_ASR_MODEL"
+    "-DSLOTNEXUS_ASR_PRECISION=${SLOTNEXUS_ASR_PRECISION:-fp32}"
+    "-DSLOTNEXUS_VOICE_FIXTURE_DIR=$SLOTNEXUS_VOICE_FIXTURE_DIR"
     "-DSLOTNEXUS_RKLLM_MODEL=$SLOTNEXUS_RKLLM_MODEL"
     "-DSLOTNEXUS_MELOTTS_ENCODER=$SLOTNEXUS_MELOTTS_ENCODER"
     "-DSLOTNEXUS_MELOTTS_DECODER=$SLOTNEXUS_MELOTTS_DECODER"
