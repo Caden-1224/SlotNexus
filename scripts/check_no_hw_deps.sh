@@ -1,6 +1,7 @@
 #!/bin/bash
+# Author: Caden
 # 验收检查：默认构建的所有可执行文件不得链接任何硬件 Backend 依赖
-# （RKLLM / sherpa-onnx / SummerTTS / ALSA 声卡库）。
+# （RKLLM / sherpa-onnx / MeloTTS / ALSA 声卡库）。
 # 用法：scripts/check_no_hw_deps.sh [build 目录]（默认 build-wsl）
 set -u
 cd "$(dirname "$0")/.."
@@ -17,7 +18,7 @@ BINS=(
   "$BUILD/apps/session_node/session_node"
   "$BUILD/apps/voice_cli/voice_cli"
 )
-PATTERN='rkllm|rknn|sherpa|onnx|summer|asound|libsndfile'
+PATTERN='rkllm|rknn|sherpa|onnx|asound|libsndfile'
 FAILED=0
 
 for B in "${BINS[@]}"; do

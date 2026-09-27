@@ -1,0 +1,74 @@
+<!-- Author: Caden. README 头图：左侧展示品牌，右侧展示稳定的 Core 与可独立接入的应用模块；蓝与浅红区分职责，增加色彩对比度。 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="340" viewBox="0 0 1280 340" role="img" aria-labelledby="title desc">
+  <title id="title">SlotNexus</title>
+  <desc id="desc">面向端侧的多进程通信与推理中间件。图中通用 Core 连接可独立构建的应用模块。</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dbe9fa"/>
+      <stop offset="0.58" stop-color="#edf3fb"/>
+      <stop offset="1" stop-color="#f7dfe5"/>
+    </linearGradient>
+    <radialGradient id="aura" cx="0.78" cy="0.35" r="0.72">
+      <stop offset="0" stop-color="#80a9d9" stop-opacity="0.19"/>
+      <stop offset="1" stop-color="#b5cef0" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="line" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5d89bc"/>
+      <stop offset="1" stop-color="#cf8194"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#6088b3" stroke-opacity="0.10" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#48698e" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="340" rx="26" fill="url(#background)"/>
+  <rect width="1280" height="340" rx="26" fill="url(#aura)"/>
+  <rect width="1280" height="340" rx="26" fill="url(#grid)"/>
+  <path d="M0 310C214 235 394 370 610 298S1020 232 1280 306" fill="none" stroke="#7199c6" stroke-opacity="0.28" stroke-width="2"/>
+  <path d="M0 326C234 270 442 382 640 318S1014 278 1280 322" fill="none" stroke="#c98294" stroke-opacity="0.25" stroke-width="2"/>
+  <rect x="0.5" y="0.5" width="1279" height="339" rx="25.5" fill="none" stroke="#b9cde3"/>
+
+  <!-- 品牌区：深蓝文字保证浅色背景上的可读性，连接线使用蓝到浅红的渐变。 -->
+  <circle cx="76" cy="67" r="6" fill="#b96379"/>
+  <circle cx="76" cy="67" r="13" fill="none" stroke="#b96379" stroke-opacity="0.43"/>
+  <text x="101" y="73" fill="#3d648e" font-family="Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="3">EDGE INTELLIGENCE PLATFORM</text>
+
+  <text x="70" y="167" fill="#1e3a59" font-family="Arial, sans-serif" font-size="78" font-weight="800" letter-spacing="-3">SlotNexus</text>
+  <rect x="76" y="185" width="410" height="4" rx="2" fill="url(#line)"/>
+  <text x="76" y="229" fill="#355677" font-family="Microsoft YaHei, Noto Sans CJK SC, Arial, sans-serif" font-size="24" font-weight="500">端侧多进程通信与推理中间件</text>
+  <text x="76" y="267" fill="#4b6a8c" font-family="Arial, sans-serif" font-size="18">One core. Independent modules. Offline by design.</text>
+
+  <!-- 模块区：右侧使用通用模块图标，后续新增应用无需修改品牌横幅。 -->
+  <g filter="url(#shadow)">
+    <rect x="726" y="35" width="495" height="270" rx="22" fill="#fbfdff" stroke="#b9cadc"/>
+  </g>
+  <text x="757" y="72" fill="#496c90" font-family="Arial, sans-serif" font-size="14" font-weight="700" letter-spacing="2.5">MODULE BOUNDARY</text>
+  <rect x="754" y="89" width="202" height="184" rx="16" fill="#dceafb" stroke="#8eafd4"/>
+  <rect x="992" y="89" width="202" height="184" rx="16" fill="#f8dfe5" stroke="#d69baa"/>
+
+  <g stroke="#527fb2" stroke-width="2" fill="none" stroke-linecap="round">
+    <path d="M822 141L856 122L890 142L856 161Z"/>
+    <path d="M822 141V178L856 198L890 178V142"/>
+    <path d="M856 161V198"/>
+  </g>
+  <circle cx="822" cy="141" r="4" fill="#527fb2"/>
+  <circle cx="890" cy="142" r="4" fill="#527fb2"/>
+  <circle cx="856" cy="198" r="4" fill="#527fb2"/>
+  <text x="855" y="228" text-anchor="middle" fill="#2a5078" font-family="Arial, sans-serif" font-size="19" font-weight="700">CORE</text>
+  <text x="855" y="252" text-anchor="middle" fill="#496c90" font-family="Arial, sans-serif" font-size="13">protocol · runtime · routing</text>
+
+  <path d="M957 181H988" stroke="#9a91b2" stroke-width="4" stroke-linecap="round"/>
+  <path d="M983 174L991 181L983 188" fill="none" stroke="#b96379" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <g fill="none" stroke="#ad5d73" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M1093 160V174M1093 174H1057V183M1093 174H1129V183"/>
+    <rect x="1077" y="125" width="32" height="35" rx="6"/>
+    <rect x="1041" y="183" width="32" height="28" rx="6"/>
+    <rect x="1113" y="183" width="32" height="28" rx="6"/>
+  </g>
+  <text x="1093" y="238" text-anchor="middle" fill="#7e4054" font-family="Arial, sans-serif" font-size="19" font-weight="700">APP MODULES</text>
+  <text x="1093" y="259" text-anchor="middle" fill="#8a5264" font-family="Arial, sans-serif" font-size="13">build · configure · connect</text>
+</svg>

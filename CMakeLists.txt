@@ -1,11 +1,21 @@
+# VoxOrchestra/SlotNexus 顶层构建入口。
+#
+# Author: Caden
+# 设计意图：同一仓库内分离“通用中间件核心”和“语音应用模块”。核心可在
+# VOX_BUILD_VOICE=OFF 下独立配置/构建/测试/安装；语音只通过公开 target 或
+# find_package(slotnexus-core) 消费核心，不反向被核心依赖。
+#
+# 主要开关：
+#   VOX_BUILD_VOICE          构建 modules/voice（默认 ON）
+#   VOX_BUILD_TESTS          构建测试（默认 ON）
+#   SLOTNEXUS_ENABLE_HARDWARE_BACKENDS 构建板端真实语音后端（默认 OFF）
 cmake_minimum_required(VERSION 3.22)
 
 project(slotnexus
-  VERSION 0.1.0
-  DESCRIPTION "SlotNexus: 端侧多进程通信与推理中间件（统一后端契约、有界数据面、进程隔离）"
+  VERSION 0.2.0
+  DESCRIPTION "SlotNexus: 通用多进程通信与推理中间件；voice 为首个可选应用模块"
   LANGUAGES CXX)
 
-# 统一使用 C++17：本项目所有库与可执行文件共用的语言标准。
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -14,25 +24,23 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Debug CACHE STRING "构建类型" FORCE)
 endif()
 
-# 硬件 Backend（RKLLM/sherpa-onnx/SummerTTS/ALSA）默认关闭，
-# 保证 x86 开发环境不需要任何厂商 SDK 或声卡即可构建和测试。
+option(VOX_BUILD_VOICE "构建语音应用模块 modules/voice" ON)
+option(VOX_BUILD_TESTS "构建测试" ON)
 option(SLOTNEXUS_ENABLE_HARDWARE_BACKENDS
-  "构建硬件 Backend（需要厂商 SDK 与目标硬件）" OFF)
+  "构建硬件语音后端（需要厂商 SDK 与目标硬件）" OFF)
 
+include(GNUInstallDirs)
 enable_testing()
 
-add_subdirectory(libs/common)
-add_subdirectory(libs/protocol)
-add_subdirectory(libs/transport)
-add_subdirectory(libs/dataplane)
-add_subdirectory(libs/network)
-add_subdirectory(libs/task_registry)
-add_subdirectory(libs/runtime)
-add_subdirectory(libs/rag)
-add_subdirectory(libs/session)
-add_subdirectory(backends)
-add_subdirectory(apps)
-add_subdirectory(tests/unit)
-add_subdirectory(tests/integration)
-add_subdirectory(tests/e2e)
-add_subdirectory(tests/fault)
+add_subdirectory(middleware)
+
+if(VOX_BUILD_VOICE)
+  add_subdirectory(modules/voice)
+endif()
+
+if(VOX_BUILD_TESTS)
+  add_subdirectory(tests/core)
+  if(VOX_BUILD_VOICE)
+    add_subdirectory(modules/voice/tests)
+  endif()
+endif()

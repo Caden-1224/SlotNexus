@@ -1,0 +1,11 @@
+{
+  "default_module_id": "voice",
+  "modules": [
+    {
+      "module_id": "voice",
+      "protocol_version": 1,
+      "config": "modules/voice/config/taishanpi3m/session.json",
+      "nodes": ["tcp://127.0.0.1:19310"]
+    }
+  ]
+}

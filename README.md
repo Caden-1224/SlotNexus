@@ -1,254 +1,363 @@
-# SlotNexus —— 端侧多进程通信与推理中间件
+<div align="center">
 
-> 统一后端契约、有界数据面与进程隔离；通信、调度、节点运行时与 Backend 契约全部自研，首个端到端应用是全离线大模型语音闭环。
+<img src="assets/slotnexus-hero.svg" alt="SlotNexus：通用 Core 连接独立应用模块" width="100%">
 
-## 项目简介
+# SlotNexus
 
-面向华为昇腾、鲲鹏、瑞芯微 RK 系列等边缘计算平台，本项目以 RK3576（立创·泰山派 3M，4 GB 内存）作为验证平台，自研一套轻量化多进程通信与推理中间件：五类可替换后端收敛到同一套契约与同一个 Node 运行时，控制面与数据面分离，所有队列有界、所有等待有超时，节点以进程为故障边界。首个端到端应用，是在其上构建的端侧全离线大模型语音交互链路（ASR → 本地检索 → LLM → TTS）。
+**让端侧模型各司其职，让通信、调度与推理协作有统一底座。**
 
-- **端侧**：面向低资源边缘设备，覆盖昇腾、鲲鹏、RK 系列等平台；当前以 RK3576（4 GB 内存 + 6 TOPS NPU）作为真机验证平台；
-- **轻量**：以 4 GB 内存为约束设计——进程级隔离、有界队列背压、无向量库常驻开销、默认构建零厂商 SDK 依赖；实际内存驻留能力以板卡实测为准；
-- **多进程**：Gateway、Unit Manager、Session 与各模型节点独立进程运行，故障边界清晰，节点按需启停、可独立替换；
-- **通信与推理中间件**：ZMQ 多模式通信、TCP 网关、任务调度、Node 运行时与 Backend 契约全部独立实现，系统级依赖仅 ZeroMQ 与 nlohmann-json；
-- **全离线**：不依赖公网与云端，适用于无网络、隐私敏感的部署环境；
-- **首个端到端应用（大模型语音交互）**：统一编排 ASR、本地 RAG、RKLLM 与 TTS，已在泰山派 3M 上完成固定 WAV、板载麦克风、故障注入和 30 轮全真实闭环。当前链路为 Qwen3.5-0.8B（RKLLM 1.3.0）+ MeloTTS：30/30 成功，端到端 p50 59.4 s / p95 60.8 s（口径见 `docs/benchmark.md`，上一代 1.5B + SummerTTS 基线另表记录）；Fake 后端仅用于默认构建的确定性测试。
+面向 Linux 边缘设备的多进程通信与推理中间件，首个应用模块是一条全离线语音交互链路。
 
-系统以**单机多进程**为边界：不涉及跨主机集群、注册中心或故障转移；控制面 RPC（deadline + 结构化错误）与数据面异步流（有界、可取消）分离，外部客户端只访问 TCP 网关。
+![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
+![CMake 3.22+](https://img.shields.io/badge/CMake-3.22%2B-064F8C?logo=cmake&logoColor=white)
+![Linux](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)
+![MIT License](https://img.shields.io/badge/license-MIT-green)
 
-## 项目背景
+[快速开始](#快速开始) · [设计动机](#为什么需要这套中间件) · [架构](#架构) · [项目设计](#项目设计) · [模块开发](#模块开发) · [板端部署](#板端部署) · [验证状态](#验证状态)
 
-端侧设备（树莓派、昇腾、瑞芯微 RK 系列等）处于低资源环境：算力分散、内存与通信受限、模型各自为政。把 ASR、LLM、TTS 直接串联会让业务代码同时承担模型调用、Socket、线程、超时、取消和退出逻辑，产生五类问题：
+</div>
 
-| 问题 | 后果 | 本项目对策 |
-|---|---|---|
-| 多个模型争抢 CPU / NPU / 内存 | 故障边界不清，一个模型崩溃拖垮全部 | 独立进程隔离，每个节点只占一份资源 |
-| 模型加载与生命周期各不相同 | 无法为每次请求临时启停 | Unit Manager 统一任务生命周期（setup / exit） |
-| 音频、token、PCM 是流式数据 | 不适合全部使用同步 RPC | 控制面 RPC + 数据面异步流分离 |
-| 固定 `localhost` 端口互相耦合 | 节点无法独立替换 | 统一消息协议 + 动态 work_id 路由 |
-| 并发请求缺少标识隔离 | 回复错位、晚到消息串入新会话 | work_id / request_id / session_id / generation 四级标识 |
+> [!NOTE]
+> **重构状态**：中间件与语音模块的目录、依赖和构建边界已重构；重构后的泰山派 3M 真实硬件链路正在验证。文中的 30 轮板端数据来自**重构前**的 Qwen3.5-0.8B + MeloTTS 链路，不代表新目录结构已完成同等板端回归。
 
-本项目自研一套轻量化**多进程通信与推理中间件**——通信基座、任务调度、Node 运行时与后端契约全部独立实现，系统级依赖仅 ZeroMQ 与 nlohmann-json：统一 Node Runtime 承载所有模型节点，控制面与数据面分离，节点按需启停、可独立替换，可迁移至昇腾、鲲鹏、RK 系列等边缘平台复用。
+## 项目概览
 
-## 项目架构图
+SlotNexus 面向**华为昇腾、鲲鹏、瑞芯微 RK 系列、地平线 RDK 系列等 Linux 边缘计算平台**，为低资源环境中的 LLM、ASR、TTS 等模型提供公共通信与任务管理机制。它把模型拆成独立进程，通过统一协议组织协同推理，减少业务代码对节点地址、连接管理和模型接口的直接依赖。
+
+当前以 **RK3576 泰山派 3M（4 GB 内存）**作为实际板端验证平台；其他平台是架构适配目标，尚不能视为已完成硬件验证。
+
+项目自行实现 TCP Reactor、ZeroMQ 传输封装、任务注册与 Node Runtime，把模型之间共用的通信和生命周期能力收敛到可独立构建的中间件。具体模型、音频格式和业务编排由应用模块持有。
+
+| 🧱 通用 Core | 🔌 模块边界 | 🎙️ 语音实例 |
+| --- | --- | --- |
+| [`middleware/`](middleware/) 提供 Gateway、Unit Manager、Node Runtime、协议与数据面；可单独构建、测试、安装。 | Core 只传递通用 JSON `payload` 与事件；模块通过公开 CMake targets 接入，[边界脚本](scripts/check_core_boundary.sh)检查反向依赖。 | [`modules/voice/`](modules/voice/) 串联 ASR → 本地 RAG → LLM → TTS；默认 Fake Backend 无需模型和声卡。 |
+
+中间件传递不透明 JSON `payload` 和通用事件，不依赖语音模型或 PCM 类型。语音模块可以作为同仓库目标构建，也可以通过已安装的 `slotnexus-core` CMake 包单独构建。模块在**安装、配置并重启服务后**接入；目前没有模块动态加载或自动发现机制。
+
+### 为什么需要这套中间件
+
+直接把 ASR、检索、LLM 和 TTS 串在一个业务进程里，业务代码就必须同时处理模型资源、Socket、线程、流式输出和异常退出。SlotNexus 针对以下问题提供公共机制：
+
+| 端侧常见问题 | 项目中的处理方式 |
+| --- | --- |
+| 模型争用 CPU、NPU 和内存，一个节点异常影响整条链路 | 模型节点以进程隔离；任务由 Manager 分配并跟踪，故障按节点处理 |
+| 模型加载、推理、取消和退出方式各不相同 | 通用 Node Runtime 管理 `setup / inference / cancel / taskinfo / exit` 生命周期，应用模块负责适配具体 Backend |
+| 音频帧、识别片段、token 和 PCM 持续产生，容易积压 | 控制面 RPC 与异步数据面分离；队列容量、等待时间和消息尺寸受限 |
+| 节点地址与业务调用写死在客户端中，替换节点牵动调用方 | Gateway 提供统一接入；Manager 根据模块配置和 `work_id` 路由，节点端点集中配置 |
+| 多轮请求、取消和晚到事件可能串流 | `work_id`、`request_id`、`session_id` 区分任务与请求；语音 Session 用 generation 过滤旧事件 |
+
+当前实现聚焦**单机多进程、离线运行**。通信与推理按进程拆分，通过 TCP / ZeroMQ 协作；Gateway 与内部节点不依赖公网服务。目前不提供跨主机集群或自动故障转移。
+
+### 技术栈
+
+| 层次 | 技术与实现 |
+| --- | --- |
+| 系统与语言 | Linux · C++17 · RAII · 智能指针 · mutex / atomic |
+| 网络与通信 | 非阻塞 Socket · epoll · eventfd · Reactor · ZeroMQ / cppzmq |
+| 协议与任务 | NDJSON · nlohmann/json · 状态机 · Backend 工厂注入 · 回调与 Adapter |
+| 构建与交付 | CMake Presets · 可安装 CMake package · CTest · Shell · Python 夹具生成 |
+| 语音模块 | sherpa-onnx · BM25 · RKLLM · MeloTTS · ONNX Runtime · RKNN · ALSA |
+
+## 架构
 
 ```mermaid
 flowchart LR
-    Client["Voice Client<br/>麦克风 / WAV / 文本"]
-    Gateway["Edge Gateway<br/>TCP/NDJSON + Reactor"]
-    Manager["Unit Manager<br/>work_id + TaskRegistry"]
-    Session["Session Node<br/>状态机 + BM25/L0-L3"]
-    ASR["ASR Node<br/>Fake / sherpa-onnx"]
-    LLM["LLM Node<br/>Fake / RKLLM"]
-    TTS["TTS Node<br/>Fake / MeloTTS"]
+    Client["客户端<br/>文本 / WAV / 麦克风"]
+    Gateway["Edge Gateway<br/>TCP + NDJSON"]
+    Manager["Unit Manager<br/>module_id + work_id 路由"]
+    Session["Voice Session<br/>状态机 + RAG"]
+    ASR["ASR<br/>Fake / sherpa-onnx"]
+    LLM["LLM<br/>Fake / RKLLM"]
+    TTS["TTS<br/>Fake / MeloTTS"]
     Output["WAV / ALSA"]
 
-    Client -->|"TCP NDJSON"| Gateway
-    Gateway -->|"REQ/REP + deadline"| Manager
-    Manager -->|"任务生命周期"| Session
-    Session -->|"控制 RPC + 事件流"| ASR
-    ASR -->|"partial / final"| Session
-    Session -->|"L2 / L3"| LLM
-    LLM -->|"token / done"| Session
-    Session -->|"L0-L3 答案"| TTS
-    TTS -->|"PCM / done"| Session
+    Client --> Gateway --> Manager --> Session
+    Session <--> ASR
+    Session <--> LLM
+    Session <--> TTS
     Session --> Output
+
+    subgraph Core["SlotNexus · 通用中间件"]
+        Gateway
+        Manager
+    end
+    subgraph Voice["语音应用模块"]
+        Session
+        ASR
+        LLM
+        TTS
+    end
+
+    classDef core fill:#edf5ff,stroke:#8baed4,color:#274969
+    classDef voice fill:#fff1f3,stroke:#d7a0ac,color:#794a55
+    classDef io fill:#ffffff,stroke:#b8cbdc,color:#465f77
+    class Gateway,Manager core
+    class Session,ASR,LLM,TTS voice
+    class Client,Output io
+    style Core fill:#f7fbff,stroke:#bfd3e9,color:#274969
+    style Voice fill:#fff9fa,stroke:#ecc5ce,color:#794a55
 ```
 
-图中控制面与数据面路径均已落地。泰山派 3M 的发布运行形态为六进程：Gateway、Unit Manager、Session、ASR、LLM 和 TTS；RAG 在 Session 内完成路由。详细进程图和请求时序见 `docs/architecture.md`。
+板端语音发布形态为 **Gateway、Unit Manager、Session、ASR、LLM、TTS 六进程**。RAG 在 Session 内完成路由，不额外常驻进程。控制请求通过 ZeroMQ RPC 转发；ASR 识别片段、LLM token 和 TTS PCM 由语音适配器转换成通用数据面事件。
 
-### 三个平面
-
-| 平面 | 内容 | 模式 | 关键约束 |
-|---|---|---|---|
-| 控制面 | setup / cancel / taskinfo / exit | REQ/REP RPC | deadline、结构化错误、幂等语义 |
-| 数据面 | 音频帧 / ASR 结果 / token / PCM | PUB/SUB 或 PUSH/PULL | 异步、有界、可取消，不能无限堆积 |
-| 外部接入 | 用户请求、流式响应 | TCP + NDJSON | 半包、粘包、超长帧、慢客户端 |
-
-### 统一消息与标识符
-
-统一消息为版本化 JSON 信封（`MessageEnvelope`）：`version / work_id / request_id / session_id / type / index / timestamp_ms / payload / finish / error`。四个标识符解决不同问题：
-
-| 标识符 | 隔离粒度 | 典型场景 |
-|---|---|---|
-| `work_id` | 任务实例 | 一次 setup 起的整个任务生命周期 |
-| `request_id` | 一次调用 | 单次 inference / cancel，回复按它归位 |
-| `session_id` | 多轮会话 | 多轮对话上下文关联 |
-| generation | 取消后的代际 | 取消后旧 token / PCM 直接丢弃，不串入新会话 |
-
-## 项目设计方案
-
-### 1. 通信基座：ZMQ 多模式通信中间件
-
-- 统一封装 RPC / PUB-SUB / PUSH-PULL 三种通信策略（`libs/transport`），业务层按场景选择、调用方式一致，网络细节对业务屏蔽；
-- **设计要点**：RPC 带 deadline 与结构化错误，超时自动重建连接保证控制面可用性；PUB-SUB 带订阅握手避免慢订阅者丢包；PUSH-PULL 用于任务分发——所有等待都有超时，不存在无限阻塞；
-- 轻量序列化：版本化 JSON 信封，长度上限 1 MiB，编解码两端双重校验。
-
-### 2. 网络接入：主从 Reactor TCP 框架
-
-- epoll 事件循环（EventLoop / Channel / Poller），连接生命周期归属单一 loop 线程，主从 Reactor 分层；
-- **设计要点**：NDJSON 增量解帧覆盖半包 / 粘包 / 超长帧 / 慢客户端写缓冲上限；所有连接回调都在 loop 线程执行，避免跨线程竞争；
-- 多协议网关（`edge_gateway`）：TCP 接入 + ZMQ 控制面转发，外部用户与内部业务节点解耦。
-
-### 3. 任务调度框架：Unit Manager 与 Node Runtime
-
-- work_id 全局分配与路由（`TaskRegistry`），setup / inference / cancel / taskinfo / exit 状态机（`TaskChannel`），重复调用幂等；
-- **设计要点**：控制面 RPC 服务注册与指令路由；轻量内存 KV 存储任务元信息，线程安全查询；任务实例交错 20 轮 E2E 无跨流；
-- 数据面通道有界：容量、超时、关闭协议明确，防止慢消费者耗尽内存。
-
-### 4. Node 业务层：标准化 Backend 契约
-
-- **任务管理（类似线程）**：单任务实例内模型加载、推理与流式输出回调；
-- **服务层控制（类似进程）**：自定义实现 setup 等接口，节点生命周期统一管理，节点间通过消息订阅交互；
-- **设计要点**：五类可替换后端（`IAsrBackend / IRetriever / ILlmBackend / ITtsBackend / IAudioSink`）与统一事件（partial / final / token / pcm / done）；Node 外壳只依赖接口，默认构建全部使用确定性 Fake，真实后端按需接入——这是硬件接入的唯一变化点。
-
-### 5. 首个应用链路：语音交互（ASR → 分级 RAG → LLM → TTS）
-
-- **ASR**：流式识别，逐帧 partial、末帧 final；sherpa-onnx 流式 Zipformer 已接入（Fake 默认）；
-- **分级 RAG**：L0 紧急控制（规则命中，绕过 LLM）/ L1 高置信事实直答 / L2 复杂问题带上下文 / L3 闲聊不注入伪知识；JSONL 知识库、BM25 检索与 Session 编排已接入完整链路（阈值在 `config/mock/session.json` 实测标定）；
-- **LLM**：RKLLM 后端，当前模型为 Qwen3.5-0.8B W4A16 G128（板端实测 TTFT 约 3.0 s、解码约 7 tok/s，见 `artifacts/llm-integration/`）；后端与模型解耦——采样参数、思考模式开关与思考段过滤标记全部由 `session.json::llm` 配置，代码内不保留单一模型假设；
-- **TTS**：离线中文/中英混读语音合成，消息/音频队列消除卡顿；MeloTTS 后端（ONNX Runtime CPU 编码器 + RKNN NPU 解码器）与 WAV / ALSA 输出均已接入，SummerTTS 后端保留兼容但默认不构建；
-- **会话编排**：Idle → Listening → Routing → Thinking → Speaking 状态机、generation 晚到过滤、节点级协作式取消与超时均已落地。REP 推理期间的快速打断边界见“已知限制”。
-
-> 性能指标（时延、吞吐、内存占用）只以板卡实测为准，实测数据与方法记录于 `artifacts/`。
-
-## 技术栈
-
-| 技术 | 用在哪 |
-|---|---|
-| Linux / C++17 | 全链路实现语言：进程、线程、epoll 事件驱动 |
-| ZeroMQ | 控制面 RPC 与数据面流的通信底座 |
-| epoll 主从 Reactor | TCP 网关连接管理，连接生命周期一线程归属 |
-| CMake + CTest | 根级构建与测试（默认构建当前 46 个测试） |
-| Shell 脚本 | 演示、板卡体检与无硬件依赖验收 |
-
-**应用场景**：无公网的全离线部署（工业、车载、机器人等边缘环境）；医疗、金融等隐私敏感场景；端侧推理、语音交互与边缘智能应用。
-
-## 当前状态
-
-| 能力 | 状态 | 说明 |
-|---|---|---|
-| 仓库骨架、根级 CMake/CTest | ✅ | 无 Git 元数据的干净导出可复现构建，CTest 46/46 通过 |
-| 统一消息信封 MessageEnvelope | ✅ | 版本化 JSON，1 MiB 上限，结构化错误码 |
-| ZMQ 多模式通信 | ✅ | RPC（deadline）/ PUB/SUB（订阅握手）/ PUSH/PULL，均含超时与退出测试 |
-| TCP 网关与 NDJSON 解帧 | ✅ | epoll 主从 Reactor，半包/粘包/超长帧/慢客户端处理 |
-| Unit Manager / Node Runtime | ✅ | TaskChannel 状态机，Echo 三进程 E2E，双任务交错 20 轮无跨流 |
-| 后端契约与确定性 Fake | ✅ | 五类接口 + 统一事件；ASR/RAG/LLM/TTS 以真实进程运行，TTS 产出 WAV |
-| JSONL/BM25 分级 RAG | ✅ | L0-L3 路由、文本规范化、Top-K 检索与单元测试已落地 |
-| Session 编排、取消与晚到过滤 | ✅ | 固定 WAV → Fake PCM 全链路；状态机（Idle→Listening→Routing→Thinking→Speaking）、有界文本/PCM 队列、generation 取消传播与晚到过滤；E2E + 故障注入测试覆盖 |
-| WSL Mock 冻结（M1 门禁） | ✅ | 50 轮 E2E 零跨流、进程/端口无残留、request_id 日志全链关联、干净构建排除旧缓存；故障注入回归（非法输入、超长帧、未知任务、挂起兜底超时、重复 cancel/exit）；证据见 `artifacts/mock-release/` |
-| 真实硬件后端（sherpa-onnx / RKLLM / MeloTTS / ALSA） | ✅ | 已接入并板端核验；默认构建关闭，仅 `SLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON` 时构建（证据见 `artifacts/{asr,llm,tts,audio}-integration/`） |
-| rag_node 真实 BM25 路由 | ✅ | 节点内 KnowledgeStore + Bm25Index + Router（L0-L3 阈值/关键词参数化），21 条测试集冻结路由决策；与 embedded 路由同源实现 |
-| voice_cli 客户端 | ✅ | 现场语音交互入口：TCP NDJSON 直连网关，setup/inference/cancel/taskinfo/exit 全协议；非阻塞 connect 以 getpeername 权威确认（RST 竞态防御）、失败路径不打印空信封摘要、晚到取消静默（同步转发已知限制） |
-| 数据面异步流（控制面/数据面分离） | ✅ | 统一信封 `type=event` 承载流式后端事件（partial/final/token/done/pcm，PCM base64）；主题 `<work_id>/<request_id>/` 前缀精确过滤；EventPublisher/EventSubscriber 订阅握手（slow joiner 防御）；asr/llm/tts 节点推理中实时发布（--events/--events-sync，缺省不发布） |
-| 会话侧网络后端（session_node --backend net） | ✅ | NetAsr/NetLlm/NetTts 与本地 Fake 同契约：控制面 RPC 上行（setup/inference/cancel）+ 数据面事件订阅回放；RpcClient 异步两段式（call_async/poll_response）、事件流 finish 与 RPC 响应双信号判定完成、取消/超时后 REQ 状态机重建；默认 embedded 保持无硬件基线；数据面全链路 E2E 纳入当前 46/46 回归 |
-| 泰山派 3M 全真实链路 | ✅ | 固定 WAV、板载麦克风、故障注入与 30 轮稳定性均完成；当前链路（Qwen3.5-0.8B + MeloTTS）30/30 成功、p50 59.4 s / p95 60.8 s，六进程 SIGTERM 后优雅退出（详见 `docs/benchmark.md` 与 `artifacts/full-chain-stability/`） |
+ASR、LLM、TTS 节点复用 Core 的 `RuntimeNode`、`TaskRuntime` 和 `IBackend` 契约；Session 在模块内负责业务编排。图中的进程关系与底层公共库相互配合，具体职责见[项目设计](#项目设计)。
 
 ## 快速开始
 
-要求：WSL / Linux，CMake ≥ 3.22，C++17 编译器，libzmq3-dev（4.3.x）与 nlohmann-json3-dev（3.10.x）。默认构建**不依赖** NPU SDK、厂商 Runtime 或声卡。
+### 环境要求
+
+- Linux 或 WSL2；C++17 编译器；CMake ≥ 3.22；Python 3。
+- ZeroMQ C 库与 cppzmq 头文件。Ubuntu 可安装 `libzmq3-dev` 和 `cppzmq-dev`。
+- `nlohmann/json` 单头文件已包含在 [`third_party/`](third_party/)，默认构建无需 NPU SDK、模型或音频设备。
+
+### 构建并测试
+
+在仓库根目录运行：
 
 ```bash
 cmake --preset wsl-debug
-cmake --build --preset wsl-debug -j8
-ctest --preset wsl-debug        # 46 个测试
+cmake --build --preset wsl-debug
+ctest --preset wsl-debug -j1
 ```
 
-无硬件依赖可用 `scripts/check_no_hw_deps.sh` 逐二进制验收（ldd 检查 rkllm / sherpa / onnx / asound 等链接）。
+测试在构建目录生成最小 WAV 夹具，使用语音模块的示例知识库；无需额外测试资产。E2E 测试会启动本机端口，为避免并行端口竞争，建议按上例串行运行 CTest。
 
-## 演示（Mock 全链路）
-
-五节点单 Manager 轮转路由：
+构建完成后，可运行不依赖硬件的 Session 演示：
 
 ```bash
-scripts/demo_mock_chain.sh
+bash scripts/demo_mock_session.sh
 ```
 
-一键拉起五节点 + Manager + 网关，展示 work_id 轮转路由、逐节点推理输出、TTS 产出的 WAV 与 SIGTERM 优雅退出；日志与音频落在 `/tmp/slotnexus-demo/`。
+演示覆盖 L0–L3 路由、固定 WAV 输入、任务状态和 WAV 输出，文件写入 `/tmp/slotnexus-session/`。Fake TTS 输出的是验证音频通路的测试音；可读回答见演示输出中的 `final_text`。
 
-Session 编排全链路（固定 WAV → Fake PCM）：
+### 单独构建中间件与语音模块
 
 ```bash
-scripts/demo_mock_session.sh
+cmake -S . -B build-core -DVOX_BUILD_VOICE=OFF -DVOX_BUILD_TESTS=ON
+cmake --build build-core -j4
+ctest --test-dir build-core -j1 --output-on-failure
+cmake --install build-core --prefix "$PWD/build-core-install"
+
+cmake -S modules/voice -B build-voice \
+  -DCMAKE_PREFIX_PATH="$PWD/build-core-install"
+cmake --build build-voice -j4
 ```
 
-一键拉起 session_node + Manager + 网关，展示四类路由（L0 控制 / L1 直答 / L2 带上下文 / L3 闲聊）、固定 WAV 完整链路、taskinfo 队列统计与 SIGTERM 优雅退出；输出 1 秒 WAV 落在 `/tmp/slotnexus-session/`（Fake TTS 为 500 Hz 测试音，实际内容见各请求 `final_text`，真实语音 MeloTTS 已接入）。
+独立语音构建通过 `find_package(slotnexus-core CONFIG REQUIRED)` 消费核心安装包。独立构建默认不启用跨进程语音测试；全量测试请使用仓库根目录构建。
 
-单条协议交互（手动探测）：
+## 项目设计
 
-```bash
-python3 scripts/gateway_probe.py 9100 '{"version":1,"type":"setup","request_id":"s-1"}'
-# → {"version":1,"work_id":"w-0","type":"ack",...}
+### 01 · Transport：三类通信，各自承担明确职责
 
-python3 scripts/gateway_probe.py 9100 \
-  '{"version":1,"type":"inference","work_id":"w-1","request_id":"r-1","payload":{"text":"3"}}'
-# → 逐帧 partial 汇总后的 final 文本
-```
+**解决的问题**：控制请求需要响应，流式结果需要持续推送，生产者与消费者又可能以不同速度处理数据。通信层为这些交互提供独立封装。
 
-## 板端部署（全真实链路）
+| 通信模式 | 核心封装 | 机制与当前用途 |
+| --- | --- | --- |
+| REQ / REP | `RpcClient` / `RpcServer` | Gateway → Manager → 节点的控制链路；请求与响应成对处理，服务端通过 Handler 回调接入上层逻辑。 |
+| PUB / SUB | `PubSocket` / `SubSocket` | 节点发布流式事件，订阅方按 topic 接收；提供独立的 READY / ACK 握手端点，协调订阅与开始发送的时机。 |
+| PUSH / PULL | `PushSocket` / `PullSocket` | 提供带发送、接收超时的消息通道，适合生产者 / 消费者交互；目前作为基础组件测试，语音主链路使用 RPC 与 PUB / SUB。 |
 
-泰山派 3M（RK3576，官方 Ubuntu 24.04 镜像）部署入口见
-`deploy/taishanpi3m/`：`build.sh` 构建硬件 Backend，`check_deployment.sh`
-核对程序、配置、模型与动态库，`start.sh` 启动并 setup 六个后台服务，
-`stop.sh` 负责幂等停止与超时强制退出。板端配置为
-`config/taishanpi3m/session.json`。部署包明确排除模型、厂商 SDK、动态库、
-凭据和原始日志；完整方法见 `docs/deployment.md`。
+- **超时后可继续调用**：同步 RPC 接收响应超时后，重建 REQ socket 并重新连接，恢复下一次调用需要的 REQ / REP 状态；超时请求的重试由调用方决定。
+- **分开发送与等待**：`call_async()` 发送请求，`poll_response()` 分段等待结果。语音网络适配器利用这两个接口，在等待最终响应期间接收数据面事件。
+- **统一错误表达**：传输失败映射为 `TransportError`；Gateway 和 Manager 再转换为带请求标识的协议错误，便于沿调用链定位问题。
+- **明确资源归属**：Socket 由封装对象持有，`close()` 支持重复调用；RPC 服务端通过关闭标志协调服务循环退出。
 
-## 发布文档
+代码入口：[RPC](middleware/transport/src/rpc.cpp) · [PUB / SUB](middleware/transport/src/pubsub.cpp) · [PUSH / PULL](middleware/transport/src/pushpull.cpp)
 
-- `docs/architecture.md`：六进程架构、控制面/数据面和端到端时序；
-- `docs/protocol.md`：消息信封、标识符、动作和错误语义；
-- `docs/testing.md`：默认构建、硬件构建与真机测试矩阵；
-- `docs/benchmark.md`：30 轮稳定性方法、指标和证据哈希；
-- `docs/troubleshooting.md`：部署、Runtime、音频与取消边界排查；
+### 02 · Reactor 与 Gateway：从 TCP 字节流到控制请求
 
-## 已知限制
+**解决的问题**：客户端通过 TCP 接入时，需要处理连接、半包与粘包、慢客户端以及协议错误，让节点专注于任务处理。
 
-- Qwen3.5-0.8B 在当前板卡上的单轮回答约 8–11 秒（TTFT 约 2.9 s），首音频延迟仍由 LLM 生成速度决定；链路里 L2 上下文会把回答拉长到约 152 token，端到端因此约 60 s；
-- RKLLM Runtime 与 RKNPU 驱动 0.9.8 在长时运行中存在性能劣化，需结合温度、频率和 RSS 观察；劣化是在上一代 Runtime（1.2.0）上观测到的——当前 1.3.0 的 30 轮（每轮重建进程）未见轮次劣化与内存漂移，但**未**覆盖"六进程常驻 30 轮"；
-- Qwen3.5-0.8B 开启思考（`enable_thinking=true`）时输出的是不带任何标记的 `Thinking Process: …` 文本，标记式过滤无法把思考段与正式回答分开，语音链路必须保持 `enable_thinking=false`，否则思考过程会被朗读；
-- 思考段过滤标记与模型实际输出不一致时（例如把不输出思考段的模型留成 `</think>`），整段回答会被缓冲到生成结束才一次性下发，流式重叠失效；后端会打印一次明确告警；
-- 麦克风入口当前固定采集 3 秒，不是 VAD 常驻流式输入；
-- ZeroMQ REP 正在推理时不能插队处理 cancel，L0 路由承担停止/取消类请求的快速路径。
+| 组件 | 职责 |
+| --- | --- |
+| `Poller` | 封装 `epoll_ctl` / `epoll_wait`，维护 fd 与事件的注册关系，返回本轮就绪的 Channel。 |
+| `Channel` | 描述一个 fd 关注的读、写与错误事件，通过回调分发网络事件。 |
+| `EventLoop` | 在所属线程执行事件回调；跨线程任务经队列投递，使用 `eventfd` 唤醒，当前事件批次结束后执行待处理任务。 |
+| `TcpServer` / `TcpConnection` | 非阻塞接受连接，维护连接生命周期、增量输入与待发送缓冲；处理部分写入与断开连接。 |
+| `NdjsonFrameDecoder` | 按换行增量切分消息，处理半帧、连续多帧与 CRLF；默认单帧上限为 1 MiB。 |
+| `EdgeGateway` | 校验 JSON 信封和客户端 action，经 RPC 转发给 Manager，再把响应发回原 TCP 连接。 |
 
-这些限制不影响固定 WAV、现场麦克风、故障注入和全真实 30 轮功能门禁，
-也不应被描述为已经解决。当前链路的 30 轮与全链路证据见
-`docs/benchmark.md`；上一代 1.5B + SummerTTS 基线保留为历史对照，
-两条代际的数字不可混算。
+连接设置了输出缓冲上限；客户端持续不读取、导致缓冲超限时，连接会被关闭。Channel 的弱引用保活与事件批次结束后的延迟释放，共同处理回调中关闭连接时的对象生命周期。
 
-## 设计约定
+当前 Gateway 采用**单 EventLoop Reactor**，接受连接与连接 I/O 共用一个 loop。Manager RPC 转发也在该线程内同步执行，因此一次慢响应会推迟其他连接的事件处理。当前可执行入口监听 `127.0.0.1`，适用于本机客户端接入。
 
-| 项 | 约定 |
-|---|---|
-| 节点端口 | echo `19200` / asr `19201` / rag `19202` / llm `19203` / tts `19204` / session `19210` |
-| 网关端口 | `9100` |
-| 音频格式 | 16 kHz 单声道 16-bit，20 ms 帧（320 采样） |
-| 帧上限 | 单帧 1 MiB（解帧器与信封双重限制，超限断开） |
-| 构建目录 | `build-wsl` / `build-taishanpi3m` 等按平台命名，不提交 |
+代码入口：[EventLoop](middleware/network/src/event_loop.cpp) · [TcpConnection](middleware/network/src/tcp_connection.cpp) · [Gateway](middleware/services/edge_gateway/edge_gateway.cpp)
 
-## 项目结构
+### 03 · 协议与数据面：统一关联标识，分离控制与事件
+
+**解决的问题**：多个任务、多个请求与连续事件共用通信基础设施时，需要明确“属于谁、是哪一轮、是否已经结束”。
+
+控制面与数据面共用版本化 JSON `MessageEnvelope`。TCP 入口在 JSON 后追加换行，形成 UTF-8 NDJSON；内部 ZeroMQ 通道直接传输消息。序列化后的单条信封上限为 **1 MiB**。
+
+| 字段 | 作用 |
+| --- | --- |
+| `version` / `type` | 校验协议版本并区分 `setup`、`inference`、`cancel`、`taskinfo`、`exit`、`event`、`ack`、`error`。 |
+| `work_id` | 任务实例标识，用于定位已创建的任务和固定节点路由。 |
+| `request_id` / `session_id` | 分别关联单次调用与会话；请求标识贯穿控制链路日志。 |
+| `payload` | 模块定义的 JSON 业务负载，Core 负责承载与转发。 |
+| `index` / `finish` | 标记流内序号与完成状态，供接收方关联和处理事件。 |
+| `timestamp_ms` / `error` | 承载时间戳与结构化错误信息。 |
+
+数据面在信封之上提供 `DataplaneEvent`：由模块定义事件 `kind` 与 JSON 内容，`EventPublisher` 使用 **`<work_id>/<request_id>/`** 作为 topic；没有指定序号时，按流自动生成递增 `index`。订阅方按任务与请求设置 topic 前缀，尾部 `/` 避免相似标识发生前缀误匹配。
+
+语音模块把识别片段、token、PCM 映射为事件，其中 PCM 字节由语音适配器编码。Core 不引入音频类型，未来模块也可以通过同一事件出口传递自己的处理结果。
+
+代码入口：[MessageEnvelope](middleware/protocol/include/slotnexus/protocol/message_envelope.hpp) · [事件通道](middleware/dataplane/src/event_channel.cpp) · [语音网络适配器](modules/voice/backends/net/src/net_backend_session.cpp)
+
+### 04 · Node Runtime：组合任务状态机与 Backend
+
+**解决的问题**：模型接口和执行方式不同，但任务创建、推理、取消、查询与释放的流程可以共用。
 
 ```text
-libs/        通用库：common / protocol / transport / network / task_registry / runtime / rag / session / dataplane（数据面事件通道）
-backends/    可替换实现：fake（默认）/ net（远端节点代理）/ sherpa_onnx / rkllm / summer_tts / alsa
-apps/        独立进程：edge_gateway / unit_manager / session_node / asr_node / rag_node / llm_node / tts_node / voice_cli
-tests/       unit / contract / integration / e2e / fault
-deploy/      部署：docker / systemd / taishanpi3m
-config/      运行配置：mock / taishanpi3m
-data/        知识库与固定输入：knowledge / fixtures
-scripts/     演示与验收脚本
-artifacts/   工程记录：环境、版本链与验收证据
-docs/        设计文档（随开发补齐）
+RuntimeNode       解析 RPC action，生成 ack / error，发布 Backend 事件
+    └─ TaskRuntime    work_id → TaskChannel；通过工厂创建独立 Backend 实例
+        └─ TaskChannel    管理单任务状态与在途请求
+            └─ IBackend       模块实现 infer()，接收 JSON、deadline、取消标志与事件回调
 ```
 
-## 测试与证据
+| 生命周期 | 当前行为 |
+| --- | --- |
+| `setup` | 创建任务与 Backend 实例，保存 setup 负载，状态从 `new` 进入 `ready`。 |
+| `inference` | 状态从 `ready` 进入 `busy`，调用 Backend；同一任务再次并发推理时返回 `busy`，完成后恢复 `ready`。 |
+| `cancel` | 设置原子取消标志，由 Backend 在执行过程中检查并协作退出。 |
+| `taskinfo` | 返回状态、当前请求、推理次数与 setup 负载快照。 |
+| `exit` | 终止任务并释放任务表记录；推理过程中退出时同时设置取消标志。 |
 
-- 单元测试：协议、解帧、Reactor、任务注册表、运行时状态机、五类 Fake 契约；
-- 集成测试：ZMQ 三模式真实收发、TCP 服务器、网关、三进程 Echo E2E、五节点 E2E；
-- 证据目录 `artifacts/`：按能力记录命令、版本、测试、失败与缺陷；
-- 版本链（板卡 → 镜像/BSP → 内核 → NPU 驱动 → Runtime → 模型）记录于 `artifacts/environment-preflight/versions.txt`。
+`TaskRuntime` 通过工厂注入 Backend，`RuntimeNode` 组合 RPC 服务与任务表；模块通过 Adapter 实现 `IBackend::infer()`。该接口的输入、输出和中间事件都使用 JSON，模型加载、文本处理与音频逻辑由模块安排。
 
-## 第三方组件、模型与许可
+这里的 **`TaskChannel` 管理任务状态，网络层 `Channel` 管理 fd 事件**。任务执行采用同步 `infer()` 入口；deadline 与取消标志要求 Backend 主动检查。Runtime 本身支持并发调用下的状态保护，但当前节点的同步 RPC 服务循环会限制远程取消请求的到达时机。
 
-- `THIRD_PARTY_NOTICES.md`：第三方组件登记与许可边界（nlohmann-json 单头文件已打包进仓库，ZeroMQ 以系统包引入）；
-- `models/README.md`：模型获取与校验方式（模型文件不入库）；
-- `third_party/README.md`：第三方源码/SDK 获取说明（源码不入库）。
+代码入口：[RuntimeNode](middleware/services/node_host/runtime_node.cpp) · [TaskRuntime](middleware/runtime/src/task_runtime.cpp) · [TaskChannel](middleware/runtime/src/task_channel.cpp) · [IBackend](middleware/runtime/include/slotnexus/runtime/ibackend.hpp)
+
+### 05 · Unit Manager：模块内轮转，任务内固定路由
+
+**解决的问题**：客户端只需选择业务模块，无需掌握具体节点端点；一个有状态任务的后续请求需要始终回到同一节点。
+
+1. **读取模块配置**：启动时加载 `module_id`、节点端点列表等描述，并为配置端点建立可复用的 RPC client。
+2. **选择模块**：`setup.payload.module_id` 指定目标模块，省略时使用默认模块；未知模块返回 `unknown_module`。
+3. **分配任务**：`TaskRegistry` 在容量限制内生成 `work_id`，Manager 在该模块的节点列表内轮转选择端点。
+4. **保存路由**：记录 `work_id → 模块 / 节点`。后续 `inference / cancel / taskinfo / exit` 按此记录转发。
+5. **回收记录**：节点 setup 返回错误时撤销本次分配；exit 返回 ack 后释放任务标识与路由。
+
+任务标识在同一个 Registry 实例内单调递增、释放后不复用；模块与路由保存在进程内。当前路由方式由启动配置决定，增加节点后需要重新启动服务；模块描述中的 `protocol_version` 与 `config` 是元数据，不构成自动协议协商或自动部署。
+
+以下时序展示一个普通任务的控制路径：
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant G as Gateway
+    participant M as Unit Manager
+    participant N as Node
+
+    C->>G: setup · module_id
+    G->>M: RPC 转发
+    Note over M: 分配 work_id<br/>模块内轮转，保存路由
+    M->>N: setup · work_id
+    N-->>M: ack
+    M-->>G: ack · work_id
+    G-->>C: 返回任务标识
+    C->>G: inference · work_id · payload
+    G->>M: RPC 转发
+    M->>N: 按 work_id 返回原节点
+    Note over N: 执行 Backend<br/>可经独立数据面发布中间事件
+    N-->>M: 最终结果 / 错误
+    M-->>G: 返回响应
+    G-->>C: NDJSON 响应
+```
+
+例如，客户端创建一个语音任务时发送一行 JSON：
+
+```json
+{"version":1,"type":"setup","request_id":"setup-1","payload":{"module_id":"voice"}}
+```
+
+收到 ack 后保留 `work_id`，后续调用携带该标识，并为每次调用提供相应的 `request_id`。
+
+代码入口：[Unit Manager](middleware/services/unit_manager/unit_manager.cpp) · [TaskRegistry](middleware/task_registry/include/slotnexus/task_registry/task_registry.hpp) · [模块配置示例](modules/voice/config/manager-modules.json)
+
+### 06 · 构建与部署：Core 独立交付，模块持有业务依赖
+
+**解决的问题**：新增应用或更换模型时，需要控制依赖扩散，让核心开发与板端模型集成各有清晰入口。
+
+- **独立构建边界**：`middleware/` 持有通用库与服务；关闭 `VOX_BUILD_VOICE` 后，Core 可以单独构建、测试和安装。语音模块通过公开 CMake targets 或安装后的 `slotnexus-core` package 接入。
+- **开发与硬件分开配置**：默认采用 Fake Backend，在 Linux / WSL2 上验证协议、任务和语音编排；板端构建再启用真实 Backend 与厂商 SDK。
+- **板端脚本管理交付**：泰山派部署入口提供构建、依赖检查、启动和停止脚本，管理 Gateway、Manager 与四个语音进程；当前交付方式为裸机 Shell 脚本。
+- **外部资产按路径提供**：模型、真实知识库与录音由部署配置指定；仓库保留示例知识库，小型测试 WAV 在构建目录生成。
+- **依赖边界门禁**：检查 Core 对语音目录和专有类型的反向依赖，并验证默认构建不带入硬件依赖。
+
+代码入口：[核心构建](middleware/CMakeLists.txt) · [语音独立构建](modules/voice/CMakeLists.txt) · [边界检查](scripts/check_core_boundary.sh) · [板端部署脚本](modules/voice/deploy/taishanpi3m/)
+
+## 模块开发
+
+新应用模块沿用 `modules/<name>/` 的组织方式，依赖中间件公开 CMake targets 和通用 JSON/事件契约，而不是让核心包含模块的业务类型。接入时需要：
+
+1. 实现节点和 Backend 适配，定义模块自己的请求 `payload` 与事件 `kind`。
+2. 使用已安装的 `slotnexus-core` 构建模块，并准备模块配置和节点端点。
+3. 在 Manager 配置中登记稳定的 `module_id`、协议版本和节点端点，再部署、重启相关服务。
+
+当前语音描述示例见 [`manager-modules.json`](modules/voice/config/manager-modules.json)。Manager 也保留 `--module-id`、`--default-module`、`--node` 参数兼容旧单模块脚本。**第二个业务模块尚未做端到端接入验证**；“新增模块无需修改核心源码”是当前接口的设计目标。
+
+## 语音模块
+
+语音模块是这套公共机制的首个完整应用：Session 组织交互流程，ASR、LLM、TTS 节点完成模型处理，模型之间通过 RPC 与数据面事件协作。
+
+| 环节 | 默认开发构建 | 板端真实 Backend |
+| --- | --- | --- |
+| ASR | Fake ASR | sherpa-onnx 流式识别 |
+| 检索 | JSONL + BM25，L0–L3 路由 | 同一模块实现 |
+| LLM | Fake LLM | RKLLM；当前配置为 Qwen3.5-0.8B W4A16 G128 |
+| TTS | Fake TTS | MeloTTS：ONNX Runtime CPU 编码器 + RKNN NPU 解码器 |
+| 输出 | WAV 测试输出 | WAV / ALSA |
+
+当前真实 TTS 为 **MeloTTS**。SummerTTS 已退出当前构建与部署路径，只作为上一代历史基线。示例知识库见 [`examples/knowledge.jsonl`](modules/voice/examples/knowledge.jsonl)；真实模型、知识库与录音由部署环境提供，不入库。模型与外部依赖说明见 [`modules/voice/models/README.md`](modules/voice/models/README.md)。
+
+### 一次语音交互如何完成
+
+1. **输入**：客户端提供文本、WAV 或固定时长的麦克风采集；音频输入经 ASR 转成文本。
+2. **路由**：Session 在进程内执行本地 RAG 路由：L0 规则控制、L1 高置信事实直答、L2 带检索上下文生成、L3 普通生成。
+3. **生成**：需要模型回答时调用 LLM；网络适配器在等待 RPC 最终响应期间接收 token 等数据面事件。
+4. **合成与输出**：回答交给 TTS，使用 WAV / ALSA 输出。文本、音频与模型 SDK 的适配全部留在语音模块内。
+5. **状态管理**：Session 管理 Listening、Routing、Thinking、Speaking 等状态；取消后通过 generation 过滤上一轮晚到事件。
+
+模块内还保留独立 `rag_node` 入口；当前六进程部署由 Session 内部执行检索与路由。
+
+## 板端部署
+
+验证平台是泰山派 3M（RK3576，4 GB）。真实 Backend 需要对应的 sherpa-onnx、RKLLM、ONNX Runtime、RKNN、ALSA、模型和板端 Runtime；默认开发构建不需要这些依赖。
+
+板端入口位于 [`modules/voice/deploy/taishanpi3m/`](modules/voice/deploy/taishanpi3m/)：`build.sh hardware` 负责原生构建与测试，`check_deployment.sh` 检查依赖和模型，`start.sh`/`stop.sh` 管理六个服务。部署前按 [`deploy-manifest.md`](modules/voice/deploy/taishanpi3m/deploy-manifest.md) 准备外部资产。硬件配置模板见 [`session.json`](modules/voice/config/taishanpi3m/session.json)。
+
+## 验证状态
+
+| 范围 | 当前证据与边界 |
+| --- | --- |
+| WSL 默认构建 | 重构验收记录为 48/48 CTest 串行通过，包含原有行为测试及 Manager 路由、核心边界门禁。 |
+| 核心独立构建 | 重构验收记录为 17/17 CTest 通过，并完成核心安装与语音模块独立消费者构建。 |
+| 板端历史基线 | 重构前 Qwen3.5-0.8B + MeloTTS 固定输入 30/30 成功；端到端 p50 59.4 s、p95 60.8 s。**每轮都重建六进程**，不是六进程常驻 30 轮。 |
+| 重构后板端链路 | **验证进行中**；真实 ASR/LLM/TTS、麦克风/声卡及 30 轮链路结果以本轮板端测试为准。 |
+
+历史基线只适用于当时的模型、Runtime、输入与测试方式。上一代 1.5B + SummerTTS 数据不与当前链路混算。
+
+### 已知边界
+
+- 系统面向**单机多进程**，目前不提供跨主机集群、自动故障转移或模块动态加载与热插拔。
+- PUB / SUB 提供订阅握手与事件关联，不提供持久化、断线补发或可靠投递确认；当前没有高并发容量或端到端加速比例的压测结论。
+- 同步 REQ/REP 转发期间，正在执行推理的节点不能通过同一通道插队处理 cancel；语音 L0 规则处理停止类请求，不能等同于任意阶段的抢占式中断。
+- 麦克风入口当前固定采集时长，不是带 VAD 的常驻流式输入。
+- 当前板端真实链路需要外部厂商 Runtime 和模型；硬件测试结果不能由 Fake Backend 回归代替。
+
+## 仓库结构
+
+```text
+middleware/           通用库、CMake 安装包、Gateway、Manager 与 Node Runtime 服务
+modules/voice/        语音 Backend、Session 编排、配置、部署脚本和语音测试
+tests/core/           中间件单元、集成与边界测试
+scripts/              开发演示、资产生成与依赖检查
+third_party/          内嵌 nlohmann/json 头文件
+```
+
+## 许可与作者
+
+项目自有代码采用 [MIT License](LICENSE)，作者 **Caden**。第三方组件、模型来源与分发边界见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。

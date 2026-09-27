@@ -1,4 +1,5 @@
 #!/bin/bash
+# Author: Caden
 # Session Mock 全链路演示：固定 WAV → Fake ASR → BM25 L0-L3 路由
 # →（Fake LLM）→ 分句 → Fake TTS → WAV 输出。
 #
@@ -7,7 +8,7 @@
 #
 # 演示内容：
 #   1. 四条路由各走对路径（L0 控制 / L1 直答 / L2 带上下文 / L3 闲聊）；
-#   2. 固定 WAV（data/fixtures/voice.wav）完整链路输出 PCM/WAV；
+#   2. 固定 WAV（$ASSET_ROOT/data/fixtures/voice.wav）完整链路输出 PCM/WAV；
 #   3. 取消传播：取消进行中的推理，随后新请求正常完成；
 #   4. taskinfo 展示会话状态与队列统计；
 #   5. SIGTERM 三进程优雅退出。
@@ -15,12 +16,19 @@
 # 用法：scripts/demo_mock_session.sh [--stage-delay-ms N]
 #   --stage-delay-ms 给各阶段注入人工延时（演示取消用，默认 20）。
 set -u
-cd "$(dirname "$0")/.."
-B=build-wsl
+cd "$(dirname "$0")/.."  # 仓库根
+B=${VOXORCHESTRA_BUILD_DIR:-build-wsl}
 OUT=/tmp/slotnexus-session
+ASSET_ROOT=${VOXORCHESTRA_VOICE_ASSET_ROOT:-/tmp/slotnexus-session-assets}
 STAGE_DELAY=${1:-20}
 if [ "$STAGE_DELAY" = "--stage-delay-ms" ]; then STAGE_DELAY=$2; fi
-mkdir -p "$OUT"
+mkdir -p "$OUT" "$ASSET_ROOT/data/fixtures" "$ASSET_ROOT/data/knowledge"
+if [ ! -f "$ASSET_ROOT/data/knowledge/knowledge.jsonl" ]; then
+  cp modules/voice/examples/knowledge.jsonl "$ASSET_ROOT/data/knowledge/knowledge.jsonl"
+fi
+if [ ! -f "$ASSET_ROOT/data/fixtures/voice.wav" ]; then
+  python3 scripts/gen_fixture_wav.py "$ASSET_ROOT/data/fixtures/voice.wav"
+fi
 
 echo "== 清理残留进程 =="
 for p in edge_gateway unit_manager session_node; do
@@ -32,9 +40,9 @@ rm -f "$OUT"/*.log "$OUT"/*.wav
 echo "== 启动 session_node + unit_manager + edge_gateway（stage-delay=${STAGE_DELAY}ms）=="
 "$B/apps/session_node/session_node" \
  --listen tcp://127.0.0.1:19210 \
- --config config/mock/session.json \
+ --config modules/voice/config/mock/session.json \
  --output-dir "$OUT" \
- --fixture-dir data/fixtures \
+ --fixture-dir "$ASSET_ROOT/data/fixtures" \
  --stage-delay-ms "$STAGE_DELAY" > "$OUT/session.log" 2>&1 &
 "$B/apps/unit_manager/unit_manager" \
  --listen tcp://127.0.0.1:19100 \
@@ -74,7 +82,7 @@ probe "L2 复杂带上下文：生成过滤怎么实现" \
 probe "L3 闲聊：你好 今天天气怎么样" \
  '{"version":1,"type":"inference","work_id":"w-0","request_id":"r-l3","payload":{"mode":"text","text":"你好 今天天气怎么样"}}'
 
-echo "== 固定 WAV 完整链路（data/fixtures/voice.wav → Fake ASR → ... → WAV）=="
+echo "== 固定 WAV 完整链路（$ASSET_ROOT/data/fixtures/voice.wav → Fake ASR → ... → WAV）=="
 probe "WAV 输入" \
  '{"version":1,"type":"inference","work_id":"w-0","request_id":"r-wav","payload":{"mode":"wav","wav":"voice.wav"}}'
 
@@ -104,7 +112,7 @@ print('text_queue_peak=%s pcm_queue_peak=%s dropped_sentences=%s' % (p.get('text
 
 echo "== 输出文件（可拷到 Windows 播放）=="
 echo "注意：Fake TTS 产出的是 500Hz 测试音（验证 PCM 链路正确性），"
-echo "实际内容见上方各请求的 final_text；真实语音由 SummerTTS 合成。"
+echo "实际内容见上方各请求的 final_text；真实语音由当前 MeloTTS 后端合成。"
 ls -la "$OUT"/*.wav 2>/dev/null | head -5
 
 echo "== SIGTERM 优雅退出 =="

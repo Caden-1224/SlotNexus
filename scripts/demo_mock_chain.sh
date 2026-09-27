@@ -1,4 +1,5 @@
 #!/bin/bash
+# Author: Caden
 # Mock 全链路演示：五节点（echo/asr/rag/llm/tts）+ Manager + 网关。
 #
 # 展示真实运行效果：进程启动、work_id 轮转路由、逐节点推理输出、
@@ -7,7 +8,7 @@
 # 用法：scripts/demo_mock_chain.sh
 set -u
 cd "$(dirname "$0")/.."
-B=build-wsl
+B=${VOXORCHESTRA_BUILD_DIR:-build-wsl}
 OUT=/tmp/slotnexus-demo
 mkdir -p "$OUT"
 
