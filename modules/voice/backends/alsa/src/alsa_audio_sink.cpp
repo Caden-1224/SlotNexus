@@ -4,7 +4,8 @@
 // 参数设置与错误处理对齐上游 sherpa-onnx AlsaPlay：
 //   - 阻塞模式 snd_pcm_open（不置 SND_PCM_NONBLOCK，直接 writei 无 -EAGAIN
 //     处理，照上游）；
-//   - ACCESS_RW_INTERLEAVED / S16_LE / 单声道 / rate_near；
+//   - ACCESS_RW_INTERLEAVED / S16_LE / 立体声（单声道输入复制到左右）/
+//     rate_near；
 //   - 不强制 period size：取 hw 默认 period，按它分块 writei（上游同款）；
 //   - -EPIPE（underrun/XRUN）→ snd_pcm_prepare 恢复后重试该块一次；
 //   - close 前 snd_pcm_drain（等全部播完，上游 Drain() 语义照抄）。
@@ -14,6 +15,11 @@
 // 48k → 8k，rate_near 逐档重试）+ 线性插值重采样，语义等价（保音高保
 // 时长）且不引入第三方依赖。板端实测 ES8323（MCLK 5644800 Hz）拒绝
 // 22050/11025。
+//
+// 播放按立体声打开而不是单声道：板端 ES8388 单声道播放的实际时基是协商
+// 采样率的 2 倍（实测 3 s 音频 drain 只用 1.5 s，语音变尖变快），立体声
+// 协商值与实际一致；采集侧单声道正常，不受此影响。因此这里把单声道输入
+// 复制到左右声道，对外仍按单声道 16-bit 采样计数。
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -26,6 +32,13 @@
 #include "slotnexus/backend/alsa/alsa_audio_sink.hpp"
 
 namespace slotnexus::backend::alsa {
+
+namespace {
+
+// 播放输出声道数：板端 ES8388 单声道播放时基为协商率 2 倍，必须立体声。
+constexpr unsigned kOutputChannels = 2;
+
+}  // namespace
 
 struct AlsaAudioSink::Impl {
   std::string device;
@@ -103,7 +116,8 @@ bool AlsaAudioSink::open() {
                   impl_->pcm, params, SND_PCM_ACCESS_RW_INTERLEAVED) >= 0 &&
               snd_pcm_hw_params_set_format(impl_->pcm, params,
                                            SND_PCM_FORMAT_S16_LE) >= 0 &&
-              snd_pcm_hw_params_set_channels(impl_->pcm, params, 1) >= 0;
+              snd_pcm_hw_params_set_channels(impl_->pcm, params,
+                                             kOutputChannels) >= 0;
     if (ok) {
       uint32_t rate = static_cast<uint32_t>(candidate);
       ok = snd_pcm_hw_params_set_rate_near(impl_->pcm, params, &rate, 0) >= 0;
@@ -148,22 +162,35 @@ bool AlsaAudioSink::write_pcm(const std::vector<int16_t>& pcm) {
     data = &resampled;
   }
 
+  // 单声道 → 立体声复制：设备按 kOutputChannels 打开，每帧左右同值。
+  // 对外契约不变——入参仍是单声道采样，计数仍按单声道帧。
+  std::vector<int16_t> interleaved;
+  interleaved.reserve(data->size() * kOutputChannels);
+  for (const int16_t sample : *data) {
+    for (unsigned c = 0; c < kOutputChannels; ++c) {
+      interleaved.push_back(sample);
+    }
+  }
+
   // 按 period 分块写；-EPIPE（underrun）→ prepare 恢复后重试该块一次。
+  // period_frames 是立体声帧数（设备按 kOutputChannels 协商）。
   std::size_t offset = 0;
-  while (offset < data->size()) {
+  while (offset < interleaved.size()) {
     const snd_pcm_uframes_t n = static_cast<snd_pcm_uframes_t>(
-        std::min<std::size_t>(impl_->period_frames, data->size() - offset));
-    snd_pcm_sframes_t written =
-        snd_pcm_writei(impl_->pcm, data->data() + offset, n);
+        std::min<std::size_t>(impl_->period_frames * kOutputChannels,
+                              interleaved.size() - offset));
+    snd_pcm_sframes_t written = snd_pcm_writei(
+        impl_->pcm, interleaved.data() + offset, n / kOutputChannels);
     if (written == -EPIPE) {
       snd_pcm_prepare(impl_->pcm);
-      written = snd_pcm_writei(impl_->pcm, data->data() + offset, n);
+      written = snd_pcm_writei(impl_->pcm, interleaved.data() + offset,
+                               n / kOutputChannels);
     }
     if (written < 0) {
       std::fprintf(stderr, "[alsa] writei 失败: %s\n", snd_strerror(written));
       return false;
     }
-    offset += static_cast<std::size_t>(written);
+    offset += static_cast<std::size_t>(written) * kOutputChannels;
   }
   return true;
 }

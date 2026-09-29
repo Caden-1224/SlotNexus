@@ -4,10 +4,11 @@
 // 与 FakeAudioSink（WAV）逐项语义对照（契约见 i_audio_sink.hpp）：
 //  FakeAudioSink（WAV 文件）       | AlsaAudioSink（ALSA PCM 设备）
 //  -------------------------------+---------------------------------------
-//  open：fopen + 44B 占位头        | snd_pcm_open(PLAYBACK) + S16_LE/mono/
+//  open：fopen + 44B 占位头        | snd_pcm_open(PLAYBACK) + S16_LE/立体声/
 //                                 |   rate_near（按 hw 默认 period 分块）
 //  未 close 重复 open → false      | 同左（同一 pcm 句柄已占用）
-//  write_pcm：fwrite 整块          | 按 period 分块 snd_pcm_writei；
+//  write_pcm：fwrite 整块          | 单声道复制到左右后按 period 分块
+//                                 |   snd_pcm_writei；
 //                                 |   -EPIPE（underrun）→ prepare 后重试
 //  未 open write_pcm → false       | 同左
 //  close：回填 RIFF 头 + fclose    | snd_pcm_drain（等全部播完）+ close
@@ -23,6 +24,11 @@
 // 8000/16000/24000/32000/44100/48000 可用），输入率被硬件拒绝时 open
 // 依次回退候选率并做线性重采样保证音高/时长正确（对齐上游 AlsaPlay 的
 // resampler 职责），actual_sample_rate() 返回硬件实际值。
+//
+// 声道：设备按立体声打开，write_pcm 的单声道输入复制到左右声道。板端
+// ES8388 单声道播放的实际时基是协商采样率的 2 倍（3 s 音频 drain 只用
+// 1.5 s，语音变尖变快），立体声协商值与实际一致；采集侧单声道正常。
+// 对外契约不变：入参与计数都按单声道 16-bit 采样。
 //
 // 设备名由构造注入（产品代码不写死本机设备）：tts_node --sink-device
 // 默认 "default"，板端显式 plughw:0,0（ES8323）。16000 在两设备均原生

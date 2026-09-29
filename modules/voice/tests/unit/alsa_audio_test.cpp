@@ -9,9 +9,12 @@
 //
 //   sink：open→write→close 生命周期 / 未 close 重复 open → false /
 //         未 open write_pcm → false / drain 语义（写入后 close 返回 true，
-//         即 snd_pcm_drain 全量播完不失败）/ close 幂等 / close 后可重开；
-//   source：open 后读 N 帧长度正确 / 数据非全零（RMS > 阈值，板端环境音
-//         或说话声即可）/ close 幂等 / 未 open read 返回空帧。
+//         即 snd_pcm_drain 全量播完不失败）/ 播放时基（drain 墙钟与音频
+//         时长同量级，板端单声道播放为协商率 2 倍）/ close 幂等 /
+//         close 后可重开；
+//   source：open 后读 N 帧长度正确 / 数据非全零（数字静音才算失败，响度
+//           随环境变化不设阈值）/ close 幂等 / 未 open read 返回空帧。
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -106,6 +109,33 @@ void test_sink_drain_short(const std::string& device) {
   std::cout << "  [ok] sink drain：100 ms 数据 close 返回 true" << std::endl;
 }
 
+// 播放时基：close（snd_pcm_drain）的墙钟必须与写入音频时长同量级。
+// 板端 ES8388 单声道播放的实际时基是协商采样率的 2 倍，语音会变尖变快；
+// 本用例守住“写入 1 s 就播约 1 s”，避免输出方式悄悄改变音质。容差取
+// 0.6~1.8 倍：足以抓住 2 倍偏差，又容忍调度抖动与设备缓冲差。
+void test_sink_playback_timebase(const std::string& device) {
+  eas::AlsaAudioSink sink(device, 16000);
+  if (!sink.open()) {
+    return;  // 上一用例已跳过说明
+  }
+  const int samples = 16000;  // 1 s
+  const auto start = std::chrono::steady_clock::now();
+  const bool written = sink.write_pcm(make_tone(samples));
+  const bool closed = sink.close();
+  const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::steady_clock::now() - start)
+                              .count();
+  if (!written || !closed) {
+    std::cout << "  [skip] 播放时基：写入或 drain 失败" << std::endl;
+    return;
+  }
+  const double ratio = static_cast<double>(elapsed_ms) / 1000.0;
+  std::printf("  [info] 播放时基：1.00 s 音频 drain 用 %lld ms（%.2fx）\n",
+              static_cast<long long>(elapsed_ms), ratio);
+  CHECK(ratio > 0.6 && ratio < 1.8);
+  std::cout << "  [ok] sink 播放时基与音频时长一致" << std::endl;
+}
+
 // 录音：open 后读 N 帧长度正确、数据非全零（RMS > 阈值）、close 幂等。
 void test_source_read(const std::string& device) {
   eas::AlsaAudioSource source(device, 16000);
@@ -130,9 +160,11 @@ void test_source_read(const std::string& device) {
     sum_sq += static_cast<double>(v) * static_cast<double>(v);
   }
   const double rms = std::sqrt(sum_sq / static_cast<double>(all.size()));
-  std::printf("  [info] 录音 RMS = %.1f（%zu 采样，实际 %d Hz）\n", rms,
+  std::printf("  [info] 录音 RMS = %.2f（%zu 采样，实际 %d Hz）\n", rms,
               all.size(), actual);
-  CHECK(rms > 1.0);  // 非全零：环境音/说话声足够；数字静音则为 0
+  // 只断言“不是数字静音”：房间噪声量级随环境变化（板端实测 1.0~4.6），
+  // 写死响度阈值会让安静环境随机失败；恒为零才说明采集链路没有数据。
+  CHECK(rms > 0.0);
   CHECK(source.close());
   CHECK(source.close());  // 幂等
   std::cout << "  [ok] source 录音：帧长正确，RMS 非零，close 幂等" << std::endl;
@@ -148,6 +180,7 @@ int main() {
     test_sink_lifecycle(device);
     test_sink_rate_fallback(device);
     test_sink_drain_short(device);
+    test_sink_playback_timebase(device);
     test_source_read(device);
   } catch (const std::exception& e) {
     std::cerr << "  [fail] 异常: " << e.what() << std::endl;
