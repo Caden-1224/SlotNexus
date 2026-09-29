@@ -47,6 +47,10 @@ struct PipelineConfig {
   // 只有 20-200ms（人耳"闪一下"）。输出不足该时长时补静音帧到该时长，
   // 保证演示音频可听；0 表示不补齐（测试与单元场景保持原样）。
   std::chrono::milliseconds tts_min_duration{0};
+  // 输出目标语义：wav = 文件（回归/内容复核），alsa = 实时播放。
+  // sink 具体实现由 SessionNode 的 SinkFactory 决定；这里只用于结果
+  // 语义、WAV 路径生成和“真实播完”与“文件写完”的区分。
+  std::string output_mode = "wav";
 };
 
 // 一次运行（一个请求）的输入。
@@ -66,7 +70,12 @@ struct PipelineResult {
   std::string route;          // "l0"/"l1"/"l2"/"l3"
   std::string asr_text;       // WAV/麦克风输入的 ASR 最终文本
   std::string final_text;     // 回答文本（L0/L1 直答或 LLM 输出）
-  std::string wav_path;       // 输出 WAV 路径（取消时可能为部分数据）
+  std::string wav_path;       // WAV 路径；ALSA 模式为空（取消时可能为部分数据）
+  std::string output_mode = "wav";  // wav / alsa
+  bool audio_delivered = false;     // sink 已接受本次提交的 PCM
+  bool wav_complete = false;        // WAV 头回填并关闭完成（文件写完）
+  bool playback_complete = false;   // ALSA drain 完成（真实播放完）
+  std::string sink_error;           // sink 打开/写入/关闭错误
   bool llm_called = false;
   rag::RouteDecision decision;  // 路由证据（命中块 id/text/得分）
   std::size_t token_count = 0;        // 本世代实际入列统计前的 token 数
@@ -77,6 +86,19 @@ struct PipelineResult {
   std::size_t dropped_pcm_frames = 0; // PCM 队列满超时丢弃
   std::size_t generation = 0;         // 本次运行世代
   std::vector<std::string> transitions;  // 状态机迁移轨迹
+
+  // 阶段耗时（相对 run 开始，steady_clock，未发生为 -1）。
+  // WAV/麦克风固定输入先给 input_end_ms（喂入结束），ASR final、LLM 首
+  // token、首可播文本、TTS 首 PCM、首帧提交 sink 和 sink close 分别记录，
+  // 供启动/语音阶段基线对比；软件提交时间不等于真实扬声器首音。
+  std::int64_t input_end_ms = -1;        // 语音样本喂入结束
+  std::int64_t asr_final_ms = -1;        // ASR final 回调
+  std::int64_t llm_first_token_ms = -1;  // LLM 首个 token
+  std::int64_t first_text_ms = -1;       // 首个可播文本入队
+  std::int64_t tts_first_pcm_ms = -1;    // TTS 首帧 PCM
+  std::int64_t first_output_ms = -1;     // 首帧提交 sink
+  std::int64_t output_complete_ms = -1;  // sink close 完成
+  std::int64_t total_ms = -1;            // run 返回前总耗时
 };
 
 // 编排管线：后端与路由经构造函数注入（Node 只依赖接口与 Router）。

@@ -11,6 +11,10 @@ CONFIG=${SLOTNEXUS_CONFIG:-$ROOT/modules/voice/config/taishanpi3m/session.json}
 FIXTURE_DIR=${SLOTNEXUS_VOICE_FIXTURE_DIR:-$ROOT/data/fixtures}
 RUN_DIR=${SLOTNEXUS_RUN_DIR:-/tmp/slotnexus-runtime}
 SETUP_TIMEOUT=${SLOTNEXUS_SETUP_TIMEOUT_SECONDS:-120}
+OUTPUT_SINK=${SLOTNEXUS_SINK:-wav}
+OUTPUT_DEVICE=${SLOTNEXUS_SINK_DEVICE:-default}
+# 性能基线默认 0；人工阶段等待只用于交互测试，不计入模型/链路耗时。
+STAGE_DELAY_MS=${SLOTNEXUS_STAGE_DELAY_MS:-0}
 SERVICES=(edge_gateway unit_manager session_node asr_node llm_node tts_node)
 
 fail() {
@@ -108,7 +112,8 @@ start_service session_node "$BUILD_DIR/apps/session_node/session_node" \
   --tts-events tcp://127.0.0.1:19441 --tts-events-sync tcp://127.0.0.1:19442 \
   --net-setup-timeout-ms 60000 --net-rpc-timeout-ms 60000 \
   --config "$CONFIG" --output-dir "$RUN_DIR/session-out" \
-  --fixture-dir "$FIXTURE_DIR" --stage-delay-ms 20
+  --fixture-dir "$FIXTURE_DIR" --sink "$OUTPUT_SINK" \
+  --sink-device "$OUTPUT_DEVICE" --stage-delay-ms "$STAGE_DELAY_MS"
 start_service unit_manager "$BUILD_DIR/apps/unit_manager/unit_manager" \
   --module-id voice --default-module voice --node tcp://127.0.0.1:19310 --node-rpc-timeout-ms 120000
 start_service edge_gateway "$BUILD_DIR/apps/edge_gateway/edge_gateway" \

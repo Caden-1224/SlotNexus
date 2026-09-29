@@ -38,6 +38,21 @@ foreach(check_case IN ITEMS valid missing_model unresolved_library)
   set_tests_properties(taishanpi3m_deploy_${check_case}_test PROPERTIES TIMEOUT 10 ENVIRONMENT "${VOX_TEST_ENV}")
 endforeach()
 
+# 测量脚本契约：阶段耗时不得含人工等待，基线可记录代码版本，输出目标可选。
+foreach(measure_case IN ITEMS no_artificial_stage_delay
+                             baseline_records_code_version
+                             start_selects_output_sink
+                             baseline_uses_zero_stage_delay)
+  add_test(
+    NAME taishanpi3m_measurement_${measure_case}_test
+    COMMAND bash
+            ${CMAKE_CURRENT_SOURCE_DIR}/taishanpi3m_measurement_script_test.sh
+            ${measure_case}
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../deploy/taishanpi3m
+  )
+  set_tests_properties(taishanpi3m_measurement_${measure_case}_test PROPERTIES TIMEOUT 10 ENVIRONMENT "${VOX_TEST_ENV}")
+endforeach()
+
 foreach(stop_case IN ITEMS stop_idempotent stop_force)
   add_test(
     NAME taishanpi3m_${stop_case}_test

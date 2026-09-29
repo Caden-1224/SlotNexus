@@ -20,6 +20,7 @@
 #include "slotnexus/backend/i_llm_backend.hpp"
 #include "slotnexus/backend/i_tts_backend.hpp"
 #ifdef SLOTNEXUS_HAS_ALSA
+#include "slotnexus/backend/alsa/alsa_audio_sink.hpp"
 #include "slotnexus/backend/alsa/alsa_audio_source.hpp"
 #endif
 #include "slotnexus/backend/net/net_asr_backend.hpp"
@@ -70,7 +71,21 @@ nlohmann::json ResultStats(const PipelineResult& r) {
           {"text_queue_peak", r.text_queue_peak},
           {"pcm_queue_peak", r.pcm_queue_peak},
           {"dropped_sentences", r.dropped_sentences},
-          {"dropped_pcm_frames", r.dropped_pcm_frames}};
+          {"dropped_pcm_frames", r.dropped_pcm_frames},
+          {"output_mode", r.output_mode},
+          {"audio_delivered", r.audio_delivered},
+          {"wav_complete", r.wav_complete},
+          {"playback_complete", r.playback_complete},
+          {"sink_error", r.sink_error},
+          {"timings_ms",
+           {{"input_end", r.input_end_ms},
+            {"asr_final", r.asr_final_ms},
+            {"llm_first_token", r.llm_first_token_ms},
+            {"first_text", r.first_text_ms},
+            {"tts_first_pcm", r.tts_first_pcm_ms},
+            {"first_output", r.first_output_ms},
+            {"output_complete", r.output_complete_ms},
+            {"total", r.total_ms}}}};
 }
 
 }  // namespace
@@ -83,6 +98,10 @@ struct SessionNode::Session {
   std::unique_ptr<slotnexus::backend::ITtsBackend> tts;
   std::unique_ptr<session::SessionPipeline> pipeline;
   std::atomic<bool> busy{false};
+  long long setup_ms = -1;
+  long long asr_setup_ms = -1;
+  long long llm_setup_ms = -1;
+  long long tts_setup_ms = -1;
   std::mutex last_mutex;
   session::PipelineResult last_result;
   std::string last_request_id;
@@ -290,27 +309,71 @@ void SessionNode::handle_request(const std::string& identity,
           return;
         }
         s = std::make_shared<Session>();
-        // 后端创建（net 模式含节点 setup RPC）；失败 → 会话 setup 失败。
+        const auto setup_start = std::chrono::steady_clock::now();
+        const auto setup_elapsed_ms = [setup_start] {
+          return std::chrono::duration_cast<std::chrono::milliseconds>(
+                     std::chrono::steady_clock::now() - setup_start)
+              .count();
+        };
+
+        // 后端创建（net 模式含节点 setup RPC，模型加载发生在各节点
+        // setup）；逐项记录耗时，失败 → 会话 setup 失败。
         // 错误码 4 = 后端不可用（节点未启动/连接超时）。
         try {
           s->asr = MakeAsrBackend(ctx_, config_, request.work_id());
+          s->asr_setup_ms = setup_elapsed_ms();
           s->llm = MakeLlmBackend(ctx_, config_, request.work_id());
+          s->llm_setup_ms = setup_elapsed_ms();
           s->tts = MakeTtsBackend(ctx_, config_, request.work_id());
+          s->tts_setup_ms = setup_elapsed_ms();
         } catch (const std::exception& e) {
           log_err(request, std::string("backend_unavailable: ") + e.what());
           send_reply(build_error(request, 4,
                                  "后端不可用: " + std::string(e.what())));
           return;
         }
+
+        session::SessionPipeline::SinkFactory sink_factory;
+        if (config_.output_sink == "wav") {
+          sink_factory = [](const std::string& path) {
+            return std::make_unique<slotnexus::backend::fake::FakeAudioSink>(
+                path);
+          };
+        } else if (config_.output_sink == "alsa") {
+#ifdef SLOTNEXUS_HAS_ALSA
+          const std::string device = config_.output_device;
+          sink_factory = [device](const std::string& /*wav_path*/) {
+            return std::make_unique<slotnexus::backend::alsa::AlsaAudioSink>(
+                device, slotnexus::backend::kSampleRateHz);
+          };
+#else
+          log_err(request, "alsa_sink_unavailable");
+          send_reply(build_error(
+              request, 3,
+              "当前构建未启用 ALSA 输出（需硬件后端构建，--sink alsa）"));
+          return;
+#endif
+        } else {
+          log_err(request, "unknown_output_sink");
+          send_reply(build_error(request, 3,
+                                 "未知输出目标: " + config_.output_sink));
+          return;
+        }
+
         s->pipeline = std::make_unique<session::SessionPipeline>(
             PipelineConfig{config_.text_capacity, config_.pcm_capacity,
                            config_.push_timeout, config_.stage_delay,
-                           config_.output_dir, config_.tts_min_duration},
-            *router_, *s->asr, *s->llm, *s->tts,
-            [](const std::string& path) {
-              return std::make_unique<slotnexus::backend::fake::FakeAudioSink>(
-                  path);
-            });
+                           config_.output_dir, config_.tts_min_duration,
+                           config_.output_sink},
+            *router_, *s->asr, *s->llm, *s->tts, std::move(sink_factory));
+        s->setup_ms = setup_elapsed_ms();
+        common::LogLine(
+            "session setup done request_id=" + request.request_id() +
+            " work_id=" + request.work_id() + " sink=" + config_.output_sink +
+            " setup_ms=" + std::to_string(s->setup_ms) +
+            " asr_ms=" + std::to_string(s->asr_setup_ms) +
+            " llm_ms=" + std::to_string(s->llm_setup_ms) +
+            " tts_ms=" + std::to_string(s->tts_setup_ms));
         sessions_[request.work_id()] = s;
       }
       MessageEnvelope ack;
@@ -318,7 +381,12 @@ void SessionNode::handle_request(const std::string& identity,
       ack.set_work_id(request.work_id());
       ack.set_request_id(request.request_id());
       ack.set_session_id(request.session_id());
-      ack.set_payload({{"status", "ok"}});
+      ack.set_payload({{"status", "ok"},
+                       {"output_mode", config_.output_sink},
+                       {"setup_ms", s->setup_ms},
+                       {"asr_setup_ms", s->asr_setup_ms},
+                       {"llm_setup_ms", s->llm_setup_ms},
+                       {"tts_setup_ms", s->tts_setup_ms}});
       ack.set_finish(true);
       send_reply(ack);
       return;
@@ -572,7 +640,9 @@ void SessionNode::run_inference(const std::string& identity,
   reply.set_request_id(request_id);
   reply.set_session_id("");
   nlohmann::json p = ResultStats(result);
-  p["wav_path"] = result.wav_path;
+  if (!result.wav_path.empty()) {
+    p["wav_path"] = result.wav_path;
+  }
   std::string status;
   if (result.cancelled) {
     status = "cancelled";
@@ -583,14 +653,23 @@ void SessionNode::run_inference(const std::string& identity,
     p["error"] = result.error;
   }
   p["status"] = status;
-  common::LogLine("session done request_id=" + request_id + " work_id=" + work_id +
-                  " status=" + status + " route=" + result.route +
-                  " tokens=" + std::to_string(result.token_count) +
-                  " pcm=" + std::to_string(result.pcm_frames) +
-                  (result.error.empty() ? "" : " error=" + result.error) +
-                  (result.wav_path.empty()
-                       ? ""
-                       : " wav=" + result.wav_path));
+  common::LogLine(
+      "session done request_id=" + request_id + " work_id=" + work_id +
+      " status=" + status + " route=" + result.route +
+      " tokens=" + std::to_string(result.token_count) +
+      " pcm=" + std::to_string(result.pcm_frames) +
+      " sink=" + result.output_mode +
+      " delivered=" + (result.audio_delivered ? "1" : "0") +
+      " wav_done=" + (result.wav_complete ? "1" : "0") +
+      " playback_done=" + (result.playback_complete ? "1" : "0") +
+      " total_ms=" + std::to_string(result.total_ms) +
+      " asr_final_ms=" + std::to_string(result.asr_final_ms) +
+      " llm_first_token_ms=" + std::to_string(result.llm_first_token_ms) +
+      " tts_first_pcm_ms=" + std::to_string(result.tts_first_pcm_ms) +
+      " first_output_ms=" + std::to_string(result.first_output_ms) +
+      (result.sink_error.empty() ? "" : " sink_error=" + result.sink_error) +
+      (result.error.empty() ? "" : " error=" + result.error) +
+      (result.wav_path.empty() ? "" : " wav=" + result.wav_path));
   reply.set_payload(std::move(p));
   reply.set_finish(true);
   try {

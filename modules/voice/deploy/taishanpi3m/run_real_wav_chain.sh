@@ -21,6 +21,8 @@ DEPLOY_ROOT=${SLOTNEXUS_DEPLOY_ROOT:-$HOME/workspace/slotnexus-runtime}
 RKLLM_ROOT=${SLOTNEXUS_RKLLM_ROOT:-$HOME/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api}
 SHERTA_ROOT=${SLOTNEXUS_SHERTA_ROOT:-$HOME/workspace/upstream_rkllm/sherpa-root}
 MELOTTS_ROOT=${SLOTNEXUS_MELOTTS_ROOT:-$HOME/workspace/upstream_melotts}
+# 性能测量默认不注入人工阶段等待；需要模拟慢消费时显式设置环境变量。
+STAGE_DELAY_MS=${SLOTNEXUS_STAGE_DELAY_MS:-0}
 ASR_MODEL=${SLOTNEXUS_ASR_MODEL:-$DEPLOY_ROOT/models/sherpa-zipformer-bilingual-zh-en-2023-02-16}
 OFFICIAL_WAV=${OFFICIAL_WAV:-$ASR_MODEL/test_wavs/0.wav}
 cd "$DEPLOY_ROOT" || exit 1
@@ -60,7 +62,7 @@ TTSPID=$!
  --tts-endpoint tcp://127.0.0.1:19204 --tts-events tcp://127.0.0.1:19441 --tts-events-sync tcp://127.0.0.1:19442 \
  --net-setup-timeout-ms 60000 --net-rpc-timeout-ms 60000 \
  --config modules/voice/config/taishanpi3m/session.json --output-dir "$OUT/session-out" \
- --fixture-dir "$FIXTURE_DIR" --stage-delay-ms 20 > "$OUT/session.log" 2>&1 &
+ --fixture-dir "$FIXTURE_DIR" --stage-delay-ms "$STAGE_DELAY_MS" > "$OUT/session.log" 2>&1 &
 SESSID=$!
 # 控制面：gateway → manager（轮转单节点）→ session_node。
 ./build-taishanpi3m-hw/apps/unit_manager/unit_manager --module-id voice --default-module voice \

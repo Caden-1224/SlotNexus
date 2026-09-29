@@ -40,6 +40,8 @@ struct SessionNodeConfig {
  std::string listen = "tcp://127.0.0.1:19210";
  std::string knowledge_path = "modules/voice/examples/knowledge.jsonl";
  std::string output_dir = "session-out";     // WAV 输出目录
+ std::string output_sink = "wav";            // 输出目标：wav（默认）/ alsa
+ std::string output_device = "default";      // ALSA 设备名（板端 plughw:0,0）
  std::string fixture_dir = "modules/voice/examples/fixtures";  // 由部署路径注入
  rag::RouterConfig router;                   // L0-L3 阈值与关键词
  std::size_t text_capacity = 8;              // 有界文本队列容量

@@ -6,9 +6,11 @@
 // 长时间后端推理阻塞其他 work_id 的 setup/taskinfo。
 #include "slotnexus/runtime/task_runtime.hpp"
 
+#include "slotnexus/common/log.hpp"
 #include "slotnexus/runtime/backends.hpp"
 #include "slotnexus/task_registry/task_registry.hpp"
 
+#include <chrono>
 #include <utility>
 
 namespace slotnexus::runtime {
@@ -38,8 +40,21 @@ TaskRuntime::SetupResult TaskRuntime::setup(const std::string& request_id,
     result.error = TaskChannel::Error::kCapacity;
     return result;
   }
+  const auto setup_start = std::chrono::steady_clock::now();
   auto channel = std::make_shared<TaskChannel>(work_id, backend_factory_());
+  const auto backend_init_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - setup_start)
+          .count();
   result.error = channel->setup(request_id, payload);
+  const auto total_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - setup_start)
+          .count();
+  common::LogLine("runtime setup work_id=" + work_id + " backend_init_ms=" +
+                  std::to_string(backend_init_ms) + " task_setup_ms=" +
+                  std::to_string(total_ms - backend_init_ms) + " total_ms=" +
+                  std::to_string(total_ms));
   if (result.error != TaskChannel::Error::kOk) {
     registry_.release(work_id);
     return result;
@@ -62,8 +77,21 @@ TaskRuntime::SetupResult TaskRuntime::setup_with(
     result.error = TaskChannel::Error::kCapacity;
     return result;
   }
+  const auto setup_start = std::chrono::steady_clock::now();
   auto channel = std::make_shared<TaskChannel>(work_id, backend_factory_());
+  const auto backend_init_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - setup_start)
+          .count();
   result.error = channel->setup(request_id, payload);
+  const auto total_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - setup_start)
+          .count();
+  common::LogLine("runtime setup work_id=" + work_id + " backend_init_ms=" +
+                  std::to_string(backend_init_ms) + " task_setup_ms=" +
+                  std::to_string(total_ms - backend_init_ms) + " total_ms=" +
+                  std::to_string(total_ms));
   if (result.error != TaskChannel::Error::kOk) {
     return result;
   }

@@ -1,10 +1,12 @@
 #include "slotnexus/backend/net/net_backend_session.hpp"
 // Author: Caden
 
+#include <chrono>
 #include <stdexcept>
 #include <thread>
 #include <utility>
 
+#include "slotnexus/common/log.hpp"
 #include "slotnexus/transport/transport_error.hpp"
 #include "slotnexus/voice/event_adapter.hpp"
 
@@ -39,8 +41,16 @@ NetBackendSession::NetBackendSession(zmq::context_t& ctx,
   rpc_.connect(config_.rpc_endpoint);
   cancel_rpc_.connect(config_.rpc_endpoint);
   // 订阅先于发布（slow joiner 契约）：连接后即握手，节点端确认订阅就绪。
+  const auto handshake_start = std::chrono::steady_clock::now();
   sub_.connect(config_.events_endpoint);
   sub_.notify_ready(config_.events_sync);
+  common::LogLine(
+      "net handshake work_id=" + config_.work_id + " rpc=" +
+      config_.rpc_endpoint + " ms=" +
+      std::to_string(
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::steady_clock::now() - handshake_start)
+              .count()));
 }
 
 NetBackendSession::~NetBackendSession() {
@@ -70,12 +80,20 @@ void NetBackendSession::setup() {
   req.set_request_id(config_.work_id + "#setup");
   req.set_payload(nlohmann::json::object());
   std::string resp;
+  const auto setup_start = std::chrono::steady_clock::now();
   try {
     resp = rpc_.call(req.to_json(), config_.setup_timeout);
   } catch (const transport::TransportError& e) {
     throw std::runtime_error("节点不可达（" + config_.rpc_endpoint + "）: " +
                              e.what());
   }
+  common::LogLine(
+      "net setup work_id=" + config_.work_id + " rpc=" +
+      config_.rpc_endpoint + " ms=" +
+      std::to_string(
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::steady_clock::now() - setup_start)
+              .count()));
   const MessageEnvelope reply = MessageEnvelope::from_json(resp);
   if (reply.type() == MessageType::kError) {
     throw std::runtime_error("节点 setup 失败: " + reply.error().message);

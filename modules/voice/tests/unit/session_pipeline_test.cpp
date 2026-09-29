@@ -350,11 +350,25 @@ void test_four_routes() {
   CHECK(llm.prompts[1] == "hello world");  // 未注入知识
   CHECK(r3.final_text == "hello world");
 
-  // 队列峰值与容量约束（所有路径）。
+  // 队列峰值与容量约束、阶段时间戳与输出完成语义（所有路径）。
   for (const auto* r : {&r0, &r1, &r2, &r3}) {
     CHECK(r->text_queue_peak <= base_config(f).text_queue_capacity);
     CHECK(r->pcm_queue_peak <= base_config(f).pcm_queue_capacity);
+    CHECK(r->output_mode == "wav");
+    CHECK(r->input_end_ms >= 0);
+    CHECK(r->asr_final_ms >= r->input_end_ms);
+    CHECK(r->first_text_ms >= 0);
+    CHECK(r->tts_first_pcm_ms >= 0);
+    CHECK(r->first_output_ms >= 0);
+    CHECK(r->output_complete_ms >= r->first_output_ms);
+    CHECK(r->total_ms >= r->output_complete_ms);
+    CHECK(r->audio_delivered);
+    CHECK(r->wav_complete);        // WAV 文件写完
+    CHECK(!r->playback_complete);  // 不等同于真实扬声器播完
   }
+  CHECK(r2.llm_first_token_ms >= 0);
+  CHECK(r3.llm_first_token_ms >= 0);
+  CHECK(r3.llm_first_token_ms >= r3.asr_final_ms);
   // 状态机轨迹：L1 与 L3 路径的完整迁移。
   CHECK(r1.transitions.size() == 4);
   CHECK(r1.transitions[0] == "idle--audio_start-->listening");
@@ -392,6 +406,15 @@ void test_wav_input_pipeline() {
   CHECK(std::filesystem::exists(r.wav_path));
   CHECK(r.text_queue_peak <= base_config(f).text_queue_capacity);
   CHECK(r.pcm_queue_peak <= base_config(f).pcm_queue_capacity);
+  CHECK(r.input_end_ms >= 0);
+  CHECK(r.asr_final_ms >= r.input_end_ms);
+  CHECK(r.llm_first_token_ms >= r.asr_final_ms);
+  CHECK(r.first_text_ms >= r.asr_final_ms);
+  CHECK(r.tts_first_pcm_ms >= 0);
+  CHECK(r.first_output_ms >= r.tts_first_pcm_ms);
+  CHECK(r.audio_delivered);
+  CHECK(r.wav_complete);
+  CHECK(!r.playback_complete);
 
   // 格式不符：44.1kHz 被拒绝。
   const std::string bad_path = f.out_dir + "/bad.wav";

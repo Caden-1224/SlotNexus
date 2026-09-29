@@ -74,6 +74,7 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
 
   PipelineResult result;
   result.generation = my_gen;
+  result.output_mode = config_.output_mode;
 
   // deadline.count() <= 0 表示不限时；否则从 run 开始计时。
   const auto start_time = std::chrono::steady_clock::now();
@@ -81,19 +82,33 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
     return deadline.count() > 0 &&
            std::chrono::steady_clock::now() >= start_time + deadline;
   };
+  const auto elapsed_ms = [&start_time] {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now() - start_time)
+        .count();
+  };
 
   BoundedQueue<std::string> text_queue(config_.text_queue_capacity);
   BoundedQueue<std::vector<std::int16_t>> pcm_queue(
       config_.pcm_queue_capacity);
 
-  // 输出 sink：打开失败立即失败。
-  const std::string wav_path = make_wav_path(request_id);
-  result.wav_path = wav_path;
-  auto sink = sink_factory_(wav_path);
+  // 输出 sink：WAV 模式生成确定文件路径，ALSA 模式路径为空（工厂按
+  // 配置创建设备 sink）。打开失败立即失败并保留可观察错误。
+  std::string output_path;
+  if (config_.output_mode == "wav") {
+    output_path = make_wav_path(request_id);
+    result.wav_path = output_path;
+  }
+  auto sink = sink_factory_(output_path);
   if (!sink || !sink->open()) {
-    result.error = "音频输出打开失败: " + wav_path;
+    result.sink_error = "音频输出打开失败";
+    result.error = result.sink_error +
+                   (output_path.empty() ? std::string()
+                                        : ": " + output_path);
+    result.total_ms = elapsed_ms();
     return result;
   }
+  std::atomic<bool> sink_write_failed{false};
 
   // 事件双检查：旧世代/旧请求（取消后的晚到回调）一律丢弃。
   const auto is_active = [&] {
@@ -106,6 +121,8 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
     const auto r = text_queue.push_timeout(sentence, config_.queue_push_timeout);
     if (r == QueueResult::kFull) {
       ++result.dropped_sentences;  // 驱动线程独占，无需原子
+    } else if (r == QueueResult::kOk && result.first_text_ms < 0) {
+      result.first_text_ms = elapsed_ms();  // 驱动线程独占
     }
   };
   // 回答文本（L0/L1 直答或 LLM 输出）→ 分句 → 文本队列。
@@ -158,6 +175,7 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
           }
           if (e.kind == BackendEvent::Kind::kFinal) {
             query = e.text;
+            result.asr_final_ms = elapsed_ms();
           }
         });
         constexpr std::size_t kFrame =
@@ -171,10 +189,18 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
           std::vector<std::int16_t> frame(
               samples.begin() + static_cast<std::ptrdiff_t>(off),
               samples.begin() + static_cast<std::ptrdiff_t>(end));
+          if (last) {
+            // 固定输入的“喂入结束”：最后一帧交给 ASR 之前。连续采集
+            // 接入后应由端点确认替换，不能把 ASR 往返时间算进输入时长。
+            result.input_end_ms = elapsed_ms();
+          }
           asr_.feed_audio(frame, last);
           if (config_.stage_delay.count() > 0) {
             std::this_thread::sleep_for(config_.stage_delay);
           }
+        }
+        if (result.input_end_ms < 0) {
+          result.input_end_ms = elapsed_ms();
         }
         result.asr_text = query;
         if (query.find_first_not_of(" \t\r\n") == std::string::npos) {
@@ -186,6 +212,8 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
       // 文本模式：无音频输入，Listening 阶段为空。
       state_machine_.dispatch(SessionEvent::kAsrFinal);
       query = input.text;
+      result.input_end_ms = elapsed_ms();
+      result.asr_final_ms = result.input_end_ms;
       if (query.empty()) {
         result.error = "空文本请求";
       }
@@ -213,6 +241,9 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
             return;  // 取消后 LLM 的晚到 token：丢弃
           }
           if (e.kind == BackendEvent::Kind::kToken) {
+            if (result.llm_first_token_ms < 0) {
+              result.llm_first_token_ms = elapsed_ms();
+            }
             ++result.token_count;
             if (!result.final_text.empty()) {
               result.final_text += " ";
@@ -258,6 +289,9 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
                 return;  // 取消后 TTS 的晚到 PCM：丢弃
               }
               if (e.kind == BackendEvent::Kind::kPcm) {
+                if (result.tts_first_pcm_ms < 0) {
+                  result.tts_first_pcm_ms = elapsed_ms();
+                }
                 const auto pr =
                     pcm_queue.push_timeout(e.pcm, config_.queue_push_timeout);
                 if (pr == QueueResult::kFull) {
@@ -289,7 +323,14 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
             continue;  // 取消后滞留帧：不写入输出
           }
           if (sink->write_pcm(frame)) {
+            if (result.first_output_ms < 0) {
+              result.first_output_ms = elapsed_ms();
+            }
             ++result.pcm_frames;
+          } else {
+            sink_write_failed.store(true);
+            result.sink_error = "音频输出写入失败";
+            return;  // sink 已错误：停止继续提交，主线程按失败收尾
           }
         }
       });
@@ -320,14 +361,29 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
       std::vector<std::int16_t> silence(
           static_cast<std::size_t>(backend::kFrameSamples), 0);
       if (sink->write_pcm(silence)) {
+        if (result.first_output_ms < 0) {
+          result.first_output_ms = elapsed_ms();
+        }
         ++result.pcm_frames;
       } else {
+        sink_write_failed.store(true);
+        result.sink_error = "音频输出补齐静音失败";
         break;
       }
     }
   }
 
   const bool sink_ok = sink->close();
+  result.output_complete_ms = elapsed_ms();
+  // “已交付”= 本次提交的 PCM 均被 sink 接受且 close 成功；它不等于
+  // WAV 写完，更不等于扬声器真实播完。WAV/ALSA 的完成语义在下方按
+  // output_mode 分列，避免把文件关闭误报成声学播放完成。
+  result.audio_delivered =
+      !sink_write_failed.load() && result.pcm_frames > 0 && sink_ok;
+  if (sink_write_failed.load() && result.error.empty()) {
+    result.error = result.sink_error.empty() ? "音频输出写入失败"
+                                             : result.sink_error;
+  }
   if (cancelled_.load()) {
     result.cancelled = true;
   }
@@ -336,8 +392,11 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
       state_machine_.dispatch(SessionEvent::kTtsDone);
       result.ok = true;
     } else {
-      result.error = "音频输出关闭失败";
+      result.sink_error = "音频输出关闭失败";
+      result.error = result.sink_error;
     }
+  } else if (!sink_ok && result.sink_error.empty()) {
+    result.sink_error = "音频输出关闭失败";
   }
 
   // 取消/超时/失败：状态机回到 Idle（Cancelling → cancel_complete）。
@@ -349,10 +408,16 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
     state_machine_.dispatch(SessionEvent::kCancelComplete);  // → Idle
   }
 
+  if (result.ok) {
+    result.wav_complete = config_.output_mode == "wav";
+    result.playback_complete = config_.output_mode == "alsa";
+  }
+
   // 统计与证据（工作线程已 join，无数据竞争）。
   result.text_queue_peak = text_queue.peak();
   result.pcm_queue_peak = pcm_queue.peak();
   result.transitions = state_machine_.trace();
+  result.total_ms = elapsed_ms();
   return result;
 }
 

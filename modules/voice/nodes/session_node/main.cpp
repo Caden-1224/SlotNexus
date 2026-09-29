@@ -4,6 +4,7 @@
 // 用法：session_node [--listen tcp://127.0.0.1:19210]
 //                   [--config modules/voice/config/mock/session.json]
 //                   [--knowledge <jsonl>] [--output-dir <dir>]
+//                   [--sink wav|alsa] [--sink-device <设备名>]
 //                   [--fixture-dir <dir>] [--direct-threshold <v>]
 //                   [--context-threshold <v>] [--top-k <N>]
 //                   [--text-capacity <N>] [--pcm-capacity <N>]
@@ -114,6 +115,8 @@ int main(int argc, char** argv) {
    if (file_cfg.contains("output_dir")) {
      config.output_dir = file_cfg["output_dir"].get<std::string>();
    }
+   config.output_sink = file_cfg.value("output_sink", config.output_sink);
+   config.output_device = file_cfg.value("output_device", config.output_device);
    config.stage_delay =
        std::chrono::milliseconds(file_cfg.value("stage_delay_ms", 0));
    config.tts_min_duration =
@@ -146,6 +149,10 @@ int main(int argc, char** argv) {
      config.knowledge_path = val;
    } else if (arg == "--output-dir") {
      config.output_dir = val;
+   } else if (arg == "--sink") {
+     config.output_sink = val;
+   } else if (arg == "--sink-device") {
+     config.output_device = val;
    } else if (arg == "--fixture-dir") {
      config.fixture_dir = val;
    } else if (arg == "--direct-threshold") {
@@ -216,6 +223,19 @@ int main(int argc, char** argv) {
              << "（支持 embedded / net）" << std::endl;
    return 1;
  }
+ if (config.output_sink != "wav" && config.output_sink != "alsa") {
+   std::cerr << "未知输出目标: " << config.output_sink
+             << "（支持 wav / alsa）" << std::endl;
+   return 1;
+ }
+#ifdef SLOTNEXUS_HAS_ALSA
+#else
+ if (config.output_sink == "alsa") {
+   std::cerr << "当前构建未启用 ALSA 输出（需 "
+                "-DSLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON）" << std::endl;
+   return 1;
+ }
+#endif
  const auto check_events_pair = [](const char* name,
                                    const std::string& events,
                                    const std::string& sync) {
@@ -245,7 +265,11 @@ int main(int argc, char** argv) {
              << config.router.direct_threshold << " context="
              << config.router.context_threshold << " top-k="
              << config.router.top_k << "，队列 " << config.text_capacity
-             << "/" << config.pcm_capacity << "）" << std::endl;
+             << "/" << config.pcm_capacity << "，sink " << config.output_sink;
+   if (config.output_sink == "alsa") {
+     std::cout << "（" << config.output_device << "）";
+   }
+   std::cout << "）" << std::endl;
    if (config.backend == "net") {
      std::cout << "  asr 节点 " << config.asr_ep.rpc << "（事件 "
                << config.asr_ep.events << (config.asr_audio_uplink

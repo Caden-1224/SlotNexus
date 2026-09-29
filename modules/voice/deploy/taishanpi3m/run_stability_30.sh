@@ -14,6 +14,8 @@ DEPLOY_ROOT=${SLOTNEXUS_DEPLOY_ROOT:-$HOME/workspace/slotnexus-runtime}
 RKLLM_ROOT=${SLOTNEXUS_RKLLM_ROOT:-$HOME/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api}
 SHERTA_ROOT=${SLOTNEXUS_SHERTA_ROOT:-$HOME/workspace/upstream_rkllm/sherpa-root}
 MELOTTS_ROOT=${SLOTNEXUS_MELOTTS_ROOT:-$HOME/workspace/upstream_melotts}
+# 性能测量默认不注入人工阶段等待；需要模拟慢消费时显式设置环境变量。
+STAGE_DELAY_MS=${SLOTNEXUS_STAGE_DELAY_MS:-0}
 cd "$DEPLOY_ROOT" || exit 1
 export LD_LIBRARY_PATH="$RKLLM_ROOT/aarch64:$SHERTA_ROOT/build/lib:$SHERTA_ROOT/build/_deps/onnxruntime-src/lib:$MELOTTS_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ROUNDS=${1:-30}
@@ -49,7 +51,7 @@ run_round() {
    --tts-endpoint tcp://127.0.0.1:19204 --tts-events tcp://127.0.0.1:19441 --tts-events-sync tcp://127.0.0.1:19442 \
    --net-setup-timeout-ms 60000 --net-rpc-timeout-ms 120000 \
    --config modules/voice/config/taishanpi3m/session.json --output-dir "$OUT/session-out" \
-   --fixture-dir "$FIXTURE_DIR" --stage-delay-ms 20 > "$OUT/session.log" 2>&1 &
+   --fixture-dir "$FIXTURE_DIR" --stage-delay-ms "$STAGE_DELAY_MS" > "$OUT/session.log" 2>&1 &
  ./build-taishanpi3m-hw/apps/unit_manager/unit_manager --module-id voice --default-module voice \
    --node tcp://127.0.0.1:19310 --node-rpc-timeout-ms 120000 > "$OUT/manager.log" 2>&1 &
  ./build-taishanpi3m-hw/apps/edge_gateway/edge_gateway \

@@ -25,5 +25,8 @@ target_link_libraries(session_node PRIVATE
   slotnexus::voice_fake_backends
   slotnexus::voice_net_backends
   slotnexus::protocol)
+if(SLOTNEXUS_ENABLE_HARDWARE_BACKENDS)
+  target_compile_definitions(session_node PRIVATE SLOTNEXUS_HAS_ALSA=1)
+endif()
 set_target_properties(session_node PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/apps/session_node)

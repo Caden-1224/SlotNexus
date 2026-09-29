@@ -329,11 +329,22 @@ sequenceDiagram
 
 板端入口位于 [`modules/voice/deploy/taishanpi3m/`](modules/voice/deploy/taishanpi3m/)：`build.sh hardware` 负责原生构建与测试，`check_deployment.sh` 检查依赖和模型，`start.sh`/`stop.sh` 管理六个服务。部署前按 [`deploy-manifest.md`](modules/voice/deploy/taishanpi3m/deploy-manifest.md) 准备外部资产。硬件配置模板见 [`session.json`](modules/voice/config/taishanpi3m/session.json)。
 
+输出目标由 `start.sh` 的 `SLOTNEXUS_SINK` 选择：`wav`（默认，写文件供内容复核）或 `alsa`（实时声卡播放，设备名用 `SLOTNEXUS_SINK_DEVICE` 指定）。两种模式使用同一份模型、路由与回答文本，只有出口不同。
+
+测量脚本默认不注入人工阶段等待（`--stage-delay-ms` 为 0，需要模拟慢消费时用 `SLOTNEXUS_STAGE_DELAY_MS` 显式设置），否则阶段耗时会包含测试脚本自己造出的等待：
+
+| 脚本 | 用途 |
+| --- | --- |
+| `run_baseline.sh` | 六进程启动、模型加载、节点握手、任务 setup 与推理各阶段耗时、RSS/温度，并记录源码与构建指纹 |
+| `run_real_wav_chain.sh` | 固定 WAV 全链路回归（ASR/RKLLM/MeloTTS） |
+| `run_mic_chain.sh` | 现场麦克风入口 |
+| `run_stability_30.sh` | 30 轮稳定性 |
+
 ## 验证状态
 
 | 范围 | 当前证据与边界 |
 | --- | --- |
-| WSL 默认构建 | 重构验收记录为 48/48 CTest 串行通过，包含原有行为测试及 Manager 路由、核心边界门禁。 |
+| WSL 默认构建 | 当前 52/52 CTest 串行通过，包含原有行为测试、Manager 路由、核心边界门禁与部署测量脚本契约。 |
 | 核心独立构建 | 重构验收记录为 17/17 CTest 通过，并完成核心安装与语音模块独立消费者构建。 |
 | 板端历史基线 | 重构前 Qwen3.5-0.8B + MeloTTS 固定输入 30/30 成功；端到端 p50 59.4 s、p95 60.8 s。**每轮都重建六进程**，不是六进程常驻 30 轮。 |
 | 重构后板端链路 | **验证进行中**；真实 ASR/LLM/TTS、麦克风/声卡及 30 轮链路结果以本轮板端测试为准。 |
@@ -346,6 +357,7 @@ sequenceDiagram
 - PUB / SUB 提供订阅握手与事件关联，不提供持久化、断线补发或可靠投递确认；当前没有高并发容量或端到端加速比例的压测结论。
 - 同步 REQ/REP 转发期间，正在执行推理的节点不能通过同一通道插队处理 cancel；语音 L0 规则处理停止类请求，不能等同于任意阶段的抢占式中断。
 - 麦克风入口当前固定采集时长，不是带 VAD 的常驻流式输入。
+- ALSA 输出目前按整轮 PCM 依次写入，没有独立的起音前缓冲或播放中抢占；“真实扬声器首音”需要录音或回环才能测，软件写入时间不等于实际出声。
 - 当前板端真实链路需要外部厂商 Runtime 和模型；硬件测试结果不能由 Fake Backend 回归代替。
 
 ## 仓库结构
