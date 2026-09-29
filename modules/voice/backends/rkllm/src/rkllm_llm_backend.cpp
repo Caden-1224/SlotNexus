@@ -254,6 +254,7 @@ void RkllmBackend::generate(const std::string& prompt) {
 
   RKLLMInput input;
   std::memset(&input, 0, sizeof(input));
+  input.role = "user";  // 与模型自带对话模板配合；空 role 会绕过模板。
   input.input_type = RKLLM_INPUT_PROMPT;
   input.prompt_input = prompt.c_str();
   // 思考模式开关：Qwen3 系列据此决定是否输出思考段；对不支持该字段的模型

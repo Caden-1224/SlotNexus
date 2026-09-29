@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <exception>
 #include <filesystem>
 #include <thread>
 #include <utility>
@@ -109,6 +110,8 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
     return result;
   }
   std::atomic<bool> sink_write_failed{false};
+  std::atomic<bool> tts_failed{false};
+  std::exception_ptr tts_exception;
 
   // 事件双检查：旧世代/旧请求（取消后的晚到回调）一律丢弃。
   const auto is_active = [&] {
@@ -116,31 +119,150 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
            request_id == active_request_id_;
   };
 
-  // 文本入队：满队列等待 queue_push_timeout，仍满则丢弃并计数（明确行为）。
-  auto push_text = [&](const std::string& sentence) {
-    const auto r = text_queue.push_timeout(sentence, config_.queue_push_timeout);
-    if (r == QueueResult::kFull) {
-      ++result.dropped_sentences;  // 驱动线程独占，无需原子
-    } else if (r == QueueResult::kOk && result.first_text_ms < 0) {
-      result.first_text_ms = elapsed_ms();  // 驱动线程独占
+  // 文本入队：满队列按 queue_push_timeout 重试，不丢弃。取消/超时或下游
+  // 工作线程退出后返回 false；调用方据此停止继续分句。
+  auto push_text = [&](const std::string& sentence) -> bool {
+    while (is_active() && !timed_out()) {
+      if (sink_write_failed.load()) {
+        if (result.error.empty()) {
+          result.error = "音频输出写入失败";
+        }
+        return false;
+      }
+      if (tts_failed.load()) {
+        if (result.error.empty()) {
+          result.error = "TTS 工作线程已停止";
+        }
+        return false;
+      }
+      const auto r =
+          text_queue.push_timeout(sentence, config_.queue_push_timeout);
+      if (r == QueueResult::kOk) {
+        if (result.first_text_ms < 0) {
+          result.first_text_ms = elapsed_ms();
+        }
+        return true;
+      }
+      if (r == QueueResult::kClosed) {
+        if (result.error.empty()) {
+          result.error = "文本队列已关闭";
+        }
+        return false;
+      }
+      // kFull：继续重试，由下游消费或取消/超时解除背压。
     }
+    return false;
   };
   // 回答文本（L0/L1 直答或 LLM 输出）→ 分句 → 文本队列。
-  auto feed_answer_sentences = [&](const std::string& text) {
-    common::SentenceChunker chunker;
+  auto feed_answer_sentences = [&](const std::string& text) -> bool {
+    common::SentenceChunker chunker(config_.text_chunk_max_bytes);
     for (const auto& s : chunker.feed(text)) {
-      push_text(s);
+      if (!push_text(s)) {
+        return false;
+      }
     }
     for (const auto& s : chunker.flush()) {
-      push_text(s);
+      if (!push_text(s)) {
+        return false;
+      }
     }
+    return true;
+  };
+
+  // PCM 入队：满队列重试；sink 失败、取消或超时后返回 false。
+  auto push_pcm = [&](const std::vector<std::int16_t>& pcm) -> bool {
+    while (is_active() && !timed_out() && !sink_write_failed.load()) {
+      const auto r = pcm_queue.push_timeout(pcm, config_.queue_push_timeout);
+      if (r == QueueResult::kOk) {
+        return true;
+      }
+      if (r == QueueResult::kClosed) {
+        return false;
+      }
+      // kFull：继续重试，由 sink 写出或取消/超时解除背压。
+    }
+    return false;
   };
 
   std::thread tts_thread;
   std::thread sink_thread;
-  bool workers_spawned = false;
 
   try {
+    // TTS 工作线程：首个可播片段入队后立即消费，不等 LLM 整段生成结束。
+    // 异常防护：网络后端可能抛异常；线程内捕获后由主线程收尾统一判失败。
+    tts_thread = std::thread([&] {
+      try {
+        std::string sentence;
+        for (;;) {
+          const auto r = text_queue.pop_timeout(sentence, kPollInterval);
+          if (r == QueueResult::kClosed) {
+            return;  // 生产结束且已排空
+          }
+          if (r != QueueResult::kOk) {
+            continue;  // 空窗口，继续等待
+          }
+          if (!is_active()) {
+            continue;  // 取消后滞留句子：丢弃
+          }
+          bool pcm_ok = true;
+          tts_.set_event_callback([&](const BackendEvent& e) {
+            if (!is_active() || e.kind != BackendEvent::Kind::kPcm) {
+              return;
+            }
+            if (result.tts_first_pcm_ms < 0) {
+              result.tts_first_pcm_ms = elapsed_ms();
+            }
+            if (!push_pcm(e.pcm)) {
+              pcm_ok = false;
+            }
+          });
+          tts_.synthesize(sentence);
+          if (!pcm_ok) {
+            // 取消或 sink 已失败由各自路径收尾；其余情况标记 TTS 失败，
+            // 让主线程停止继续喂文本并返回明确错误。
+            if (!is_active() || sink_write_failed.load()) {
+              return;
+            }
+            tts_failed.store(true);
+            return;
+          }
+          if (config_.stage_delay.count() > 0) {
+            std::this_thread::sleep_for(config_.stage_delay);
+          }
+        }
+      } catch (...) {
+        tts_failed.store(true);
+        tts_exception = std::current_exception();
+      }
+    });
+
+    // 写出工作线程：PCM 帧 → sink（取消后滞留帧不写出）。
+    sink_thread = std::thread([&] {
+      std::vector<std::int16_t> frame;
+      for (;;) {
+        const auto r = pcm_queue.pop_timeout(frame, kPollInterval);
+        if (r == QueueResult::kClosed) {
+          return;
+        }
+        if (r != QueueResult::kOk) {
+          continue;
+        }
+        if (!is_active()) {
+          continue;  // 取消后滞留帧：不写入输出
+        }
+        if (sink->write_pcm(frame)) {
+          if (result.first_output_ms < 0) {
+            result.first_output_ms = elapsed_ms();
+          }
+          ++result.pcm_frames;
+        } else {
+          sink_write_failed.store(true);
+          result.sink_error = "音频输出写入失败";
+          return;  // sink 已错误：停止继续提交，主线程按失败收尾
+        }
+      }
+    });
+
     // ---------- 1. 输入阶段：WAV / 麦克风 → ASR（Listening）----------
     // kWav / kMic 同一条样本链路：kWav 由管线读文件，kMic 直接用会话侧
     // 录制样本（AlsaAudioSource 在会话进程完成采集，管线不依赖声卡）。
@@ -232,13 +354,15 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
         result.final_text = decision.answer;
         feed_answer_sentences(decision.answer);
       } else {
-        // L2/L3：调用 LLM，token 流经分句器进入文本队列。
+        // L2/L3：调用 LLM，token 流经分句器进入文本队列；TTS 工作线程
+        // 已在 generate 之前启动，因此首句不会被整段生成阻塞。
         state_machine_.dispatch(SessionEvent::kRouteL2L3);
         result.llm_called = true;
-        common::SentenceChunker chunker;
+        bool feed_stopped = false;
+        common::SentenceChunker chunker(config_.text_chunk_max_bytes);
         llm_.set_event_callback([&](const BackendEvent& e) {
-          if (!is_active()) {
-            return;  // 取消后 LLM 的晚到 token：丢弃
+          if (!is_active() || feed_stopped) {
+            return;  // 取消后或下游已停止：不再分句入队
           }
           if (e.kind == BackendEvent::Kind::kToken) {
             if (result.llm_first_token_ms < 0) {
@@ -250,7 +374,10 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
             }
             result.final_text += e.text;
             for (const auto& s : chunker.feed(e.text)) {
-              push_text(s);
+              if (!push_text(s)) {
+                feed_stopped = true;
+                return;
+              }
             }
           }
           if (config_.stage_delay.count() > 0) {
@@ -258,83 +385,15 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
           }
         });
         llm_.generate(decision.prompt);
-        for (const auto& s : chunker.flush()) {
-          push_text(s);
+        if (!feed_stopped && is_active()) {
+          for (const auto& s : chunker.flush()) {
+            if (!push_text(s)) {
+              break;
+            }
+          }
         }
         state_machine_.dispatch(SessionEvent::kLlmDone);
       }
-    }
-
-    // ---------- 3. 合成与写出阶段（Speaking，两个工作线程）----------
-    if (result.error.empty() && !cancelled_.load() && !timed_out()) {
-      // TTS 工作线程：句子 → 合成 → PCM 帧入有界队列。
-      // 异常防护：网络后端（节点不可达/超时）可能抛异常，线程内未捕获
-      // 会 terminate 整个进程——捕获后记录错误，主线程收尾据此判失败。
-      tts_thread = std::thread([&] {
-        try {
-          std::string sentence;
-          for (;;) {
-            const auto r = text_queue.pop_timeout(sentence, kPollInterval);
-            if (r == QueueResult::kClosed) {
-              return;  // 生产结束且已排空
-            }
-            if (r != QueueResult::kOk) {
-              continue;  // 空窗口，继续等待
-            }
-            if (!is_active()) {
-              continue;  // 取消后滞留句子：丢弃
-            }
-            tts_.set_event_callback([&](const BackendEvent& e) {
-              if (!is_active()) {
-                return;  // 取消后 TTS 的晚到 PCM：丢弃
-              }
-              if (e.kind == BackendEvent::Kind::kPcm) {
-                if (result.tts_first_pcm_ms < 0) {
-                  result.tts_first_pcm_ms = elapsed_ms();
-                }
-                const auto pr =
-                    pcm_queue.push_timeout(e.pcm, config_.queue_push_timeout);
-                if (pr == QueueResult::kFull) {
-                  ++result.dropped_pcm_frames;  // 满队列超时丢弃（明确行为）
-                }
-              }
-            });
-            tts_.synthesize(sentence);
-            if (config_.stage_delay.count() > 0) {
-              std::this_thread::sleep_for(config_.stage_delay);
-            }
-          }
-        } catch (const std::exception& e) {
-          result.error = std::string("TTS 阶段异常: ") + e.what();
-        }
-      });
-      // 写出工作线程：PCM 帧 → sink（取消后滞留帧不写出）。
-      sink_thread = std::thread([&] {
-        std::vector<std::int16_t> frame;
-        for (;;) {
-          const auto r = pcm_queue.pop_timeout(frame, kPollInterval);
-          if (r == QueueResult::kClosed) {
-            return;
-          }
-          if (r != QueueResult::kOk) {
-            continue;
-          }
-          if (!is_active()) {
-            continue;  // 取消后滞留帧：不写入输出
-          }
-          if (sink->write_pcm(frame)) {
-            if (result.first_output_ms < 0) {
-              result.first_output_ms = elapsed_ms();
-            }
-            ++result.pcm_frames;
-          } else {
-            sink_write_failed.store(true);
-            result.sink_error = "音频输出写入失败";
-            return;  // sink 已错误：停止继续提交，主线程按失败收尾
-          }
-        }
-      });
-      workers_spawned = true;
     }
 
   } catch (const std::exception& e) {
@@ -349,6 +408,18 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
   pcm_queue.close();
   if (sink_thread.joinable()) {
     sink_thread.join();
+  }
+
+  if (tts_exception) {
+    try {
+      std::rethrow_exception(tts_exception);
+    } catch (const std::exception& e) {
+      result.error = std::string("TTS 阶段异常: ") + e.what();
+    } catch (...) {
+      result.error = "TTS 阶段异常";
+    }
+  } else if (tts_failed.load() && result.error.empty()) {
+    result.error = "TTS 工作线程异常退出";
   }
 
   // 最小合成时长：输出不足时补静音帧（成功路径；取消/失败不补齐）。

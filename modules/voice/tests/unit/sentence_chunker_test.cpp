@@ -94,6 +94,25 @@ void test_commas_do_not_split() {
   std::cout << "  [ok] 逗号不切分：整句完整保留" << std::endl;
 }
 
+void test_max_bytes_limit() {
+  cq::SentenceChunker c(6);
+  // 两字汉字 = 6 字节，达到上限即交付，不等到句末标点。
+  check_sentences(c.feed("你好世界再见"), {"你好", "世界"});
+  check_sentences(c.flush(), {"再见"});
+
+  // 标点优先归属前句；为了保留标点，单片可超过上限一个 UTF-8 字符。
+  cq::SentenceChunker c2(6);
+  check_sentences(c2.feed("你好世界。"), {"你好", "世界。"});
+  check_sentences(c2.flush(), {});
+
+  // max_bytes = 0 保持只按标点切分的旧行为。
+  cq::SentenceChunker c3(0);
+  check_sentences(c3.feed("你好世界"), {});
+  check_sentences(c3.flush(), {"你好世界"});
+  std::cout << "  [ok] 容量上限：按 UTF-8 边界切长句，标点仍归属前句"
+            << std::endl;
+}
+
 void test_edge_cases() {
   cq::SentenceChunker c;
   // 空输入。
@@ -121,6 +140,7 @@ int main() {
   test_streaming_feed();
   test_flush_remainder();
   test_commas_do_not_split();
+  test_max_bytes_limit();
   test_edge_cases();
 
   if (g_failures == 0) {

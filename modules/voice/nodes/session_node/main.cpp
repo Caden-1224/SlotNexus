@@ -8,7 +8,8 @@
 //                   [--fixture-dir <dir>] [--direct-threshold <v>]
 //                   [--context-threshold <v>] [--top-k <N>]
 //                   [--text-capacity <N>] [--pcm-capacity <N>]
-//                   [--push-timeout-ms <N>] [--stage-delay-ms <N>]
+//                   [--push-timeout-ms <N>] [--text-chunk-max-bytes <N>]
+//                   [--stage-delay-ms <N>]
 //                   [--backend embedded|net]
 //                   [--asr-endpoint <RPC>] [--asr-events <PUB>]
 //                   [--asr-events-sync <SYNC>]（llm/tts 同理）
@@ -117,6 +118,8 @@ int main(int argc, char** argv) {
    }
    config.output_sink = file_cfg.value("output_sink", config.output_sink);
    config.output_device = file_cfg.value("output_device", config.output_device);
+   config.text_chunk_max_bytes =
+       file_cfg.value("text_chunk_max_bytes", config.text_chunk_max_bytes);
    config.stage_delay =
        std::chrono::milliseconds(file_cfg.value("stage_delay_ms", 0));
    config.tts_min_duration =
@@ -176,6 +179,10 @@ int main(int argc, char** argv) {
    } else if (arg == "--push-timeout-ms") {
      config.push_timeout =
          std::chrono::milliseconds(parse_int(val.c_str(), 50));
+   } else if (arg == "--text-chunk-max-bytes") {
+     config.text_chunk_max_bytes =
+         static_cast<std::size_t>(parse_int(
+             val.c_str(), static_cast<int>(config.text_chunk_max_bytes)));
    } else if (arg == "--stage-delay-ms") {
      config.stage_delay =
          std::chrono::milliseconds(parse_int(val.c_str(), 0));

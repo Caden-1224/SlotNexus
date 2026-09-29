@@ -1,11 +1,13 @@
-// 流式分句器：把 token 流切分为完整句子（TTS 前一级）。
+// 流式分句器：把 token 流切分为可立即合成的文本片段（TTS 前一级）。
 // Author: Caden
 //
 // 规则（确定性、可测试）：
 //   - 句末标点 。！？!?;； 与换行符 \n 触发切分；中文标点为 UTF-8 三字节
 //     序列，按字节模式识别；切分标点归属于前一句，换行符不进入句子；
 //   - 连续句末标点只保留首个；句子不以标点开头（句首标点丢弃）；
-//   - 逗号、顿号等非句末标点不切分；
+//   - 普通字符累计到 max_bytes 前先切一片，长句不再等标点；多字节字符
+//     不跨片段截断，因此单片可能比 max_bytes 多一个 UTF-8 字符（最多 4 字节）；
+//   - max_bytes = 0 表示只按句末标点切分，保持旧行为；
 //   - feed(text) 返回本次输入中完成的句子（可能为空）；
 //   - flush() 返回未完成的收尾句子（仅含尾部标点时丢弃），并重置状态。
 //
@@ -15,6 +17,7 @@
 //   chunker.flush()                      → []（已全部完成）
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -22,6 +25,9 @@ namespace slotnexus::common {
 
 class SentenceChunker {
  public:
+  // max_bytes：普通字符缓冲的软上限；0 表示只按标点切分。
+  explicit SentenceChunker(std::size_t max_bytes = 0);
+
   // 处理一段文本，返回其中完整的句子（标点归属前一句）。
   std::vector<std::string> feed(const std::string& text);
 
@@ -31,6 +37,7 @@ class SentenceChunker {
  private:
   std::string cur_;            // 当前句缓冲
   bool split_pending_ = false; // 上一句已切分、等待下一句内容
+  const std::size_t max_bytes_;
 };
 
 }  // namespace slotnexus::common

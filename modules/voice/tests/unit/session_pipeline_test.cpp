@@ -228,6 +228,65 @@ class ManySentencesLlm final : public back::ILlmBackend {
   int sentences_;
 };
 
+// 可观测重叠大模型：发出首个完整句子后等待 TTS 消费；若消费方在
+// generate 之前不存在，等待会超时，测试据此证明工作线程已提前启动。
+class OverlapLlm final : public back::ILlmBackend {
+ public:
+  std::atomic<bool> tts_seen_before_generate_done{false};
+  back::EventCallback cb_;
+
+  void set_event_callback(back::EventCallback cb) override {
+    cb_ = std::move(cb);
+  }
+
+  void generate(const std::string& /*prompt*/) override {
+    if (cb_) {
+      cb_({back::BackendEvent::Kind::kToken, "第一句。", {}});
+    }
+    for (int i = 0; i < 100 && !tts_seen_.load(); ++i) {
+      std::this_thread::sleep_for(5ms);
+    }
+    tts_seen_before_generate_done.store(tts_seen_.load());
+    if (cb_) {
+      cb_({back::BackendEvent::Kind::kDone, {}, {}});
+    }
+  }
+
+  void cancel() override {}
+  void mark_tts_seen() { tts_seen_.store(true); }
+
+ private:
+  std::atomic<bool> tts_seen_{false};
+};
+
+// 通知 TTS：被调用即证明消费方已拿走首个可播片段。
+class NotifyingTts final : public back::ITtsBackend {
+ public:
+  explicit NotifyingTts(OverlapLlm* llm) : llm_(llm) {}
+
+  back::EventCallback cb_;
+
+  void set_event_callback(back::EventCallback cb) override {
+    cb_ = std::move(cb);
+  }
+
+  void synthesize(const std::string& /*text*/) override {
+    if (llm_ != nullptr) {
+      llm_->mark_tts_seen();
+    }
+    if (cb_) {
+      std::vector<std::int16_t> pcm(back::kFrameSamples, 0);
+      cb_({back::BackendEvent::Kind::kPcm, {}, std::move(pcm)});
+      cb_({back::BackendEvent::Kind::kDone, {}, {}});
+    }
+  }
+
+  void cancel() override {}
+
+ private:
+  OverlapLlm* llm_;
+};
+
 // 计数 sink：统计写入帧数（不落盘）。
 class CountingSink final : public back::IAudioSink {
  public:
@@ -461,9 +520,9 @@ void test_empty_asr_text_stops_pipeline() {
             << std::endl;
 }
 
-// ---------- 有界队列：满时超时丢弃并计数，峰值 ≤ 容量 ----------
+// ---------- 有界队列：满时背压等待，不丢句/不丢帧，峰值 ≤ 容量 ----------
 
-void test_queue_full_drop() {
+void test_queue_backpressure_no_drop() {
   Fixture f;
   fake::FakeAsrBackend asr;
   ManySentencesLlm llm(30);  // 30 个句子
@@ -474,7 +533,7 @@ void test_queue_full_drop() {
   sess::PipelineConfig c = base_config(f);
   c.text_queue_capacity = 1;   // 极小的文本队列
   c.pcm_queue_capacity = 2;
-  c.queue_push_timeout = 1ms;  // 满队列等待 1ms 即丢弃
+  c.queue_push_timeout = 1ms;  // 满队列重试间隔
   c.stage_delay = 5ms;         // TTS 消费慢于生产 → 背压
   sess::SessionPipeline pipe(c, f.router, asr, llm, tts, sink_factory);
 
@@ -483,12 +542,39 @@ void test_queue_full_drop() {
   CHECK(r.ok);
   CHECK(r.route == "l2");
   CHECK(r.token_count == 30);
-  CHECK(r.dropped_sentences > 0);  // 满队列超时丢弃（明确行为）
+  CHECK(r.dropped_sentences == 0);   // 满队列只等待，不静默丢句
+  CHECK(r.dropped_pcm_frames == 0);  // PCM 队列同样不静默丢弃
   CHECK(r.text_queue_peak <= c.text_queue_capacity);
   CHECK(r.pcm_queue_peak <= c.pcm_queue_capacity);
   CHECK(r.pcm_frames > 0);
-  std::cout << "  [ok] 满队列：丢弃计数、峰值不超过容量（" << r.dropped_sentences
-            << " 句丢弃）" << std::endl;
+  std::cout << "  [ok] 满队列：背压等待且不丢句/不丢帧（文本峰值 "
+            << r.text_queue_peak << "，PCM 峰值 " << r.pcm_queue_peak << "）"
+            << std::endl;
+}
+
+// ---------- 首段重叠：TTS 在 LLM 生成结束前已消费首个完整片段 ----------
+
+void test_tts_overlaps_llm() {
+  Fixture f;
+  fake::FakeAsrBackend asr;
+  OverlapLlm llm;
+  NotifyingTts tts(&llm);
+  auto sink_factory = [](const std::string&) {
+    return std::make_unique<CountingSink>();
+  };
+  sess::SessionPipeline pipe(base_config(f), f.router, asr, llm, tts,
+                             sink_factory);
+
+  const auto r = pipe.run({sess::PipelineInput::Mode::kText, "hello world", ""},
+                          "r-overlap", 0ms);
+  CHECK(r.ok);
+  CHECK(r.route == "l3");
+  CHECK(r.llm_called);
+  CHECK(r.token_count == 1);
+  CHECK(r.first_text_ms >= 0);
+  CHECK(r.tts_first_pcm_ms >= 0);
+  CHECK(llm.tts_seen_before_generate_done.load());  // 未等生成结束已消费
+  std::cout << "  [ok] 首段重叠：LLM 未结束即已进入 TTS" << std::endl;
 }
 
 // ---------- 取消传播：顽固 LLM 晚到 token 过滤 ----------
@@ -677,7 +763,8 @@ int main() {
   test_four_routes();
   test_wav_input_pipeline();
   test_empty_asr_text_stops_pipeline();
-  test_queue_full_drop();
+  test_queue_backpressure_no_drop();
+  test_tts_overlaps_llm();
   test_cancel_mid_llm_late_tokens();
   test_cancel_mid_tts_late_pcm();
   test_min_tts_duration_padding();

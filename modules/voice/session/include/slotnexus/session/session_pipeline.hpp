@@ -5,16 +5,17 @@
 //   - 一次 run() = 一个世代（generation）：WAV/文本输入、路由决策、
 //     LLM token 流按句子分句进入有界文本队列，TTS 消费后按 PCM 帧进入
 //     有界 PCM 队列，最后写入 IAudioSink（WAV/ALSA）；
-//   - 有界队列：容量由配置给定，满队列行为明确——push 等待
-//     queue_push_timeout，超时丢弃并计数（dropped_*）；
+//   - 有界队列：容量由配置给定，满队列按 queue_push_timeout 重试；
+//     下游停摆或取消/超时时明确失败，不静默丢弃；
 //   - 取消传播：cancel() 递增 generation 并向三个后端传播 cancel；
 //     所有 token/PCM 事件在入队前做 (generation, request_id) 双检查，
 //     旧世代或旧请求的数据一律不进入队列与输出（晚到消息过滤）；
 //   - 状态机：Idle→Listening→Routing→Thinking→Speaking→Idle，取消路径
 //     →Cancelling→Idle，轨迹记录在结果中。
 //
-// 线程模型：run() 在调用线程上驱动 ASR/路由/LLM；TTS 与写出各占一个
-// 工作线程；cancel() 可被任意线程并发调用。同一时刻只允许一个 run 在途。
+// 线程模型：run() 在调用线程上驱动 ASR/路由/LLM；TTS 与写出工作线程在
+// 路由/生成前就创建，首个可播片段进入文本队列后立即被消费；cancel() 可被
+// 任意线程并发调用。同一时刻只允许一个 run 在途。
 #pragma once
 
 #include <atomic>
@@ -40,7 +41,8 @@ namespace slotnexus::session {
 struct PipelineConfig {
   std::size_t text_queue_capacity = 8;       // 待合成句子队列容量
   std::size_t pcm_queue_capacity = 32;       // 待写出 PCM 帧队列容量
-  std::chrono::milliseconds queue_push_timeout{50};  // 满队列等待，超时丢弃
+  std::size_t text_chunk_max_bytes = 60;     // 单个待合成片段上限；0 = 只按标点切
+  std::chrono::milliseconds queue_push_timeout{50};  // 满队列重试间隔，不丢弃
   std::chrono::milliseconds stage_delay{0};  // 测试仪表：阶段人工延时（模拟流式）
   std::string output_dir = "session-out";    // WAV 输出目录
   // 最小合成时长：Fake TTS 按文本字节数产出帧（32 字节/帧），短回答
@@ -82,8 +84,8 @@ struct PipelineResult {
   std::size_t pcm_frames = 0;         // 实际写入 sink 的 PCM 帧数
   std::size_t text_queue_peak = 0;    // 文本队列峰值（验收：≤ 容量）
   std::size_t pcm_queue_peak = 0;     // PCM 队列峰值（验收：≤ 容量）
-  std::size_t dropped_sentences = 0;  // 文本队列满超时丢弃
-  std::size_t dropped_pcm_frames = 0; // PCM 队列满超时丢弃
+  std::size_t dropped_sentences = 0;  // 保留字段：当前背压策略不丢句，恒为 0
+  std::size_t dropped_pcm_frames = 0; // 保留字段：当前背压策略不丢帧，恒为 0
   std::size_t generation = 0;         // 本次运行世代
   std::vector<std::string> transitions;  // 状态机迁移轨迹
 

@@ -362,9 +362,9 @@ void SessionNode::handle_request(const std::string& identity,
 
         s->pipeline = std::make_unique<session::SessionPipeline>(
             PipelineConfig{config_.text_capacity, config_.pcm_capacity,
-                           config_.push_timeout, config_.stage_delay,
-                           config_.output_dir, config_.tts_min_duration,
-                           config_.output_sink},
+                           config_.text_chunk_max_bytes, config_.push_timeout,
+                           config_.stage_delay, config_.output_dir,
+                           config_.tts_min_duration, config_.output_sink},
             *router_, *s->asr, *s->llm, *s->tts, std::move(sink_factory));
         s->setup_ms = setup_elapsed_ms();
         common::LogLine(
