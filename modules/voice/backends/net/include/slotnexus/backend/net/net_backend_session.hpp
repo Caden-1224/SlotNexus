@@ -47,6 +47,9 @@ struct NetBackendConfig {
   // 由节点真实后端（sherpa_onnx）识别；false 时为 Mock 帧数约定
   // （{"text": "<帧数>"}，与 fake 节点一致）。仅 NetAsrBackend 使用。
   bool asr_audio_uplink = false;
+  // 流式 ASR 帧上行 PULL 端点（asr_node --stream）；为空时 Aback 保持
+  // 现有整段 RPC 上行。
+  std::string asr_stream_endpoint;
 };
 
 // 一次推理的驱动会话（三个网络后端共享；非线程安全，仅驱动线程使用，
@@ -76,6 +79,12 @@ class NetBackendSession {
   std::string drive_inference(const std::string& request_id,
                               const nlohmann::json& payload);
 
+  // 流式 ASR：先订阅本轮事件主题，再开始向节点 PUSH 帧；pump 把 SUB 上
+  // 到达的事件回放到 set_event_callback。仅流式 ASR 驱动线程使用。
+  void begin_event_stream(const std::string& request_id);
+  bool pump_event_stream(std::chrono::milliseconds timeout,
+                         bool* finished);
+
   // 子请求 id：按阶段独立递增（ASR 的 "a0"/"a1"、LLM 的 "l0"、TTS 的
   // "t0"/"t1"...），保证事件流主题唯一。供 IAsrBackend 等实现调用。
   std::string next_request_id(const std::string& stage);
@@ -90,6 +99,7 @@ class NetBackendSession {
   transport::RpcClient cancel_rpc_; // cancel RPC（仅 cancel() 使用）
   dataplane::EventSubscriber sub_;  // 事件订阅（订阅累积，按主题过滤）
   EventCallback cb_;
+  std::string stream_topic_;
   std::atomic<bool> cancelled_{false};
   std::atomic<std::uint64_t> seq_{0};
   // 上一轮推理请求已发出但未确认完成（取消/超时/异常退出）：REQ 停在

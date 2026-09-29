@@ -63,6 +63,10 @@ class TaskRuntime {
   bool is_alive(const std::string& work_id) const;
   std::size_t size() const;
 
+  // 按 work_id 借出后端实例；不存在返回 nullptr。返回 shared_ptr 让流式
+  // 输入线程在任务退出竞态下仍能安全持有本次操作的所有权。
+  std::shared_ptr<IBackend> find_backend(const std::string& work_id) const;
+
  private:
   std::shared_ptr<TaskChannel> find_locked(const std::string& work_id) const;
 

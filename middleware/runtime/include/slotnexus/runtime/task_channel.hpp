@@ -73,6 +73,10 @@ class TaskChannel {
   TaskInfo taskinfo() const;
   State state() const;
 
+  // 后端实例借用；生命周期由 TaskChannel 持有。仅供同一节点内的流式
+  // 输入通道按 work_id 找到已 setup 的后端，不转移所有权。
+  std::shared_ptr<IBackend> backend() const { return backend_; }
+
  private:
   std::atomic<bool> cancel_flag_{false};
   mutable std::mutex mutex_;

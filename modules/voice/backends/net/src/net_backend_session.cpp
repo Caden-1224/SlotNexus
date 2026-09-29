@@ -203,6 +203,39 @@ std::string NetBackendSession::drive_inference(const std::string& request_id,
   return ack_text;
 }
 
+void NetBackendSession::begin_event_stream(const std::string& request_id) {
+  stream_topic_ = make_topic(config_.work_id, request_id);
+  sub_.subscribe(config_.work_id, request_id);
+  std::this_thread::sleep_for(config_.subscribe_settle);
+}
+
+bool NetBackendSession::pump_event_stream(std::chrono::milliseconds timeout,
+                                          bool* finished) {
+  bool got = false;
+  bool first = true;
+  dataplane::DataplaneEvent e;
+  std::string topic;
+  const auto first_timeout = timeout;
+  while (sub_.recv_with_topic(e, topic, first ? first_timeout
+                                              : std::chrono::milliseconds(0))) {
+    first = false;
+    if (topic != stream_topic_) {
+      continue;  // 旧流/其他流残留
+    }
+    if (e.finish && finished != nullptr) {
+      *finished = true;
+    }
+    if (cb_) {
+      cb_(to_backend_event(e));
+    }
+    got = true;
+    if (finished != nullptr && *finished) {
+      break;
+    }
+  }
+  return got;
+}
+
 std::string NetBackendSession::next_request_id(const std::string& stage) {
   return stage + std::to_string(seq_.fetch_add(1));
 }

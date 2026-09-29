@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <iostream>
 #include <utility>
 
 #include <nlohmann/json.hpp>
@@ -23,12 +24,17 @@
 #include "slotnexus/backend/alsa/alsa_audio_sink.hpp"
 #include "slotnexus/backend/alsa/alsa_audio_source.hpp"
 #endif
+#ifdef SLOTNEXUS_HAS_SHERTA_ONNX
+#include "slotnexus/backend/sherpa_onnx/sherpa_vad.hpp"
+#endif
 #include "slotnexus/backend/net/net_asr_backend.hpp"
+#include "slotnexus/backend/net/net_asr_stream_backend.hpp"
 #include "slotnexus/backend/net/net_llm_backend.hpp"
 #include "slotnexus/backend/net/net_tts_backend.hpp"
 #include "slotnexus/common/log.hpp"
 #include "slotnexus/protocol/message_envelope.hpp"
 #include "slotnexus/rag/knowledge_store.hpp"
+#include "slotnexus/session/streaming_input.hpp"
 
 namespace slotnexus::app {
 
@@ -119,8 +125,13 @@ std::unique_ptr<slotnexus::backend::IAsrBackend> MakeAsrBackend(
         cfg.asr_ep.rpc, cfg.asr_ep.events, cfg.asr_ep.sync, work_id,
         cfg.net_setup_timeout, cfg.net_rpc_timeout};
     c.asr_audio_uplink = cfg.asr_audio_uplink;
-    return std::make_unique<slotnexus::backend::net::NetAsrBackend>(ctx,
-                                                                       c);
+    c.asr_stream_endpoint = cfg.asr_stream_endpoint;
+    if (!cfg.asr_stream_endpoint.empty()) {
+      return std::make_unique<slotnexus::backend::net::NetAsrStreamBackend>(
+          ctx, std::move(c));
+    }
+    return std::make_unique<slotnexus::backend::net::NetAsrBackend>(
+        ctx, std::move(c));
   }
   return std::make_unique<slotnexus::backend::fake::FakeAsrBackend>();
 }
@@ -425,6 +436,137 @@ void SessionNode::handle_request(const std::string& identity,
           wav = config_.fixture_dir + "/" + wav;
         }
         input.wav_path = wav;
+      } else if (mode == "stream") {
+#ifdef SLOTNEXUS_HAS_ALSA
+        // 连续采集：VAD 判停后只取 final 文本交给文本路由，不再按固定
+        // 录音时长整段识别。record_duration 只作无语音/不判停的兜底上限。
+        slotnexus::backend::alsa::AlsaAudioSource mic(
+            config_.record_device, slotnexus::backend::kSampleRateHz);
+        if (!mic.open()) {
+          log_err(request, "mic_open_failed");
+          send_reply(build_error(request, 3,
+                                 "录音设备打开失败: " + config_.record_device));
+          return;
+        }
+
+        session::StreamingInput::Config stream_cfg;
+        stream_cfg.frame_samples = static_cast<std::size_t>(
+            slotnexus::backend::kFrameSamples);
+        const int frame_ms = 20;
+        stream_cfg.pre_roll_frames =
+            std::max<std::size_t>(1, config_.stream_pre_roll_ms / frame_ms);
+        stream_cfg.min_speech_frames =
+            std::max<std::size_t>(1, config_.stream_min_speech_ms / frame_ms);
+        stream_cfg.min_silence_frames =
+            std::max<std::size_t>(1, config_.stream_min_silence_ms / frame_ms);
+        stream_cfg.speech_rms_threshold = config_.stream_speech_rms_threshold;
+#ifdef SLOTNEXUS_HAS_SHERTA_ONNX
+        std::unique_ptr<slotnexus::backend::sherpa_onnx::SherpaVad> silero_vad;
+        if (!config_.vad_model.empty()) {
+          silero_vad =
+              std::make_unique<slotnexus::backend::sherpa_onnx::SherpaVad>(
+                  config_.vad_model, slotnexus::backend::kSampleRateHz);
+          if (silero_vad->ready()) {
+            common::LogLine("session vad model=" + config_.vad_model);
+            stream_cfg.speech_detector =
+                [&](const std::vector<std::int16_t>& frame) {
+                  return silero_vad->is_speech(frame.data(), frame.size());
+                };
+          } else {
+            silero_vad.reset();
+            std::cerr << "[session] VAD 模型加载失败，退回能量阈值: "
+                      << config_.vad_model << std::endl;
+          }
+        }
+#endif
+
+        std::string final_text;
+        bool got_final = false;
+        std::chrono::steady_clock::time_point endpoint_time{};
+        std::chrono::steady_clock::time_point final_time{};
+        session::StreamingInput stream(stream_cfg, *s->asr);
+        stream.set_callbacks(
+            [&](std::string text) {
+              final_text = std::move(text);
+              final_time = std::chrono::steady_clock::now();
+              got_final = true;
+            },
+            {},
+            [&] { endpoint_time = std::chrono::steady_clock::now(); });
+
+        const auto capture_start = std::chrono::steady_clock::now();
+        const auto capture_deadline = capture_start + config_.record_duration;
+        std::size_t empty_reads = 0;
+        std::size_t retries = 0;
+        std::size_t total_samples = 0;
+        double sum_sq = 0.0;
+        int16_t peak = 0;
+        while (!got_final &&
+               std::chrono::steady_clock::now() < capture_deadline) {
+          auto chunk = mic.read(slotnexus::backend::kFrameSamples);
+          if (chunk.empty()) {
+            ++empty_reads;
+            ++retries;
+            continue;
+          }
+          total_samples += chunk.size();
+          for (int16_t sample : chunk) {
+            const double value = static_cast<double>(sample);
+            sum_sq += value * value;
+            const int magnitude = std::abs(static_cast<int>(sample));
+            if (magnitude > peak) {
+              peak = magnitude;
+            }
+          }
+          stream.feed_audio(chunk.data(), chunk.size());
+        }
+        if (!got_final) {
+          stream.flush();
+        }
+        mic.close();
+        const auto capture_end = std::chrono::steady_clock::now();
+        const auto capture_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                capture_end - capture_start)
+                .count();
+        const auto endpoint_to_final_ms =
+            endpoint_time.time_since_epoch().count() == 0
+                ? -1
+                : std::chrono::duration_cast<std::chrono::milliseconds>(
+                      final_time - endpoint_time)
+                      .count();
+        const double rms =
+            total_samples == 0
+                ? 0.0
+                : std::sqrt(sum_sq / static_cast<double>(total_samples));
+        common::LogLine(
+            "session stream request_id=" + request.request_id() +
+            " device=" + config_.record_device +
+            " requested_max_ms=" +
+            std::to_string(config_.record_duration.count()) +
+            " samples=" + std::to_string(total_samples) +
+            " empty_reads=" + std::to_string(empty_reads) +
+            " retries=" + std::to_string(retries) +
+            " capture_ms=" + std::to_string(capture_ms) +
+            " endpoint_to_final_ms=" + std::to_string(endpoint_to_final_ms) +
+            " rms=" + std::to_string(rms) + " peak=" +
+            std::to_string(peak) + " got_final=" +
+            (got_final ? "1" : "0") + " asr_text=" + final_text);
+        if (!got_final) {
+          log_err(request, "stream_no_final");
+          send_reply(build_error(
+              request, 3,
+              "连续采集未产生 ASR final（未检测到有效语音或未判停）"));
+          return;
+        }
+        input.mode = PipelineInput::Mode::kText;
+        input.text = final_text;
+#else
+        send_reply(build_error(
+            request, 3,
+            "当前构建未启用 ALSA 连续采集（需硬件后端构建，mode=stream）"));
+        return;
+#endif
       } else if (mode == "alsa") {
 #ifdef SLOTNEXUS_HAS_ALSA
         input.mode = PipelineInput::Mode::kMic;

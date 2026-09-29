@@ -331,9 +331,11 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
       }
       state_machine_.dispatch(SessionEvent::kAsrFinal);
     } else {
-      // 文本模式：无音频输入，Listening 阶段为空。
+      // 文本模式：无音频输入，Listening 阶段为空。连续采集已在会话外
+      // 完成识别时，final 文本也从这条路径进入路由。
       state_machine_.dispatch(SessionEvent::kAsrFinal);
       query = input.text;
+      result.asr_text = query;
       result.input_end_ms = elapsed_ms();
       result.asr_final_ms = result.input_end_ms;
       if (query.empty()) {

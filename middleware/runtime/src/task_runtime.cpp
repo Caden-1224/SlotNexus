@@ -161,6 +161,13 @@ bool TaskRuntime::is_alive(const std::string& work_id) const {
   return channels_.find(work_id) != channels_.end();
 }
 
+std::shared_ptr<IBackend> TaskRuntime::find_backend(
+    const std::string& work_id) const {
+  std::lock_guard<std::mutex> lock(map_mutex_);
+  const auto channel = find_locked(work_id);
+  return channel ? channel->backend() : nullptr;
+}
+
 std::size_t TaskRuntime::size() const {
   std::lock_guard<std::mutex> lock(map_mutex_);
   return channels_.size();

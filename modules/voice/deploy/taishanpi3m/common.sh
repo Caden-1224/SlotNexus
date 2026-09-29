@@ -31,6 +31,7 @@ load_environment() {
   STAGE_DELAY_MS=${SLOTNEXUS_STAGE_DELAY_MS:-0}
   SINK=${SLOTNEXUS_SINK:-wav}
   SINK_DEVICE=${SLOTNEXUS_SINK_DEVICE:-default}
+  ASR_STREAM=${SLOTNEXUS_ASR_STREAM_ENDPOINT:-tcp://127.0.0.1:19205}
   RKLLM_ROOT=${SLOTNEXUS_RKLLM_ROOT:-$HOME/workspace/upstream_rkllm/rknn-llm/rkllm-runtime/Linux/librkllm_api}
   SHERTA_ROOT=${SLOTNEXUS_SHERTA_ROOT:-$HOME/workspace/upstream_rkllm/sherpa-root}
   MELOTTS_ROOT=${SLOTNEXUS_MELOTTS_ROOT:-$HOME/workspace/upstream_melotts}
@@ -59,6 +60,7 @@ start_real_chain() {
   start_service asr_node "$BUILD_DIR/apps/asr_node/asr_node" \
     --listen tcp://127.0.0.1:19201 --config "$CONFIG" \
     --events tcp://127.0.0.1:19421 --events-sync tcp://127.0.0.1:19422 \
+    --stream "$ASR_STREAM" \
     --infer-timeout-ms "$ASR_INFER_TIMEOUT_MS"
   start_service llm_node "$BUILD_DIR/apps/llm_node/llm_node" \
     --listen tcp://127.0.0.1:19203 --config "$CONFIG" \
@@ -73,6 +75,7 @@ start_real_chain() {
     --listen tcp://127.0.0.1:19310 --backend net --asr-uplink \
     --asr-endpoint tcp://127.0.0.1:19201 \
     --asr-events tcp://127.0.0.1:19421 --asr-events-sync tcp://127.0.0.1:19422 \
+    --asr-stream-endpoint "$ASR_STREAM" \
     --llm-endpoint tcp://127.0.0.1:19203 \
     --llm-events tcp://127.0.0.1:19431 --llm-events-sync tcp://127.0.0.1:19432 \
     --tts-endpoint tcp://127.0.0.1:19204 \

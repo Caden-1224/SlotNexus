@@ -12,7 +12,8 @@
 //                   [--stage-delay-ms <N>]
 //                   [--backend embedded|net]
 //                   [--asr-endpoint <RPC>] [--asr-events <PUB>]
-//                   [--asr-events-sync <SYNC>]（llm/tts 同理）
+//                   [--asr-events-sync <SYNC>]
+//                   [--asr-stream-endpoint <PULL>]（llm/tts 同理）
 //                   [--net-setup-timeout-ms <N>] [--net-rpc-timeout-ms <N>]
 //                   [--record-device <设备>] [--record-ms <N>]
 //                   （mode=alsa 现场麦克风输入：录音设备与时长，默认
@@ -104,6 +105,10 @@ int main(int argc, char** argv) {
    if (file_cfg.contains("knowledge")) {
      config.knowledge_path = file_cfg["knowledge"].get<std::string>();
    }
+   if (file_cfg.contains("asr")) {
+     config.vad_model =
+         file_cfg["asr"].value("vad_model", config.vad_model);
+   }
    if (file_cfg.contains("queues")) {
      const auto& q = file_cfg["queues"];
      config.text_capacity =
@@ -130,6 +135,17 @@ int main(int argc, char** argv) {
      const auto& net_cfg = file_cfg["net"];
      config.asr_audio_uplink =
          net_cfg.value("asr_audio_uplink", config.asr_audio_uplink);
+   }
+   if (file_cfg.contains("stream")) {
+     const auto& stream_cfg = file_cfg["stream"];
+     config.stream_pre_roll_ms =
+         stream_cfg.value("pre_roll_ms", config.stream_pre_roll_ms);
+     config.stream_min_speech_ms =
+         stream_cfg.value("min_speech_ms", config.stream_min_speech_ms);
+     config.stream_min_silence_ms =
+         stream_cfg.value("min_silence_ms", config.stream_min_silence_ms);
+     config.stream_speech_rms_threshold = stream_cfg.value(
+         "speech_rms_threshold", config.stream_speech_rms_threshold);
    }
  } else {
    return 1;
@@ -204,6 +220,10 @@ int main(int argc, char** argv) {
      config.asr_ep.events = val;
    } else if (arg == "--asr-events-sync") {
      config.asr_ep.sync = val;
+   } else if (arg == "--asr-stream-endpoint") {
+     config.asr_stream_endpoint = val;
+   } else if (arg == "--vad-model") {
+     config.vad_model = val;
    } else if (arg == "--llm-endpoint") {
      config.llm_ep.rpc = val;
    } else if (arg == "--llm-events") {

@@ -27,6 +27,7 @@ void EventPublisher::wait_subscriber_ready(std::chrono::milliseconds timeout) {
 void EventPublisher::publish(const DataplaneEvent& e,
                              const std::string& work_id,
                              const std::string& request_id) {
+  std::lock_guard<std::mutex> lock(mutex_);
   const std::string topic = make_topic(work_id, request_id);
   int64_t index = e.index;
   if (index < 0) {

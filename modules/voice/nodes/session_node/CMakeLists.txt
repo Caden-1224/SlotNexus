@@ -14,7 +14,9 @@ target_link_libraries(voice_session_node_lib PRIVATE
   slotnexus::protocol)
 if(SLOTNEXUS_ENABLE_HARDWARE_BACKENDS)
   target_compile_definitions(voice_session_node_lib PRIVATE SLOTNEXUS_HAS_ALSA=1)
+  target_compile_definitions(voice_session_node_lib PRIVATE SLOTNEXUS_HAS_SHERTA_ONNX=1)
   target_link_libraries(voice_session_node_lib PRIVATE slotnexus::alsa)
+  target_link_libraries(voice_session_node_lib PRIVATE slotnexus::sherpa_asr)
 endif()
 add_executable(session_node main.cpp)
 target_link_libraries(session_node PRIVATE

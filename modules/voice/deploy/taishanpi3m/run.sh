@@ -423,7 +423,7 @@ scenario_mic() {
   echo "== setup =="
   probe_gateway '{"version":1,"type":"setup","request_id":"s-0"}' 60
 
-  echo "== 现场麦克风推理（${RECORD_MS}ms 录音，请对板载麦克风说话）=="
+  echo "== 现场麦克风连续采集（VAD 判停，最长 ${RECORD_MS}ms；请对板载麦克风说话）=="
   # setup 刚结束人往往还没准备好，而采集窗口只有几秒：先倒数再发请求，
   # 否则会变成“话没想好就已经录完”，把没说话误当成链路故障。
   local s
@@ -433,11 +433,11 @@ scenario_mic() {
   done
   printf '\r开始录音，请说话！        \n'
   local result mic_check=0
-  result=$(probe_gateway '{"version":1,"type":"inference","work_id":"w-0","request_id":"r-mic","payload":{"mode":"alsa"}}' 180)
+  result=$(probe_gateway '{"version":1,"type":"inference","work_id":"w-0","request_id":"r-mic","payload":{"mode":"stream"}}' 180)
   echo "$result"
   # 采集证据先行：采样数、实际采集时长、RMS/peak 与空读次数，失败时才能
   # 区分“没采到声音”和“采到了但没识别出来”。
-  grep -E "session mic" "$RUN_DIR/session_node.log" | tail -2
+  grep -E "session stream" "$RUN_DIR/session_node.log" | tail -2
   verify_mic_regression "$result" || mic_check=$?
 
   echo "== taskinfo =="
@@ -448,7 +448,7 @@ scenario_mic() {
   check_riff_outputs
 
   echo "== session 日志（输入/麦克风采集/路由/完成）=="
-  grep -E "session (req|run|mic|done)" "$RUN_DIR/session_node.log" | tail -8
+  grep -E "session (req|run|stream|done)" "$RUN_DIR/session_node.log" | tail -8
 
   stop_services
   if [ "$mic_check" -ne 0 ]; then

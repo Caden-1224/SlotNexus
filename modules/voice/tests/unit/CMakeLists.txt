@@ -23,6 +23,7 @@ vox_voice_unit_test(wav_reader_test slotnexus::voice_common)
 vox_voice_unit_test(session_state_test slotnexus::voice_session)
 vox_voice_unit_test(session_pipeline_test slotnexus::voice_session
   slotnexus::voice_fake_backends)
+vox_voice_unit_test(streaming_input_test slotnexus::voice_session)
 
 add_executable(rkllm_reasoning_filter_test rkllm_reasoning_filter_test.cpp)
 target_include_directories(rkllm_reasoning_filter_test PRIVATE
@@ -52,6 +53,13 @@ if(SLOTNEXUS_ENABLE_HARDWARE_BACKENDS)
   set_tests_properties(sherpa_asr_test PROPERTIES
     ENVIRONMENT "SLOTNEXUS_ASR_MODEL=${SLOTNEXUS_ASR_MODEL};SLOTNEXUS_ASR_PRECISION=${SLOTNEXUS_ASR_PRECISION};SLOTNEXUS_VOICE_FIXTURE_DIR=${SLOTNEXUS_VOICE_FIXTURE_DIR}")
 
+  add_executable(streaming_input_hardware_test streaming_input_hardware_test.cpp)
+  target_link_libraries(streaming_input_hardware_test PRIVATE
+    slotnexus::sherpa_asr slotnexus::voice_session slotnexus::voice_common)
+  add_test(NAME streaming_input_hardware_test COMMAND streaming_input_hardware_test)
+  set_tests_properties(streaming_input_hardware_test PROPERTIES
+    ENVIRONMENT "SLOTNEXUS_ASR_MODEL=${SLOTNEXUS_ASR_MODEL};SLOTNEXUS_ASR_PRECISION=${SLOTNEXUS_ASR_PRECISION};SLOTNEXUS_VOICE_FIXTURE_DIR=${SLOTNEXUS_VOICE_FIXTURE_DIR}")
+
   add_executable(rkllm_llm_test rkllm_llm_test.cpp)
   target_link_libraries(rkllm_llm_test PRIVATE slotnexus::rkllm)
   add_test(NAME rkllm_llm_test COMMAND rkllm_llm_test)
@@ -70,7 +78,7 @@ if(SLOTNEXUS_ENABLE_HARDWARE_BACKENDS)
   set_tests_properties(alsa_audio_test PROPERTIES
     ENVIRONMENT "SLOTNEXUS_ALSA_DEVICE=${SLOTNEXUS_ALSA_DEVICE}")
 
-  foreach(target_name IN ITEMS sherpa_asr_test rkllm_llm_test melotts_tts_test alsa_audio_test)
+  foreach(target_name IN ITEMS sherpa_asr_test streaming_input_hardware_test rkllm_llm_test melotts_tts_test alsa_audio_test)
     set_target_properties(${target_name} PROPERTIES
       RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests/unit)
   endforeach()

@@ -11,6 +11,12 @@
     "pcm_capacity": 32,
     "push_timeout_ms": 50
   },
+  "stream": {
+    "pre_roll_ms": 500,
+    "min_speech_ms": 60,
+    "min_silence_ms": 500,
+    "speech_rms_threshold": 100
+  },
   "output_dir": "session-out",
   "stage_delay_ms": 0,
   "text_chunk_max_bytes": 60,
@@ -18,7 +24,8 @@
     "backend": "sherpa_onnx",
     "model": "models/sherpa-zipformer-bilingual-zh-en-2023-02-16",
     "model_precision": "fp32",
-    "num_threads": 4
+    "num_threads": 4,
+    "vad_model": "models/silero_vad.onnx"
   },
   "llm": {
     "backend": "rkllm",

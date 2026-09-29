@@ -30,6 +30,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -40,11 +41,13 @@
 #include "slotnexus/backend/fake/fake_asr_backend.hpp"
 #include "slotnexus/backend/fake/fake_audio_source.hpp"
 #include "slotnexus/backend/i_asr_backend.hpp"
+#include "slotnexus/backend/i_streaming_asr_backend.hpp"
 #ifdef SLOTNEXUS_HAS_SHERTA_ONNX
 #include "slotnexus/backend/sherpa_onnx/sherpa_asr_backend.hpp"
 #endif
 #include "slotnexus/common/base64.hpp"
 #include "slotnexus/common/wav_reader.hpp"
+#include "slotnexus/transport/pushpull.hpp"
 #include "slotnexus/runtime/ibackend.hpp"
 #include "slotnexus/voice/event_adapter.hpp"
 #include "runtime_node.hpp"
@@ -57,7 +60,8 @@ namespace {
 // IBackend 适配器：把流式 IAsrBackend 驱动到完成。
 // 每帧间协作式检查 cancelled / deadline，命中即取消后端并尽快返回。
 // 负载按后端约定解释：fake = 帧数（Mock），sherpa_onnx = WAV 路径。
-class AsrNodeBackend final : public slotnexus::runtime::IBackend {
+class AsrNodeBackend final : public slotnexus::runtime::IBackend,
+                              public slotnexus::backend::IStreamingAsrBackend {
  public:
   // asr：后端实例（工厂注入，Fake / Sherpa 可替换）。
   // backend_name：驱动负载约定（fake / sherpa_onnx）。
@@ -90,6 +94,36 @@ class AsrNodeBackend final : public slotnexus::runtime::IBackend {
       return run_wav(payload, deadline, cancelled, events);
     }
     return run_mock(payload, deadline, cancelled, events);
+  }
+
+  bool stream_start(const std::string& request_id,
+                    EventSink sink) override {
+    if (!asr_) {
+      return false;
+    }
+    stream_request_id_ = request_id;
+    asr_->set_event_callback([sink = std::move(sink)](
+                                 const slotnexus::backend::BackendEvent& e) {
+      if (sink) {
+        sink(e);
+      }
+    });
+    return true;
+  }
+
+  bool stream_feed(const std::vector<std::int16_t>& pcm,
+                   bool is_last) override {
+    if (!asr_) {
+      return false;
+    }
+    asr_->feed_audio(pcm, is_last);
+    return true;
+  }
+
+  void stream_cancel() override {
+    if (asr_) {
+      asr_->cancel();
+    }
   }
 
  private:
@@ -251,6 +285,7 @@ class AsrNodeBackend final : public slotnexus::runtime::IBackend {
   std::unique_ptr<slotnexus::backend::IAsrBackend> asr_;
   std::string backend_name_;
   std::string fixture_dir_;
+  std::string stream_request_id_;
 };
 
 volatile std::sig_atomic_t g_stop = 0;
@@ -277,6 +312,7 @@ int main(int argc, char** argv) {
   std::string fixture_dir;            // 相对 WAV 路径解析根
   std::string events_endpoint;        // 数据面事件 PUB 端点（可选）
   std::string events_sync;            // 配套握手端点
+  std::string stream_endpoint;        // 流式 ASR 帧上行 PULL 端点（可选）
 
   // 先读配置文件（--config 的 asr 段），命令行参数随后覆盖。
   for (int i = 1; i < argc - 1; ++i) {
@@ -319,10 +355,17 @@ int main(int argc, char** argv) {
       events_endpoint = argv[i + 1];
     } else if (std::string(argv[i]) == "--events-sync") {
       events_sync = argv[i + 1];
+    } else if (std::string(argv[i]) == "--stream") {
+      stream_endpoint = argv[i + 1];
     }
   }
   if (events_endpoint.empty() != events_sync.empty()) {
     std::cerr << "--events 与 --events-sync 须成对指定" << std::endl;
+    return 1;
+  }
+  if (!stream_endpoint.empty() && events_endpoint.empty()) {
+    std::cerr << "--stream 需要同时指定 --events/--events-sync 以回传识别结果"
+              << std::endl;
     return 1;
   }
   if (backend_name != "fake" && backend_name != "sherpa_onnx") {
@@ -375,6 +418,7 @@ int main(int argc, char** argv) {
         return std::make_shared<AsrNodeBackend>(make_asr(), backend_name,
                                                 fixture_dir);
       });
+  slotnexus::runtime::TaskRuntime* runtime_ptr = runtime.get();
   // 数据面事件出口：--events 指定时绑定发布端点并注入节点外壳，
   // 识别中间/最终文本实时发布（订阅者先行握手，节点侧不阻塞等待）。
   std::shared_ptr<slotnexus::dataplane::EventPublisher> event_pub;
@@ -382,6 +426,77 @@ int main(int argc, char** argv) {
     event_pub = std::make_shared<slotnexus::dataplane::EventPublisher>(ctx);
     event_pub->bind(events_endpoint, events_sync);
   }
+
+  // 流式 ASR 上行：独立 PULL 通道把 20 ms 帧直接喂给已 setup 的
+  // AsrNodeBackend，而不是让每次推理在 RPC 负载里等整段音频。
+  std::atomic<bool> stream_stop{false};
+  std::unique_ptr<slotnexus::transport::PullSocket> stream_pull;
+  std::thread stream_thread;
+  if (!stream_endpoint.empty()) {
+    stream_pull = std::make_unique<slotnexus::transport::PullSocket>(ctx);
+    stream_pull->bind(stream_endpoint);
+    stream_thread = std::thread([&] {
+      const auto publish = [&](const slotnexus::runtime::BackendEvent& e,
+                               const std::string& work_id,
+                               const std::string& request_id) {
+        slotnexus::dataplane::DataplaneEvent ev;
+        ev.kind = e.type;
+        ev.payload = e.payload;
+        ev.finish = e.finish;
+        event_pub->publish(ev, work_id, request_id);
+      };
+      while (!stream_stop.load()) {
+        std::string raw;
+        try {
+          if (!stream_pull->recv(raw, std::chrono::milliseconds(100))) {
+            continue;
+          }
+        } catch (const std::exception& e) {
+          if (!stream_stop.load()) {
+            std::cerr << "asr stream recv 失败: " << e.what() << std::endl;
+          }
+          break;
+        }
+        try {
+          const auto msg = nlohmann::json::parse(raw);
+          const std::string op = msg.value("op", std::string());
+          const std::string work_id = msg.value("work_id", std::string());
+          const std::string request_id =
+              msg.value("request_id", std::string());
+          auto base = runtime_ptr->find_backend(work_id);
+          auto* stream = dynamic_cast<slotnexus::backend::IStreamingAsrBackend*>(
+              base.get());
+          if (stream == nullptr) {
+            std::cerr << "asr stream 未知 work_id=" << work_id << std::endl;
+            continue;
+          }
+          if (op == "start") {
+            stream->stream_start(
+                request_id, [publish, work_id, request_id](
+                                const slotnexus::backend::BackendEvent& e) {
+                  publish(slotnexus::voice::ToRuntimeEvent(e), work_id,
+                          request_id);
+                });
+          } else if (op == "frame") {
+            const std::string b64 = msg.value("pcm", std::string());
+            const auto bytes = slotnexus::common::base64_decode(b64);
+            std::vector<std::int16_t> pcm(bytes.size() / sizeof(std::int16_t));
+            if (!bytes.empty()) {
+              std::memcpy(pcm.data(), bytes.data(), bytes.size());
+            }
+            stream->stream_feed(pcm, msg.value("last", false));
+          } else if (op == "cancel") {
+            stream->stream_cancel();
+          } else {
+            std::cerr << "asr stream 未知 op=" << op << std::endl;
+          }
+        } catch (const std::exception& e) {
+          std::cerr << "asr stream 消息处理失败: " << e.what() << std::endl;
+        }
+      }
+    });
+  }
+
   slotnexus::node::RuntimeNode node(ctx, std::move(runtime),
                                        std::chrono::milliseconds(infer_timeout_ms),
                                        event_pub);
@@ -392,6 +507,9 @@ int main(int argc, char** argv) {
       std::cout << "，模型 " << model_path << "，精度 " << model_precision
                 << "，线程 " << num_threads;
     }
+    if (!stream_endpoint.empty()) {
+      std::cout << "，流式输入 " << stream_endpoint;
+    }
     std::cout << "）" << std::endl;
   } catch (const std::exception& e) {
     std::cerr << "asr_node 启动失败: " << e.what() << std::endl;
@@ -400,6 +518,13 @@ int main(int argc, char** argv) {
 
   while (!g_stop) {
     node.serve_once(std::chrono::milliseconds(100));
+  }
+  stream_stop.store(true);
+  if (stream_thread.joinable()) {
+    stream_thread.join();
+  }
+  if (stream_pull) {
+    stream_pull->close();
   }
   node.close();
   std::cout << "asr_node 已退出" << std::endl;

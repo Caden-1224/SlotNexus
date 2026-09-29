@@ -16,7 +16,10 @@ if(NOT SLOTNEXUS_SHERTA_ROOT)
     "-DSLOTNEXUS_SHERTA_ROOT=<sherpa-onnx 源码根目录>")
 endif()
 
-add_library(slotnexus_sherpa_asr STATIC src/sherpa_asr_backend.cpp)
+add_library(slotnexus_sherpa_asr STATIC
+  src/sherpa_asr_backend.cpp
+  src/sherpa_vad.cpp
+)
 add_library(slotnexus::sherpa_asr ALIAS slotnexus_sherpa_asr)
 
 # 契约头（backend_event.hpp / i_asr_backend.hpp）是本库的公共 API，必须

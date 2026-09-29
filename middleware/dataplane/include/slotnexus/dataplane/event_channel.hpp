@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -41,6 +42,7 @@ class EventPublisher {
 
  private:
   transport::PubSocket pub_;
+  mutable std::mutex mutex_;
   std::unordered_map<std::string, int64_t> next_index_;
 };
 
