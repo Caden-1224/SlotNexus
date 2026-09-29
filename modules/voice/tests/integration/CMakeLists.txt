@@ -38,11 +38,14 @@ foreach(check_case IN ITEMS valid missing_model unresolved_library)
   set_tests_properties(taishanpi3m_deploy_${check_case}_test PROPERTIES TIMEOUT 10 ENVIRONMENT "${VOX_TEST_ENV}")
 endforeach()
 
-# 测量脚本契约：阶段耗时不得含人工等待，基线可记录代码版本，输出目标可选。
+# 测量脚本契约：阶段耗时不得含人工等待，基线可记录代码版本，输出目标可选，
+# 六进程启动参数只有一处。
 foreach(measure_case IN ITEMS no_artificial_stage_delay
                              baseline_records_code_version
                              start_selects_output_sink
-                             baseline_uses_zero_stage_delay)
+                             baseline_uses_zero_stage_delay
+                             run_lists_all_scenarios
+                             single_service_launch_path)
   add_test(
     NAME taishanpi3m_measurement_${measure_case}_test
     COMMAND bash

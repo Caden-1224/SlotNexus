@@ -283,7 +283,7 @@ sequenceDiagram
 
 - **独立构建边界**：`middleware/` 持有通用库与服务；关闭 `VOX_BUILD_VOICE` 后，Core 可以单独构建、测试和安装。语音模块通过公开 CMake targets 或安装后的 `slotnexus-core` package 接入。
 - **开发与硬件分开配置**：默认采用 Fake Backend，在 Linux / WSL2 上验证协议、任务和语音编排；板端构建再启用真实 Backend 与厂商 SDK。
-- **板端脚本管理交付**：泰山派部署入口提供构建、依赖检查、启动和停止脚本，管理 Gateway、Manager 与四个语音进程；当前交付方式为裸机 Shell 脚本。
+- **板端脚本管理交付**：泰山派部署入口提供构建、依赖检查、启动停止与测量回归脚本，管理 Gateway、Manager 与四个语音进程；进程组参数集中在单一共享层，场景脚本不复制启动逻辑。当前交付方式为裸机 Shell 脚本。
 - **外部资产按路径提供**：模型、真实知识库与录音由部署配置指定；仓库保留示例知识库，小型测试 WAV 在构建目录生成。
 - **依赖边界门禁**：检查 Core 对语音目录和专有类型的反向依赖，并验证默认构建不带入硬件依赖。
 
@@ -327,24 +327,27 @@ sequenceDiagram
 
 验证平台是泰山派 3M（RK3576，4 GB）。真实 Backend 需要对应的 sherpa-onnx、RKLLM、ONNX Runtime、RKNN、ALSA、模型和板端 Runtime；默认开发构建不需要这些依赖。
 
-板端入口位于 [`modules/voice/deploy/taishanpi3m/`](modules/voice/deploy/taishanpi3m/)：`build.sh hardware` 负责原生构建与测试，`check_deployment.sh` 检查依赖和模型，`start.sh`/`stop.sh` 管理六个服务。部署前按 [`deploy-manifest.md`](modules/voice/deploy/taishanpi3m/deploy-manifest.md) 准备外部资产。硬件配置模板见 [`session.json`](modules/voice/config/taishanpi3m/session.json)。
+板端入口位于 [`modules/voice/deploy/taishanpi3m/`](modules/voice/deploy/taishanpi3m/)：`build.sh hardware` 负责原生构建与测试，`check_deployment.sh` 检查依赖和模型，`start.sh`/`stop.sh` 管理六个服务，`run.sh` 用一个入口提供测量与回归场景。六个服务的启动参数、优雅退出、探测与资源采样集中在 [`common.sh`](modules/voice/deploy/taishanpi3m/common.sh)，场景脚本只描述测什么、断言什么。部署前按 [`deploy-manifest.md`](modules/voice/deploy/taishanpi3m/deploy-manifest.md) 准备外部资产。硬件配置模板见 [`session.json`](modules/voice/config/taishanpi3m/session.json)。
 
-输出目标由 `start.sh` 的 `SLOTNEXUS_SINK` 选择：`wav`（默认，写文件供内容复核）或 `alsa`（实时声卡播放，设备名用 `SLOTNEXUS_SINK_DEVICE` 指定）。两种模式使用同一份模型、路由与回答文本，只有出口不同。
+输出目标由 `SLOTNEXUS_SINK` 选择：`wav`（默认，写文件供内容复核）或 `alsa`（实时声卡播放，设备名用 `SLOTNEXUS_SINK_DEVICE` 指定）。两种模式使用同一份模型、路由与回答文本，只有出口不同。
 
-测量脚本默认不注入人工阶段等待（`--stage-delay-ms` 为 0，需要模拟慢消费时用 `SLOTNEXUS_STAGE_DELAY_MS` 显式设置），否则阶段耗时会包含测试脚本自己造出的等待：
+测量与回归默认不注入人工阶段等待（`--stage-delay-ms` 为 0，需要模拟慢消费时用 `SLOTNEXUS_STAGE_DELAY_MS` 显式设置），否则阶段耗时会包含测试脚本自己造出的等待：
 
-| 脚本 | 用途 |
+| `run.sh` 场景 | 用途 |
 | --- | --- |
-| `run_baseline.sh` | 六进程启动、模型加载、节点握手、任务 setup 与推理各阶段耗时、RSS/温度，并记录源码与构建指纹 |
-| `run_real_wav_chain.sh` | 固定 WAV 全链路回归（ASR/RKLLM/MeloTTS） |
-| `run_mic_chain.sh` | 现场麦克风入口 |
-| `run_stability_30.sh` | 30 轮稳定性 |
+| `baseline [目录]` | 六进程启动、模型加载、节点握手、任务 setup 与推理各阶段耗时、RSS/温度，并记录源码与构建指纹 |
+| `wav` | 固定 WAV 全链路回归（demo_zh + 官方 0.wav，ASR/RKLLM/MeloTTS） |
+| `mic` | 现场麦克风闭环（录音期间需对板载麦克风说话） |
+| `stability [轮次]` | 每轮重建六进程的重复可用性回归（默认 30 轮） |
+| `inject` | 取消 / 节点超时 / 错误输入 |
+| `llm` | 仅 llm_node 的固定 prompt 核验 |
+| `mock` | Fake Backend 会话链（default 构建产物，板上快速自检） |
 
 ## 验证状态
 
 | 范围 | 当前证据与边界 |
 | --- | --- |
-| WSL 默认构建 | 当前 52/52 CTest 串行通过，包含原有行为测试、Manager 路由、核心边界门禁与部署测量脚本契约。 |
+| WSL 默认构建 | 当前 54/54 CTest 串行通过，包含原有行为测试、Manager 路由、核心边界门禁与部署测量脚本契约。 |
 | 核心独立构建 | 重构验收记录为 17/17 CTest 通过，并完成核心安装与语音模块独立消费者构建。 |
 | 板端历史基线 | 重构前 Qwen3.5-0.8B + MeloTTS 固定输入 30/30 成功；端到端 p50 59.4 s、p95 60.8 s。**每轮都重建六进程**，不是六进程常驻 30 轮。 |
 | 重构后板端链路 | **验证进行中**；真实 ASR/LLM/TTS、麦克风/声卡及 30 轮链路结果以本轮板端测试为准。 |

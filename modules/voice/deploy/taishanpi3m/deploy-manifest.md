@@ -26,6 +26,7 @@ Fake Backend 做确定性回归，二者不得混为同一运行证据。
 | 许可明确的内嵌依赖 | `third_party/nlohmann/` | nlohmann-json 3.10.5 完整 multi-header 头集合，MIT 许可头保留 |
 | 构建入口 | `modules/voice/deploy/taishanpi3m/build.sh` | default / hardware 两种模式，最多 `-j4` |
 | 发布入口 | `check_deployment.sh` `start.sh` `stop.sh` | 预检、六进程启动/setup、幂等停止 |
+| 测量与回归入口 | `run.sh` + `common.sh` | 基线、固定 WAV、麦克风、稳定性、注入等场景；六进程启动参数与优雅退出只有一处 |
 | 板端配置 | `modules/voice/config/taishanpi3m/session.json` | 真实 Backend、模型相对路径、LLM 采样与思考段过滤、队列与路由参数 |
 | 固定公开输入 | `SLOTNEXUS_VOICE_FIXTURE_DIR` 指向的板端本地目录 | 真实 WAV 由部署路径注入，仓库默认测试生成最小夹具 |
 | 知识库 | `modules/voice/examples/knowledge.jsonl`（最小示例） | 真实知识库由部署路径注入 |
@@ -52,7 +53,7 @@ Fake Backend 做确定性回归，二者不得混为同一运行证据。
 
 1. 按部署环境准备系统包、外部依赖和模型；
 2. 用 `build.sh hardware` 原生构建，板端并行度不超过 4；
-3. 脚本运行前按精确名称 `pkill -9` 清理六进程；
+3. 脚本运行前由 `stop.sh --force` 清理六进程；
 4. 设置 RKLLM 与 sherpa 根目录，执行 `start.sh`；
 5. 检查 `setup.log` 为 ack，完成固定 WAV 或麦克风请求；
 6. 执行 `stop.sh`，确认进程和 PID 文件无残留。

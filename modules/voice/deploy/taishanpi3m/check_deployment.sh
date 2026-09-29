@@ -4,10 +4,8 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-DEFAULT_ROOT=$(cd "$SCRIPT_DIR/../../../.." && pwd)
-ROOT=${SLOTNEXUS_DEPLOY_ROOT:-$DEFAULT_ROOT}
-BUILD_DIR=${SLOTNEXUS_BUILD_DIR:-$ROOT/build-taishanpi3m-hw}
-CONFIG=${SLOTNEXUS_CONFIG:-$ROOT/modules/voice/config/taishanpi3m/session.json}
+source "$SCRIPT_DIR/common.sh"
+load_environment
 
 fail() {
   echo "部署预检失败: $*" >&2
@@ -33,7 +31,7 @@ for app in edge_gateway unit_manager session_node asr_node llm_node tts_node; do
   fi
 done
 
-python3 - "$ROOT" "$CONFIG" <<'PY'
+python3 - "$DEPLOY_ROOT" "$CONFIG" <<'PY'
 import json
 import os
 import sys

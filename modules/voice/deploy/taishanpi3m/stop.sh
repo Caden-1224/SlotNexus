@@ -57,6 +57,7 @@ for service in "${SERVICES[@]}"; do
   fi
 done
 
+T_STOP_START=$(date +%s%N)
 for ((attempt = 0; attempt < 40; ++attempt)); do
   alive=0
   for service in "${SERVICES[@]}"; do
@@ -68,6 +69,7 @@ for ((attempt = 0; attempt < 40; ++attempt)); do
   [ "$alive" -eq 0 ] && break
   sleep 0.5
 done
+T_STOP_END=$(date +%s%N)
 
 for service in "${SERVICES[@]}"; do
   if pid=$(read_service_pid "$service") && pid_is_running_service "$pid" "$service"; then
@@ -76,4 +78,4 @@ for service in "${SERVICES[@]}"; do
 done
 
 force_cleanup
-echo "六个服务已停止"
+echo "六个服务已停止（退出耗时 $(( (T_STOP_END - T_STOP_START) / 1000000000 ))s，20s 上限）"
