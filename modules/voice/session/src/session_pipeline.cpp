@@ -263,32 +263,22 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
       }
     });
 
-    // ---------- 1. 输入阶段：WAV / 麦克风 → ASR（Listening）----------
-    // kWav / kMic 同一条样本链路：kWav 由管线读文件，kMic 直接用会话侧
-    // 录制样本（AlsaAudioSource 在会话进程完成采集，管线不依赖声卡）。
+    // ---------- 1. 输入阶段：WAV → ASR（Listening）----------
     state_machine_.dispatch(SessionEvent::kAudioStart);
     std::string query;
-    if (input.mode == PipelineInput::Mode::kWav ||
-        input.mode == PipelineInput::Mode::kMic) {
+    if (input.mode == PipelineInput::Mode::kWav) {
       std::vector<std::int16_t> samples;
-      if (input.mode == PipelineInput::Mode::kWav) {
-        const auto wav = common::WavReader::read(input.wav_path);
-        if (!wav.ok) {
-          result.error = wav.error;
-        } else if (wav.info.sample_rate != backend::kSampleRateHz ||
-                   wav.info.channels != backend::kChannels ||
-                   wav.info.bits != 16) {
-          result.error = "固定输入须为 16kHz 单声道 16-bit WAV";
-        } else if (wav.info.samples.empty()) {
-          result.error = "WAV 无音频数据";
-        } else {
-          samples = wav.info.samples;
-        }
+      const auto wav = common::WavReader::read(input.wav_path);
+      if (!wav.ok) {
+        result.error = wav.error;
+      } else if (wav.info.sample_rate != backend::kSampleRateHz ||
+                 wav.info.channels != backend::kChannels ||
+                 wav.info.bits != 16) {
+        result.error = "固定输入须为 16kHz 单声道 16-bit WAV";
+      } else if (wav.info.samples.empty()) {
+        result.error = "WAV 无音频数据";
       } else {
-        samples = input.audio;
-        if (samples.empty()) {
-          result.error = "录音无音频数据";
-        }
+        samples = wav.info.samples;
       }
       if (result.error.empty()) {
         asr_.set_event_callback([&](const BackendEvent& e) {

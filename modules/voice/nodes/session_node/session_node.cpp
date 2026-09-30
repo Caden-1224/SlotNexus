@@ -69,8 +69,6 @@ const char* PipelineInputModeName(PipelineInput::Mode mode) {
       return "text";
     case PipelineInput::Mode::kWav:
       return "wav";
-    case PipelineInput::Mode::kMic:
-      return "mic";
   }
   return "unknown";
 }
@@ -765,8 +763,8 @@ void SessionNode::handle_request(const std::string& identity,
         send_reply(build_error(request, 3, "会话忙碌（单流）"));  // kBusy
         return;
       }
-      // 解析输入：{"mode": "text"|"wav"|"alsa", ...}。alsa = 现场麦克风
-      // 录音（--record-device / --record-ms），样本随管线 kMic 输入。
+      // 解析输入：{"mode": "text"|"wav"|"stream", ...}。stream 为无 KWS
+      // 手动入口，在采集侧完成判停后把 final 文本送入文本路由。
       PipelineInput input;
       const auto& payload = request.payload();
       const std::string mode = payload.value("mode", "text");
@@ -790,8 +788,8 @@ void SessionNode::handle_request(const std::string& identity,
           return;
         }
 #ifdef SLOTNEXUS_HAS_ALSA
-        // 连续采集：VAD 判停后只取 final 文本交给文本路由，不再按固定
-        // 录音时长整段识别。record_duration 只作无语音/不判停的兜底上限。
+        // 连续采集：VAD 判停后只取 final 文本交给文本路由。
+        // stream_max_duration 只作无语音/不判停的兜底上限。
         slotnexus::backend::alsa::AlsaAudioSource mic(
             config_.record_device, slotnexus::backend::kSampleRateHz);
         if (!mic.open()) {
@@ -847,7 +845,7 @@ void SessionNode::handle_request(const std::string& identity,
             [&] { endpoint_time = std::chrono::steady_clock::now(); });
 
         const auto capture_start = std::chrono::steady_clock::now();
-        const auto capture_deadline = capture_start + config_.record_duration;
+        const auto capture_deadline = capture_start + config_.stream_max_duration;
         std::size_t empty_reads = 0;
         std::size_t retries = 0;
         std::size_t total_samples = 0;
@@ -895,7 +893,7 @@ void SessionNode::handle_request(const std::string& identity,
             "session stream request_id=" + request.request_id() +
             " device=" + config_.record_device +
             " requested_max_ms=" +
-            std::to_string(config_.record_duration.count()) +
+            std::to_string(config_.stream_max_duration.count()) +
             " samples=" + std::to_string(total_samples) +
             " empty_reads=" + std::to_string(empty_reads) +
             " retries=" + std::to_string(retries) +
@@ -917,87 +915,6 @@ void SessionNode::handle_request(const std::string& identity,
         send_reply(build_error(
             request, 3,
             "当前构建未启用 ALSA 连续采集（需硬件后端构建，mode=stream）"));
-        return;
-#endif
-      } else if (mode == "alsa") {
-#ifdef SLOTNEXUS_HAS_ALSA
-        input.mode = PipelineInput::Mode::kMic;
-        // 阻塞采集 record_duration 时长：20 ms 帧轮询读取，XRUN 空帧
-        // 重试本帧（AlsaAudioSource 契约）。录音中不可取消（单流模型，
-        // 请求在途即占用会话），时长由 --record-ms 控制。
-        slotnexus::backend::alsa::AlsaAudioSource mic(
-            config_.record_device, slotnexus::backend::kSampleRateHz);
-        if (!mic.open()) {
-          log_err(request, "mic_open_failed");
-          send_reply(build_error(request, 3,
-                                 "录音设备打开失败: " + config_.record_device));
-          return;
-        }
-        const int total_frames = std::max(
-            1, static_cast<int>(config_.record_duration.count()) / 20);
-        input.audio.reserve(static_cast<std::size_t>(total_frames) *
-                            slotnexus::backend::kFrameSamples);
-        const auto capture_start = std::chrono::steady_clock::now();
-        std::size_t empty_reads = 0;
-        std::size_t retries = 0;
-        for (int i = 0; i < total_frames; ++i) {
-          auto chunk = mic.read(slotnexus::backend::kFrameSamples);
-          if (chunk.empty()) {
-            ++empty_reads;
-            ++retries;
-            --i;  // overrun 空帧：重试本帧
-            continue;
-          }
-          input.audio.insert(input.audio.end(), chunk.begin(), chunk.end());
-        }
-        const auto capture_ms =
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - capture_start)
-                .count();
-        const int actual_rate = mic.actual_sample_rate();
-        mic.close();
-        // kMic 样本链路与 WAV 契约一致：直接按 16000 Hz 喂 ASR，不做重采样。
-        // plughw 路径必须把硬件率转换到 16000；若实际率不同，必须显式失败，
-        // 否则 ASR 会拿错采样率识别（更容易表现为“识别为空”）。
-        if (actual_rate != slotnexus::backend::kSampleRateHz) {
-          log_err(request, "mic_unsupported_rate actual=" +
-                               std::to_string(actual_rate));
-          send_reply(build_error(
-              request, 3,
-              "录音采样率 " + std::to_string(actual_rate) +
-                  " Hz 与 ASR 要求 " +
-                  std::to_string(slotnexus::backend::kSampleRateHz) +
-                  " Hz 不一致（kMic 路径无重采样）"));
-          return;
-        }
-        double sum_sq = 0.0;
-        int16_t peak = 0;
-        for (int16_t sample : input.audio) {
-          const double v = static_cast<double>(sample);
-          sum_sq += v * v;
-          const int magnitude = std::abs(static_cast<int>(sample));
-          if (magnitude > peak) {
-            peak = magnitude;
-          }
-        }
-        const double rms = input.audio.empty()
-                               ? 0.0
-                               : std::sqrt(sum_sq /
-                                           static_cast<double>(input.audio.size()));
-        common::LogLine(
-            "session mic request_id=" + request.request_id() +
-            " device=" + config_.record_device +
-            " requested_ms=" + std::to_string(config_.record_duration.count()) +
-            " actual_rate=" + std::to_string(actual_rate) +
-            " samples=" + std::to_string(input.audio.size()) +
-            " empty_reads=" + std::to_string(empty_reads) +
-            " retries=" + std::to_string(retries) +
-            " capture_ms=" + std::to_string(capture_ms) +
-            " rms=" + std::to_string(rms) + " peak=" + std::to_string(peak));
-#else
-        send_reply(build_error(
-            request, 3,
-            "当前构建未启用 ALSA 录音（需硬件后端构建，--record-device）"));
         return;
 #endif
       } else {

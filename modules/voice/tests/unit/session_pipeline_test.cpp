@@ -505,9 +505,11 @@ void test_empty_asr_text_stops_pipeline() {
   sess::SessionPipeline pipe(base_config(f), f.router, asr, llm, tts,
                              sink_factory);
 
+  const std::string wav_path = f.out_dir + "/empty-asr.wav";
+  CHECK(write_test_wav(wav_path, back::kSampleRateHz, back::kFrameSamples));
   sess::PipelineInput input;
-  input.mode = sess::PipelineInput::Mode::kMic;
-  input.audio.assign(static_cast<std::size_t>(back::kFrameSamples), 100);
+  input.mode = sess::PipelineInput::Mode::kWav;
+  input.wav_path = wav_path;
   const auto r = pipe.run(input, "r-empty-asr", 0ms);
 
   CHECK(!r.ok);

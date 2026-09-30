@@ -57,11 +57,10 @@ struct PipelineConfig {
 
 // 一次运行（一个请求）的输入。
 struct PipelineInput {
-  enum class Mode { kText, kWav, kMic };
+  enum class Mode { kText, kWav };
   Mode mode = Mode::kText;
   std::string text;      // kText：文本直接进入路由
   std::string wav_path;  // kWav：WAV → ASR → 路由
-  std::vector<std::int16_t> audio;  // kMic：会话侧录制样本（16k/16bit/mono）
 };
 
 // 运行结果：路由证据、统计与状态机轨迹（验收/证据记录用）。
@@ -90,7 +89,7 @@ struct PipelineResult {
   std::vector<std::string> transitions;  // 状态机迁移轨迹
 
   // 阶段耗时（相对 run 开始，steady_clock，未发生为 -1）。
-  // WAV/麦克风固定输入先给 input_end_ms（喂入结束），ASR final、LLM 首
+  // WAV 固定输入先给 input_end_ms（喂入结束），ASR final、LLM 首
   // token、首可播文本、TTS 首 PCM、首帧提交 sink 和 sink close 分别记录，
   // 供启动/语音阶段基线对比；软件提交时间不等于真实扬声器首音。
   std::int64_t input_end_ms = -1;        // 语音样本喂入结束

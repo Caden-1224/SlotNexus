@@ -21,7 +21,7 @@
 //                   [--wake-words <逗号分隔词>] [--sleep-words <逗号分隔词>]
 //                   [--wake-follow-up-ms <N>] [--wake-max-session-ms <N>]
 //                   [--wake-max-turns <N>]
-//                   （mode=alsa 现场麦克风输入：录音设备与时长，默认
+//                   （mode=stream 连续采集：录音设备与无语音兜底上限，默认
 //                   default/3000；需 SLOTNEXUS_HAS_ALSA 构建；wake 常驻
 //                   需要独立 KWS 模型和 ALSA 连续采集）
 // 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204 /
@@ -266,7 +266,7 @@ int main(int argc, char** argv) {
    } else if (arg == "--record-device") {
      config.record_device = val;
    } else if (arg == "--record-ms") {
-     config.record_duration =
+     config.stream_max_duration =
          std::chrono::milliseconds(parse_int(val.c_str(), 3000));
    } else if (arg == "--wake-model-dir") {
      config.wake_model_dir = val;
