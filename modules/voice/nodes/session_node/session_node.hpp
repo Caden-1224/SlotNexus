@@ -82,6 +82,20 @@ struct SessionNodeConfig {
  std::size_t stream_min_speech_ms = 60;
  std::size_t stream_min_silence_ms = 500;
  int stream_speech_rms_threshold = 250;
+
+ // 唤醒与连续轮次（任务会话生命周期内常驻采集）。
+ bool wake_enabled = false;
+ std::vector<std::string> wake_words{"小凯"};
+ std::vector<std::string> sleep_words;
+ std::chrono::milliseconds wake_follow_up_timeout{12000};
+ std::chrono::milliseconds wake_max_session{120000};
+ int wake_max_turns = 6;
+ std::string wake_model_dir;
+ std::string wake_keywords_file;
+ float wake_score = 1.5F;
+ float wake_threshold = 0.25F;
+ int wake_trailing_blanks = 1;
+ int wake_num_threads = 1;
 };
 
 class SessionNode {

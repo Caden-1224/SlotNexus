@@ -7,6 +7,7 @@
 // AsrNodeBackend，不再为每次 utterance 重新加载模型。
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <stdexcept>
@@ -41,7 +42,7 @@ class NetAsrStreamBackend final : public IAsrBackend {
     const auto& cfg = session_.config();
     request_id_ = session_.next_request_id("a");
     session_.begin_event_stream(request_id_);
-    active_ = true;
+    active_.store(true);
     finished_ = false;
     send_json({{"op", "start"},
                {"work_id", cfg.work_id},
@@ -49,7 +50,7 @@ class NetAsrStreamBackend final : public IAsrBackend {
   }
 
   void feed_audio(const std::vector<std::int16_t>& pcm, bool is_last) override {
-    if (!active_) {
+    if (!active_.load()) {
       return;
     }
     const std::uint8_t* raw = reinterpret_cast<const std::uint8_t*>(pcm.data());
@@ -69,27 +70,33 @@ class NetAsrStreamBackend final : public IAsrBackend {
 
     const auto deadline =
         std::chrono::steady_clock::now() + session_.config().rpc_timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
+    while (active_.load() && std::chrono::steady_clock::now() < deadline) {
       bool finished = false;
       session_.pump_event_stream(std::chrono::milliseconds(10), &finished);
       if (finished) {
         finished_ = true;
-        active_ = false;
+        active_.store(false);
         return;
       }
     }
-    active_ = false;
+    if (!active_.load()) {
+      return;  // 取消：不再等待 final，也不抛超时
+    }
+    active_.store(false);
     throw std::runtime_error("流式 ASR final 超时");
   }
 
   void cancel() override {
-    if (!active_) {
+    if (!active_.exchange(false)) {
       return;
     }
-    send_json({{"op", "cancel"},
-               {"work_id", session_.config().work_id},
-               {"request_id", request_id_}});
-    active_ = false;
+    try {
+      send_json({{"op", "cancel"},
+                 {"work_id", session_.config().work_id},
+                 {"request_id", request_id_}});
+    } catch (...) {
+      // 退出路径尽力通知节点；通知失败不能阻断本地资源释放。
+    }
   }
 
  private:
@@ -100,7 +107,7 @@ class NetAsrStreamBackend final : public IAsrBackend {
   NetBackendSession session_;
   transport::PushSocket push_;
   std::string request_id_;
-  bool active_ = false;
+  std::atomic<bool> active_{false};
   bool finished_ = false;
 };
 

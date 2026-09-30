@@ -16,8 +16,14 @@
 //                   [--asr-stream-endpoint <PULL>]（llm/tts 同理）
 //                   [--net-setup-timeout-ms <N>] [--net-rpc-timeout-ms <N>]
 //                   [--record-device <设备>] [--record-ms <N>]
+//                   [--wake-enabled] [--wake-model-dir <目录>]
+//                   [--wake-keywords-file <文件>]
+//                   [--wake-words <逗号分隔词>] [--sleep-words <逗号分隔词>]
+//                   [--wake-follow-up-ms <N>] [--wake-max-session-ms <N>]
+//                   [--wake-max-turns <N>]
 //                   （mode=alsa 现场麦克风输入：录音设备与时长，默认
-//                   default/3000；需 SLOTNEXUS_HAS_ALSA 构建）
+//                   default/3000；需 SLOTNEXUS_HAS_ALSA 构建；wake 常驻
+//                   需要独立 KWS 模型和 ALSA 连续采集）
 // 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204 /
 //             session 19210；数据面事件 asr 19211 / llm 19212 / tts 19213
 //             （握手 19221/19222/19223，与节点 --events/--events-sync 对应）。
@@ -74,6 +80,25 @@ double parse_double(const char* s, double fallback) {
  } catch (...) {
    return fallback;
  }
+}
+
+std::vector<std::string> split_words(const std::string& text) {
+ std::vector<std::string> words;
+ std::string current;
+ for (const char ch : text) {
+   if (ch == ',' || ch == ' ' || ch == '\t') {
+     if (!current.empty()) {
+       words.push_back(std::move(current));
+       current.clear();
+     }
+   } else {
+     current.push_back(ch);
+   }
+ }
+ if (!current.empty()) {
+   words.push_back(std::move(current));
+ }
+ return words;
 }
 
 }  // namespace
@@ -147,6 +172,34 @@ int main(int argc, char** argv) {
      config.stream_speech_rms_threshold = stream_cfg.value(
          "speech_rms_threshold", config.stream_speech_rms_threshold);
    }
+   if (file_cfg.contains("wake")) {
+     const auto& wake_cfg = file_cfg["wake"];
+     config.wake_enabled = wake_cfg.value("enabled", config.wake_enabled);
+     if (wake_cfg.contains("wake_words")) {
+       config.wake_words = wake_cfg["wake_words"].get<std::vector<std::string>>();
+     }
+     if (wake_cfg.contains("sleep_words")) {
+       config.sleep_words = wake_cfg["sleep_words"].get<std::vector<std::string>>();
+     }
+     config.wake_follow_up_timeout = std::chrono::milliseconds(
+         wake_cfg.value("follow_up_timeout_ms",
+                        static_cast<int>(config.wake_follow_up_timeout.count())));
+     config.wake_max_session = std::chrono::milliseconds(
+         wake_cfg.value("max_session_ms",
+                        static_cast<int>(config.wake_max_session.count())));
+     config.wake_max_turns = wake_cfg.value("max_turns", config.wake_max_turns);
+     config.wake_model_dir =
+         wake_cfg.value("model_dir", config.wake_model_dir);
+     config.wake_keywords_file =
+         wake_cfg.value("keywords_file", config.wake_keywords_file);
+     config.wake_score = wake_cfg.value("score", config.wake_score);
+     config.wake_threshold =
+         wake_cfg.value("threshold", config.wake_threshold);
+     config.wake_trailing_blanks = wake_cfg.value(
+         "num_trailing_blanks", config.wake_trailing_blanks);
+     config.wake_num_threads =
+         wake_cfg.value("num_threads", config.wake_num_threads);
+   }
  } else {
    return 1;
  }
@@ -155,6 +208,9 @@ int main(int argc, char** argv) {
  for (int i = 1; i < argc; ++i) {
    if (std::string(argv[i]) == "--asr-uplink") {
      config.asr_audio_uplink = true;
+   }
+   if (std::string(argv[i]) == "--wake-enabled") {
+     config.wake_enabled = true;
    }
  }
 
@@ -212,6 +268,22 @@ int main(int argc, char** argv) {
    } else if (arg == "--record-ms") {
      config.record_duration =
          std::chrono::milliseconds(parse_int(val.c_str(), 3000));
+   } else if (arg == "--wake-model-dir") {
+     config.wake_model_dir = val;
+   } else if (arg == "--wake-keywords-file") {
+     config.wake_keywords_file = val;
+   } else if (arg == "--wake-words") {
+     config.wake_words = split_words(val);
+   } else if (arg == "--sleep-words") {
+     config.sleep_words = split_words(val);
+   } else if (arg == "--wake-follow-up-ms") {
+     config.wake_follow_up_timeout =
+         std::chrono::milliseconds(parse_int(val.c_str(), 12000));
+   } else if (arg == "--wake-max-session-ms") {
+     config.wake_max_session =
+         std::chrono::milliseconds(parse_int(val.c_str(), 120000));
+   } else if (arg == "--wake-max-turns") {
+     config.wake_max_turns = parse_int(val.c_str(), 6);
    } else if (arg == "--backend") {
      config.backend = val;
    } else if (arg == "--asr-endpoint") {

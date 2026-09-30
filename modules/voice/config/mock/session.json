@@ -21,5 +21,19 @@
   "stage_delay_ms": 0,
   "text_chunk_max_bytes": 60,
   "tts_min_duration_ms": 1000,
-  "max_run_ms": 30000
+  "max_run_ms": 30000,
+  "wake": {
+    "enabled": false,
+    "wake_words": ["小凯"],
+    "sleep_words": ["退下"],
+    "follow_up_timeout_ms": 12000,
+    "max_session_ms": 120000,
+    "max_turns": 6,
+    "model_dir": "",
+    "keywords_file": "",
+    "score": 1.5,
+    "threshold": 0.25,
+    "num_trailing_blanks": 1,
+    "num_threads": 1
+  }
 }

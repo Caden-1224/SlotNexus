@@ -32,6 +32,7 @@ class StreamingInput {
   using FinalCallback = std::function<void(std::string)>;
   using PartialCallback = std::function<void(std::string)>;
   using EndpointCallback = std::function<void()>;
+  using SpeechStartedCallback = std::function<void()>;
 
   StreamingInput(Config config, backend::IAsrBackend& asr);
 
@@ -41,7 +42,8 @@ class StreamingInput {
   // 设置本轮/后续所有话语的事件回调；可在 feed_audio 前设置一次。
   void set_callbacks(FinalCallback on_final,
                      PartialCallback on_partial = {},
-                     EndpointCallback on_endpoint = {});
+                     EndpointCallback on_endpoint = {},
+                     SpeechStartedCallback on_speech_started = {});
 
   // 追加 PCM；内部按 frame_samples 切帧，不要求调用方恰好按帧喂入。
   void feed_audio(const int16_t* samples, std::size_t count);
@@ -63,6 +65,7 @@ class StreamingInput {
   FinalCallback on_final_;
   PartialCallback on_partial_;
   EndpointCallback on_endpoint_;
+  SpeechStartedCallback on_speech_started_;
 
   std::vector<int16_t> pending_samples_;
   std::vector<std::vector<int16_t>> pre_roll_;

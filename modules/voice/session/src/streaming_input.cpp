@@ -12,10 +12,12 @@ StreamingInput::StreamingInput(Config config, backend::IAsrBackend& asr)
 
 void StreamingInput::set_callbacks(FinalCallback on_final,
                                    PartialCallback on_partial,
-                                   EndpointCallback on_endpoint) {
+                                   EndpointCallback on_endpoint,
+                                   SpeechStartedCallback on_speech_started) {
   on_final_ = std::move(on_final);
   on_partial_ = std::move(on_partial);
   on_endpoint_ = std::move(on_endpoint);
+  on_speech_started_ = std::move(on_speech_started);
 }
 
 void StreamingInput::feed_audio(const int16_t* samples, std::size_t count) {
@@ -116,6 +118,9 @@ void StreamingInput::begin_utterance() {
   active_ = true;
   speech_run_ = 0;
   silence_run_ = 0;
+  if (on_speech_started_) {
+    on_speech_started_();
+  }
   asr_.set_event_callback([this](const backend::BackendEvent& event) {
     if (event.kind == backend::BackendEvent::Kind::kFinal) {
       if (on_final_ && !event.text.empty()) {
