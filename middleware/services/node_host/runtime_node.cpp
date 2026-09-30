@@ -4,11 +4,11 @@
 // 入口：RuntimeNode::serve_once/handle_request。
 // 主要逻辑：解析 action 信封 → 调用 TaskRuntime JSON 接口 → 组装 ack/error；
 // 推理事件原样映射到 DataplaneEvent，模块语义保留在事件 kind/payload 中。
-#include "runtime_node.hpp"
+#include "slotnexus/services/runtime_node.hpp"
 
 #include <utility>
 
-#include "action_helpers.hpp"
+#include "slotnexus/services/action_helpers.hpp"
 #include "slotnexus/protocol/message_envelope.hpp"
 
 namespace slotnexus::node {

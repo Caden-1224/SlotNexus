@@ -14,7 +14,7 @@
 
 #include <zmq.hpp>
 
-#include "runtime_node.hpp"
+#include "slotnexus/services/runtime_node.hpp"
 
 namespace {
 

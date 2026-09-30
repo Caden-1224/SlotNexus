@@ -2,8 +2,8 @@
 //
 // Author: Caden
 // 设计意图：只负责回显 work_id/request_id/session_id 并封装 ack/error，
-// 不对业务负载做字段解释。推理成功时 RuntimeNode 直接把后端返回的 JSON
-// payload 放进 ack，具体模块协议由模块消费者解释。
+// 不对业务负载做字段解释。它被 Gateway、Manager 和 Node Host 共用，
+// 因此不归属于任何一个具体服务目录。
 #pragma once
 
 #include <string>

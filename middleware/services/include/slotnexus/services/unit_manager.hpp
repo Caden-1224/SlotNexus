@@ -25,18 +25,15 @@
 
 namespace slotnexus::manager {
 
-// 最小模块描述：稳定标识、协议版本、节点 RPC 端点、可选配置路径。
 struct ModuleDescriptor {
   std::string module_id;
   int protocol_version = 1;
   std::vector<std::string> node_endpoints;
-  std::string config_path;  // 部署配置路径，供启动脚本/运维读取；Core 不解释
+  std::string config_path;
 };
 
 class UnitManager {
  public:
-  // modules：至少一个模块，每个模块至少一个节点端点。
-  // default_module_id：旧请求未指定 module_id 时的兼容选择；空则取首个模块。
   UnitManager(zmq::context_t& ctx, std::vector<ModuleDescriptor> modules,
               std::string default_module_id = {},
               std::size_t max_tasks = 0,
@@ -51,7 +48,6 @@ class UnitManager {
   bool serve_once(std::chrono::milliseconds poll_timeout);
   void close();
 
-  // 只读访问，供测试/诊断。
   const std::vector<ModuleDescriptor>& modules() const { return modules_; }
   const std::string& default_module_id() const { return default_module_id_; }
 
@@ -71,9 +67,9 @@ class UnitManager {
   task_registry::TaskRegistry registry_;
   std::vector<ModuleDescriptor> modules_;
   std::string default_module_id_;
-  std::vector<std::size_t> next_node_;  // 每模块轮转游标
+  std::vector<std::size_t> next_node_;
   std::vector<std::vector<std::unique_ptr<transport::RpcClient>>> node_clients_;
-  std::unordered_map<std::string, Route> route_;  // work_id → 固定路由
+  std::unordered_map<std::string, Route> route_;
   std::chrono::milliseconds node_rpc_deadline_;
 };
 

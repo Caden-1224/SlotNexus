@@ -7,7 +7,7 @@ add_library(slotnexus_unit_manager STATIC
 add_library(slotnexus::unit_manager ALIAS slotnexus_unit_manager)
 set_target_properties(slotnexus_unit_manager PROPERTIES EXPORT_NAME unit_manager)
 target_include_directories(slotnexus_unit_manager PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/slotnexus/services>)
 target_link_libraries(slotnexus_unit_manager PUBLIC
   slotnexus::node_host
@@ -18,7 +18,7 @@ install(TARGETS slotnexus_unit_manager EXPORT slotnexus-core-targets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES unit_manager.hpp
+install(FILES ../include/slotnexus/services/unit_manager.hpp
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/slotnexus/services)
 
 add_executable(unit_manager main.cpp)

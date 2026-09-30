@@ -21,7 +21,7 @@
 #include <nlohmann/json.hpp>
 #include <zmq.hpp>
 
-#include "unit_manager.hpp"
+#include "slotnexus/services/unit_manager.hpp"
 
 namespace {
 

@@ -3,7 +3,7 @@
 //
 // 进程内 fake Manager：RpcServer 回 ack 信封（回显关联字段），验证
 // 网关把 action 转发出去并把响应送回原连接。
-#include "action_helpers.hpp"
+#include "slotnexus/services/action_helpers.hpp"
 #include "edge_gateway.hpp"
 #include "slotnexus/network/event_loop.hpp"
 #include "slotnexus/protocol/message_envelope.hpp"

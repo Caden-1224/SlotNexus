@@ -2,7 +2,8 @@
 #
 # Author: Caden
 # 组织方式：common/json/protocol/transport/network/task_registry/runtime/
-# dataplane 为可安装库；services 为通用 node host、unit manager、gateway、
+# dataplane 为可安装库；services 同时包含通用服务库和对应的进程入口。
+# 新业务模块放在 modules/<name>/，接入步骤见 middleware/MODULE_INTEGRATION.md。
 # 设计要求：所有公开头不得依赖语音模块目录或音频专有类型。
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)

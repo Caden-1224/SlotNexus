@@ -6,12 +6,12 @@
 //   - setup 先解析 module_id，未知模块返回 unknown_module，不创建 work_id；
 //   - 同一 work_id 的后续动作复用 Route，不重新轮转；
 //   - 旧请求未携带 module_id 时使用 default_module_id 兼容规则。
-#include "unit_manager.hpp"
+#include "slotnexus/services/unit_manager.hpp"
 
 #include <stdexcept>
 #include <utility>
 
-#include "action_helpers.hpp"
+#include "slotnexus/services/action_helpers.hpp"
 #include "slotnexus/common/log.hpp"
 #include "slotnexus/protocol/message_envelope.hpp"
 #include "slotnexus/runtime/task_channel.hpp"

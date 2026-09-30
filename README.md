@@ -291,6 +291,8 @@ sequenceDiagram
 
 ## 模块开发
 
+新增业务模块的目录模板、Core target 选择、`IBackend` 接入方式、请求与事件约定，以及独立构建命令见 [`middleware/MODULE_INTEGRATION.md`](middleware/MODULE_INTEGRATION.md)。下面保留当前模块边界和运行流程的概览。
+
 新应用模块沿用 `modules/<name>/` 的组织方式，依赖中间件公开 CMake targets 和通用 JSON/事件契约，而不是让核心包含模块的业务类型。接入时需要：
 
 1. 实现节点和 Backend 适配，定义模块自己的请求 `payload` 与事件 `kind`。
