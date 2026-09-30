@@ -1,9 +1,8 @@
 // MeloTTS 原生 float PCM → 契约 16 kHz S16_LE 的流式线性重采样。
 // Author: Caden
 //
-// 移植自参考工程 nexweave `core/backend/melotts/melotts_pcm_converter.cpp`：
-// 分块送入与一次性送入得到逐样本一致的结果，跨块只保存尚未消费的输入样本与
-// 下一个输出样本序号；不负责切 320 采样帧，也不负责尾部补零。
+// 线性重采样语义：分块送入与一次性送入得到逐样本一致的结果，跨块只保存
+// 尚未消费的输入样本与下一个输出样本序号；不负责切 320 采样帧，也不补零。
 #include "melotts_internal.hpp"
 
 #include <algorithm>

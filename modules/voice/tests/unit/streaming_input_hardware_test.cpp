@@ -90,7 +90,6 @@ int main() {
         final_text = std::move(text);
         final_time = std::chrono::steady_clock::now();
       },
-      {},
       [&] { endpoint_time = std::chrono::steady_clock::now(); });
 
   const auto feed_frame = [&](const std::vector<int16_t>& frame) {

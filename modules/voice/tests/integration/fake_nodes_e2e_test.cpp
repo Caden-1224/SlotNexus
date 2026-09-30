@@ -6,8 +6,8 @@
 //  unit_manager 以轮转把 work_id 路由到五个节点（每个节点一个后端工厂）。
 //
 // 验收标准：
-//  1. 五个 Backend（Echo + FakeAsr/FakeRetriever/FakeLlm/FakeTts）在同一
-//     RuntimeNode 外壳下独立运行，Manager 路由互不串扰；
+//  1. 五类节点 Backend（Echo + FakeAsr + RagNode 真实 BM25 + FakeLlm + FakeTts）
+//     在同一 RuntimeNode 外壳下独立运行，Manager 路由互不串扰；
 //  2. 每类 Fake 的确定性输出经全链路可精确断言；
 //  3. tts 产出真实 WAV 文件（44 字节头 + PCM 数据）；
 //  4. SIGTERM 后七个进程全部优雅退出（退出码 0）。

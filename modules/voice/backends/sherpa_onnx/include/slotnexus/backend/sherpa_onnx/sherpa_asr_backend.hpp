@@ -1,8 +1,8 @@
 // SherpaAsrBackend：sherpa-onnx streaming zipformer 真实语音识别后端。
 // Author: Caden
 //
-// 行为依据：modules/voice/tools/upstream-probes/sherpa_asr_smoke.cpp（历史探针）：
-//   0.2 s 块流式喂入，greedy_search 整段识别，RTF ~1.07（4 threads）。
+//   0.2 s 块流式喂入，greedy_search 整段识别；模型目录、线程数与精度
+//   由构造参数注入。
 // 协议与 FakeAsrBackend 等价：
 //   - feed_audio(帧, is_last=false) 按 0.2 s 块触发 decode，文本变化时
 //     产出 kPartial（不逐 20 ms 帧重复投递相同文本）；

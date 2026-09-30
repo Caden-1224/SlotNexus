@@ -1,8 +1,7 @@
 // MeloTtsBackend：MeloTTS 离线中文/中英混读语音合成后端。
 // Author: Caden
 //
-// 行为依据：参考工程 nexweave 的 `core/backend/melotts/`（板端
-// `run_melotts_hardware_test.sh` 已跑通真实推理）。与 SummerTtsBackend 同契约：
+// 行为依据：板端已验证的 MeloTTS 推理路径。与 SummerTtsBackend 同契约：
 //   - synthesize(text) 产出 kPcm…（每帧 ≤ kFrameSamples=320 采样，20 ms），
 //     全部音频产出后 kDone；
 //   - cancel() 后 synthesize 为空操作，不产出任何事件；
@@ -31,8 +30,8 @@
 
 namespace slotnexus::backend::melotts {
 
-// 编码器与解码器的运行方式。参考工程的固定分工为
-// ONNX Runtime CPU 编码器 + RKNN NPU 解码器；本后端只接受该组合，
+// 编码器与解码器的运行方式。当前固定分工为 ONNX Runtime CPU 编码器 +
+// RKNN NPU 解码器；本后端只接受该组合，
 // 避免把两个 ONNX 或两个 RKNN 误当成一条链路。
 enum class MeloRuntime {
   kOnnxRuntimeCpu,
@@ -56,7 +55,7 @@ struct MeloTtsConfig {
 
   // 模型原生输出采样率（当前导出件 44100 Hz；适配器统一输出 16 kHz）。
   std::uint32_t native_sample_rate_hz = 44100;
-  // 语速与 VITS 推理参数（参考工程板端默认值）。
+  // 语速与 VITS 推理参数（板端已验证默认值）。
   float speed = 0.8f;
   float noise_scale = 0.3f;
   float noise_scale_w = 0.6f;

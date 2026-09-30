@@ -4,8 +4,7 @@
 // Fake 的确定性是协议与编排测试的前提：相同输入必须产出完全相同的
 // partial/final 序列，且取消后不得再产出事件。
 #include "slotnexus/backend/backend_event.hpp"
-#include "slotnexus/backend/fake/fake_asr_backend.hpp"
-#include "slotnexus/backend/fake/fake_audio_source.hpp"
+#include "slotnexus/backend/fake/fake_backends.hpp"
 
 #include <cstdint>
 #include <iostream>

@@ -60,9 +60,9 @@ RouteDecision Router::route(const std::string& query) const {
   return decision;
 }
 
-std::vector<backend::RetrievedChunk> Router::make_chunks(
+std::vector<RetrievedChunk> Router::make_chunks(
     const std::vector<Bm25Index::Hit>& hits) const {
-  std::vector<backend::RetrievedChunk> chunks;
+  std::vector<RetrievedChunk> chunks;
   for (const auto& hit : hits) {
     // index 与 entries 按构造时的顺序一一对应。
     if (hit.doc_index < entries_.size()) {

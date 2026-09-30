@@ -47,8 +47,7 @@
 #include <zmq.hpp>
 
 #include "slotnexus/backend/backend_event.hpp"
-#include "slotnexus/backend/fake/fake_audio_sink.hpp"
-#include "slotnexus/backend/fake/fake_tts_backend.hpp"
+#include "slotnexus/backend/fake/fake_backends.hpp"
 #ifdef SLOTNEXUS_HAS_MELOTTS
 #include "slotnexus/backend/melotts/melotts_tts_backend.hpp"
 #endif

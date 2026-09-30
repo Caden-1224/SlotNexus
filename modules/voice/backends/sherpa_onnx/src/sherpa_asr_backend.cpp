@@ -1,7 +1,7 @@
 // SherpaAsrBackend 实现：封装 sherpa-onnx streaming zipformer C API。
 // Author: Caden
 //
-// 调用序列与 sherpa_asr_smoke.cpp 一致（行为依据）：
+// 当前使用的 sherpa-onnx 调用序列：
 //   CreateOnlineRecognizer → CreateOnlineStream →
 //   OnlineStreamAcceptWaveform(float[-1,1], 16 kHz) → IsOnlineStreamReady /
 //   DecodeOnlineStream 反复 → GetOnlineStreamResult 取文本；

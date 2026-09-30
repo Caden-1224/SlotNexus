@@ -30,7 +30,6 @@ class StreamingInput {
   };
 
   using FinalCallback = std::function<void(std::string)>;
-  using PartialCallback = std::function<void(std::string)>;
   using EndpointCallback = std::function<void()>;
   using SpeechStartedCallback = std::function<void()>;
 
@@ -41,7 +40,6 @@ class StreamingInput {
 
   // 设置本轮/后续所有话语的事件回调；可在 feed_audio 前设置一次。
   void set_callbacks(FinalCallback on_final,
-                     PartialCallback on_partial = {},
                      EndpointCallback on_endpoint = {},
                      SpeechStartedCallback on_speech_started = {});
 
@@ -50,9 +48,6 @@ class StreamingInput {
 
   // 结束输入：若当前话语尚未遇到静音收尾，用空尾帧强制 ASR kFinal。
   void flush();
-
-  // 放弃当前话语并重置 VAD/缓冲；下一次 feed 从静音态重新开始。
-  void reset();
 
  private:
   void process_frame(const std::vector<int16_t>& frame);
@@ -63,7 +58,6 @@ class StreamingInput {
   Config config_;
   backend::IAsrBackend& asr_;
   FinalCallback on_final_;
-  PartialCallback on_partial_;
   EndpointCallback on_endpoint_;
   SpeechStartedCallback on_speech_started_;
 

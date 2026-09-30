@@ -62,7 +62,7 @@ struct SessionNodeConfig {
  };
  NetNodeEndpoints asr_ep{"tcp://127.0.0.1:19201", "tcp://127.0.0.1:19211",
                          "tcp://127.0.0.1:19221"};
- std::string asr_stream_endpoint;  // 非空 = 逐帧 ASR 上行（asr_node --stream）
+ std::string asr_stream_endpoint;  // net 模式必填：逐帧 ASR 上行（asr_node --stream）
  std::string vad_model;             // 连续采集的 Silero VAD 模型；空=能量阈值
  NetNodeEndpoints llm_ep{"tcp://127.0.0.1:19203", "tcp://127.0.0.1:19212",
                          "tcp://127.0.0.1:19222"};
@@ -70,9 +70,6 @@ struct SessionNodeConfig {
                          "tcp://127.0.0.1:19223"};
  std::chrono::milliseconds net_setup_timeout{5000};   // 节点 setup RPC 等待
  std::chrono::milliseconds net_rpc_timeout{30000};    // 节点推理等待上限
- // net 模式 ASR 真实负载：音频上行（PCM base64 上行到 asr 节点，由节点
- // 真实后端识别）；false 时为 Mock 帧数约定（fake 节点，回归基线）。
- bool asr_audio_uplink = false;
  // 连续采集（mode=stream）录音设备与无语音兜底上限（板端 ES8323 板载
  // 麦克风走 "default"，显式 plughw:0,0 亦可）。仅 SLOTNEXUS_HAS_ALSA 生效。
  std::string record_device = "default";

@@ -33,10 +33,7 @@
 #include <unistd.h>  // chdir
 
 #include "slotnexus/backend/backend_event.hpp"
-#include "slotnexus/backend/fake/fake_audio_sink.hpp"
-#include "slotnexus/backend/fake/fake_asr_backend.hpp"
-#include "slotnexus/backend/fake/fake_llm_backend.hpp"
-#include "slotnexus/backend/fake/fake_tts_backend.hpp"
+#include "slotnexus/backend/fake/fake_backends.hpp"
 #include "slotnexus/rag/router.hpp"
 #include "slotnexus/session/session_pipeline.hpp"
 

@@ -1,7 +1,7 @@
 // FakeLlmBackend 单元测试：确定性 token 序列、最终文本、取消语义与会话重置。
 // Author: Caden
 #include "slotnexus/backend/backend_event.hpp"
-#include "slotnexus/backend/fake/fake_llm_backend.hpp"
+#include "slotnexus/backend/fake/fake_backends.hpp"
 
 #include <iostream>
 #include <string>

@@ -1,8 +1,6 @@
 // RkllmBackend：RKLLM Runtime 真实大模型文本生成后端。
 // Author: Caden
 //
-// 行为依据：modules/voice/tools/upstream-probes/rkllm_smoke.cpp（历史探针，
-// 接口门禁：rkllm_init success / 流式 token / 取消语义）与 llm_demo.cpp；
 // 当前模型的使用与行为要点：
 //   - rkllm_createDefaultParam → 采样/运行参数 → rkllm_init → rkllm_run_async
 //     → callback NORMAL/WAITING/FINISH/ERROR → rkllm_destroy；

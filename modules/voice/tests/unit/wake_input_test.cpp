@@ -95,7 +95,7 @@ class WakeInputHarness {
             turns.push_back(std::move(result.text));
           }
         },
-        {}, [this] {}, [this] { gate_.speech_started(); });
+        [this] {}, [this] { gate_.speech_started(); });
   }
 
   void Feed(const std::vector<std::int16_t>& pcm) {

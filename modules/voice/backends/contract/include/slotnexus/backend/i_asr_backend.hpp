@@ -17,11 +17,6 @@
 
 namespace slotnexus::backend {
 
-// 会话侧 → asr 节点推理负载的音频上行前缀（net 模式真实负载约定）：
-//  {"text": "pcm64:<base64(16kHz/16bit/单声道 PCM)>"}
-// 节点侧据此解码后喂真实后端（sherpa_onnx），或按帧数解释（fake）。
-inline constexpr const char* kAsrPcmPayloadPrefix = "pcm64:";
-
 class IAsrBackend {
 public:
  virtual ~IAsrBackend() = default;

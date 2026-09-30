@@ -19,7 +19,7 @@
 // （板端真实 ASR，需 SLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON 构建）。
 // 模型目录经 --model 或 session.json::asr.model 参数化，不硬编码；
 // 每次 setup 产出独立后端实例（TaskRuntime 工厂语义），sherpa-onnx 实例
-// 持有独立识别器（模型上下文，见 modules/voice/tools/upstream-probes/）。
+// 持有独立识别器（模型上下文）。
 // SIGINT/SIGTERM 优雅退出（退出码 0）。
 #include <atomic>
 #include <chrono>
@@ -38,14 +38,11 @@
 #include <zmq.hpp>
 
 #include "slotnexus/backend/backend_event.hpp"
-#include "slotnexus/backend/fake/fake_asr_backend.hpp"
-#include "slotnexus/backend/fake/fake_audio_source.hpp"
+#include "slotnexus/backend/fake/fake_backends.hpp"
 #include "slotnexus/backend/i_asr_backend.hpp"
-#include "slotnexus/backend/i_streaming_asr_backend.hpp"
 #ifdef SLOTNEXUS_HAS_SHERTA_ONNX
 #include "slotnexus/backend/sherpa_onnx/sherpa_asr_backend.hpp"
 #endif
-#include "slotnexus/common/base64.hpp"
 #include "slotnexus/common/wav_reader.hpp"
 #include "slotnexus/transport/pushpull.hpp"
 #include "slotnexus/runtime/ibackend.hpp"
@@ -53,16 +50,17 @@
 #include "runtime_node.hpp"
 
 #include <algorithm>
-#include <cstring>
 
 namespace {
 
 // IBackend 适配器：把流式 IAsrBackend 驱动到完成。
 // 每帧间协作式检查 cancelled / deadline，命中即取消后端并尽快返回。
 // 负载按后端约定解释：fake = 帧数（Mock），sherpa_onnx = WAV 路径。
-class AsrNodeBackend final : public slotnexus::runtime::IBackend,
-                              public slotnexus::backend::IStreamingAsrBackend {
+class AsrNodeBackend final : public slotnexus::runtime::IBackend {
  public:
+  using EventSink =
+      std::function<void(const slotnexus::backend::BackendEvent&)>;
+
   // asr：后端实例（工厂注入，Fake / Sherpa 可替换）。
   // backend_name：驱动负载约定（fake / sherpa_onnx）。
   // fixture_dir：相对 WAV 路径的解析根（真实负载约定）。
@@ -85,11 +83,6 @@ class AsrNodeBackend final : public slotnexus::runtime::IBackend,
       return {slotnexus::runtime::BackendResult::Code::kOk,
               {{"error", "asr 请求缺少字符串 payload.text"}}};
     }
-    // 音频上行（net 会话真实负载）：会话侧把整段 PCM 编码上行。任何后端
-    // 都先识别前缀（解码失败返回错误文本）；WAV 路径模式仅限节点直连。
-    if (payload.rfind(slotnexus::backend::kAsrPcmPayloadPrefix, 0) == 0) {
-      return run_pcm(payload, deadline, cancelled, events);
-    }
     if (backend_name_ == "sherpa_onnx") {
       return run_wav(payload, deadline, cancelled, events);
     }
@@ -97,7 +90,7 @@ class AsrNodeBackend final : public slotnexus::runtime::IBackend,
   }
 
   bool stream_start(const std::string& request_id,
-                    EventSink sink) override {
+                    EventSink sink) {
     if (!asr_) {
       return false;
     }
@@ -112,7 +105,7 @@ class AsrNodeBackend final : public slotnexus::runtime::IBackend,
   }
 
   bool stream_feed(const std::vector<std::int16_t>& pcm,
-                   bool is_last) override {
+                   bool is_last) {
     if (!asr_) {
       return false;
     }
@@ -120,7 +113,7 @@ class AsrNodeBackend final : public slotnexus::runtime::IBackend,
     return true;
   }
 
-  void stream_cancel() override {
+  void stream_cancel() {
     if (asr_) {
       asr_->cancel();
     }
@@ -175,40 +168,6 @@ class AsrNodeBackend final : public slotnexus::runtime::IBackend,
                        i + 1 == frames);
     }
     return {slotnexus::runtime::BackendResult::Code::kOk, {{"text", std::move(final_text)}}};
-  }
-
-  // 音频上行约定：payload = "pcm64:<base64(16kHz/16bit/单声道 PCM)>"。
-  // 解码后按后端解释：fake 按 20 ms 帧折算帧数（与帧数约定同语义，
-  // 保证 Mock E2E 可测）；sherpa_onnx 直接分块喂真实后端。解码失败返回
-  // 错误文本（与 run_wav 的负载错误约定一致）。
-  slotnexus::runtime::BackendResult run_pcm(
-      const std::string& payload,
-      std::chrono::steady_clock::time_point deadline,
-      const std::atomic<bool>& cancelled,
-      const slotnexus::runtime::EventSink& events) {
-    const std::string b64 = payload.substr(
-        std::strlen(slotnexus::backend::kAsrPcmPayloadPrefix));
-    std::vector<std::uint8_t> bytes;
-    try {
-      bytes = slotnexus::common::base64_decode(b64);
-    } catch (const std::exception& e) {
-      return {slotnexus::runtime::BackendResult::Code::kOk,
-              {{"error", "PCM 负载解码失败: " + std::string(e.what())}}};
-    }
-    if (bytes.empty() || bytes.size() % 2 != 0) {
-      return {slotnexus::runtime::BackendResult::Code::kOk,
-              {{"error", "PCM 负载字节数非法（需 16-bit 采样的偶数长度）"}}};
-    }
-    std::vector<int16_t> samples(bytes.size() / 2);
-    std::memcpy(samples.data(), bytes.data(), bytes.size());
-    if (backend_name_ == "sherpa_onnx") {
-      return feed_samples(samples, deadline, cancelled, events);
-    }
-    const std::size_t frames = std::max<std::size_t>(
-        1, (samples.size() + slotnexus::backend::kFrameSamples - 1) /
-               slotnexus::backend::kFrameSamples);
-    return run_mock_frames(static_cast<int>(frames), deadline, cancelled,
-                           events);
   }
 
   // 真实约定：payload 为 WAV 文件路径（相对路径按 fixture_dir 解析）。
@@ -464,8 +423,7 @@ int main(int argc, char** argv) {
           const std::string request_id =
               msg.value("request_id", std::string());
           auto base = runtime_ptr->find_backend(work_id);
-          auto* stream = dynamic_cast<slotnexus::backend::IStreamingAsrBackend*>(
-              base.get());
+          auto* stream = dynamic_cast<AsrNodeBackend*>(base.get());
           if (stream == nullptr) {
             std::cerr << "asr stream 未知 work_id=" << work_id << std::endl;
             continue;

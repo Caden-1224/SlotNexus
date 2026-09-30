@@ -2,10 +2,9 @@
 // Author: Caden
 //
 // 与 fake_llm_test 相同的协议骨架：收集事件 → 断言 kToken 流 + 末事件
-// kDone（kDone 携带完整输出文本）；固定 prompt 与门禁 smoke 同款
-// （"你好，请用一句话介绍你自己。"，见 modules/voice/tools/upstream-probes/
-// rkllm_smoke.cpp），top_k=1 贪心采样输出确定性，文本与指标（TTFT / tok/s）
-// 记录进证据文档对照。模型路径经环境变量 SLOTNEXUS_RKLLM_MODEL 注入
+// kDone（kDone 携带完整输出文本）；固定 prompt 为
+// "你好，请用一句话介绍你自己。"，top_k=1 贪心采样输出确定性，文本与指标
+// （TTFT / tok/s）记录进证据文档对照。模型路径经环境变量 SLOTNEXUS_RKLLM_MODEL 注入
 // （tests/unit/CMakeLists.txt 由 SLOTNEXUS_RKLLM_MODEL 缓存变量设置）；
 // 未配置时整组跳过（返回 0）。
 // 采样参数与思考模式同样可用环境变量覆盖（见 options_from_env），因此同一
@@ -76,7 +75,7 @@ er::RkllmOptions options_from_env() {
   return o;
 }
 
-// 门禁 smoke 同款固定 prompt（upstream-baseline.md 门禁记录）。
+// 固定 prompt 用于对比 TTFT / tok/s 指标。
 const char* kSmokePrompt = "你好，请用一句话介绍你自己。";
 
 // 收集一次生成会话的全部事件；记录首个事件与结束时的时间戳用于指标。

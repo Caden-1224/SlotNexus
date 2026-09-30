@@ -1,7 +1,7 @@
 // RkllmBackend 实现：封装 RKLLM Runtime C API（librkllmrt.so）。
 // Author: Caden
 //
-// 调用序列与 rkllm_smoke.cpp 一致（行为依据）：
+// 当前使用的 RKLLM 调用序列：
 //   rkllm_createDefaultParam → 采样/运行参数 → rkllm_init →
 //   rkllm_run_async（异步，userdata 传 Impl*，经回调回传）→
 //   generate 泵队列等 FINISH/ERROR → rkllm_destroy。

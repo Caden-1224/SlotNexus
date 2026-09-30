@@ -18,13 +18,19 @@
 #include <string>
 #include <vector>
 
-#include "slotnexus/backend/i_retriever.hpp"
 #include "slotnexus/rag/bm25.hpp"
 #include "slotnexus/rag/knowledge_store.hpp"
 
 namespace slotnexus::rag {
 
 enum class RouteLevel { kL0, kL1, kL2, kL3 };
+
+// 命中知识块：id/text 来自知识条目，score 为 BM25 相关度。
+struct RetrievedChunk {
+  std::string id;
+  std::string text;
+  double score = 0.0;
+};
 
 inline const char* to_string(RouteLevel level) {
   switch (level) {
@@ -56,7 +62,7 @@ struct RouterConfig {
 struct RouteDecision {
   RouteLevel level = RouteLevel::kL3;
   std::string query;                          // 规范化后的查询
-  std::vector<backend::RetrievedChunk> chunks;  // 命中块（得分降序）
+  std::vector<RetrievedChunk> chunks;  // 命中块（得分降序）
   double top1_score = 0.0;                    // Top-1 得分（L1/L2 用）
   std::string answer;                         // L0/L1 直接回答；L2/L3 为空
   std::string prompt;                         // L2/L3 送入 LLM；L0/L1 为空
@@ -77,7 +83,7 @@ class Router {
 
  private:
   // 命中列表 → 统一块结构（id/text 来自知识条目，得分降序）。
-  std::vector<backend::RetrievedChunk> make_chunks(
+  std::vector<RetrievedChunk> make_chunks(
       const std::vector<Bm25Index::Hit>& hits) const;
 
   Bm25Index index_;

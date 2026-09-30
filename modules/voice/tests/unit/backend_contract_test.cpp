@@ -1,8 +1,8 @@
 // Backend 契约单元测试：统一事件 BackendEvent 与音频常量。
 // Author: Caden
 //
-// 五类接口（IAsrBackend / IRetriever / ILlmBackend / ITtsBackend /
-// IAudioSink）为纯虚契约，无实现逻辑可测；本测试锁定事件结构与常量，
+// 四类接口（IAsrBackend / ILlmBackend / ITtsBackend / IAudioSink）
+// 为纯虚契约，无实现逻辑可测；本测试锁定事件结构与常量，
 // 防止契约演进时破坏既有语义。
 #include "slotnexus/backend/backend_event.hpp"
 

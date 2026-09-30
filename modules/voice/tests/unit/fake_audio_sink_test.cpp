@@ -1,6 +1,6 @@
 // FakeAudioSink 单元测试：WAV 文件头、PCM 数据往返与生命周期语义。
 // Author: Caden
-#include "slotnexus/backend/fake/fake_audio_sink.hpp"
+#include "slotnexus/backend/fake/fake_backends.hpp"
 
 #include <cstdint>
 #include <cstdio>

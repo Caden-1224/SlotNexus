@@ -43,12 +43,8 @@ struct NetBackendConfig {
   std::chrono::milliseconds setup_timeout{5000};     // setup RPC 等待
   std::chrono::milliseconds rpc_timeout{30000};      // 单次推理等待上限
   std::chrono::milliseconds subscribe_settle{100};   // 订阅传播等待（回环余量）
-  // ASR 音频上行（真实负载模式）：会话侧把累积 PCM 上行到 asr 节点，
-  // 由节点真实后端（sherpa_onnx）识别；false 时为 Mock 帧数约定
-  // （{"text": "<帧数>"}，与 fake 节点一致）。仅 NetAsrBackend 使用。
-  bool asr_audio_uplink = false;
-  // 流式 ASR 帧上行 PULL 端点（asr_node --stream）；为空时 Aback 保持
-  // 现有整段 RPC 上行。
+  // 流式 ASR 帧上行 PULL 端点（asr_node --stream）。net 模式必填；
+  // 会话侧逐帧 PUSH 到该端点，节点回传 partial/final。
   std::string asr_stream_endpoint;
 };
 

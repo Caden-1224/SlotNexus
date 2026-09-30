@@ -14,6 +14,5 @@ target_include_directories(slotnexus_voice_rag PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(slotnexus_voice_rag PUBLIC
-  slotnexus::voice_backend
   slotnexus::json)
 target_compile_features(slotnexus_voice_rag PUBLIC cxx_std_17)

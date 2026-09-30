@@ -72,7 +72,7 @@ start_real_chain() {
     --events tcp://127.0.0.1:19441 --events-sync tcp://127.0.0.1:19442 \
     --infer-timeout-ms "$TTS_INFER_TIMEOUT_MS"
   start_service session_node "$BUILD_DIR/apps/session_node/session_node" \
-    --listen tcp://127.0.0.1:19310 --backend net --asr-uplink \
+    --listen tcp://127.0.0.1:19310 --backend net \
     --asr-endpoint tcp://127.0.0.1:19201 \
     --asr-events tcp://127.0.0.1:19421 --asr-events-sync tcp://127.0.0.1:19422 \
     --asr-stream-endpoint "$ASR_STREAM" \

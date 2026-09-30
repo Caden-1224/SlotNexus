@@ -43,7 +43,7 @@
 #include <zmq.hpp>
 
 #include "slotnexus/backend/backend_event.hpp"
-#include "slotnexus/backend/fake/fake_llm_backend.hpp"
+#include "slotnexus/backend/fake/fake_backends.hpp"
 #include "slotnexus/backend/i_llm_backend.hpp"
 // 选项与校验不依赖厂商 SDK：默认（无硬件）构建同样编译本文件，因此非法
 // 配置在启动阶段即可快速失败，而不是等到板端 rkllm_init。

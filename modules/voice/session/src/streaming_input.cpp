@@ -11,11 +11,9 @@ StreamingInput::StreamingInput(Config config, backend::IAsrBackend& asr)
     : config_(config), asr_(asr) {}
 
 void StreamingInput::set_callbacks(FinalCallback on_final,
-                                   PartialCallback on_partial,
                                    EndpointCallback on_endpoint,
                                    SpeechStartedCallback on_speech_started) {
   on_final_ = std::move(on_final);
-  on_partial_ = std::move(on_partial);
   on_endpoint_ = std::move(on_endpoint);
   on_speech_started_ = std::move(on_speech_started);
 }
@@ -49,17 +47,6 @@ void StreamingInput::flush() {
   // 输入结束但还没等到静音：用空尾帧收尾，不把截断文本当成正常话语。
   asr_.feed_audio({}, true);
   end_utterance();
-}
-
-void StreamingInput::reset() {
-  if (active_) {
-    asr_.cancel();
-  }
-  pending_samples_.clear();
-  pre_roll_.clear();
-  speech_run_ = 0;
-  silence_run_ = 0;
-  active_ = false;
 }
 
 void StreamingInput::process_frame(const std::vector<int16_t>& frame) {
@@ -125,10 +112,6 @@ void StreamingInput::begin_utterance() {
     if (event.kind == backend::BackendEvent::Kind::kFinal) {
       if (on_final_ && !event.text.empty()) {
         on_final_(event.text);
-      }
-    } else if (event.kind == backend::BackendEvent::Kind::kPartial) {
-      if (on_partial_ && !event.text.empty()) {
-        on_partial_(event.text);
       }
     }
   });

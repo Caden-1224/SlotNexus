@@ -18,9 +18,6 @@
 //  3. 取消传播：inference 在途时 cancel 生效，晚到 token/PCM 全部过滤，
 //     cancel 后节点任务可复用（新请求正常完成，世代隔离）；
 //  4. SIGTERM 四进程全部优雅退出（退出码 0）。
-#include "slotnexus/backend/i_asr_backend.hpp"
-#include "slotnexus/common/base64.hpp"
-#include "slotnexus/common/wav_reader.hpp"
 #include "test_paths.hpp"
 #include "slotnexus/protocol/message_envelope.hpp"
 
@@ -207,6 +204,7 @@ constexpr const char* kAsrEvents = "tcp://127.0.0.1:19281";
 constexpr const char* kLlmEvents = "tcp://127.0.0.1:19282";
 constexpr const char* kTtsEvents = "tcp://127.0.0.1:19283";
 constexpr const char* kAsrSync = "tcp://127.0.0.1:19291";
+constexpr const char* kAsrStream = "tcp://127.0.0.1:19295";
 constexpr const char* kLlmSync = "tcp://127.0.0.1:19292";
 constexpr const char* kTtsSync = "tcp://127.0.0.1:19293";
 
@@ -222,7 +220,8 @@ void test_session_net_e2e(const std::string& e2e_dir, const std::string& root) {
  ChildProc asr_node, llm_node, tts_node, session_node;
  CHECK(asr_node.spawn(apps + "/asr_node/asr_node",
                       {"asr_node", "--listen", kAsrRpc,
-                       "--events", kAsrEvents, "--events-sync", kAsrSync},
+                       "--events", kAsrEvents, "--events-sync", kAsrSync,
+                       "--stream", kAsrStream},
                       log_dir + "/asr_node.log"));
  CHECK(llm_node.spawn(apps + "/llm_node/llm_node",
                       {"llm_node", "--listen", kLlmRpc,
@@ -238,6 +237,7 @@ void test_session_net_e2e(const std::string& e2e_dir, const std::string& root) {
                            "--backend", "net",
                            "--asr-endpoint", kAsrRpc, "--asr-events", kAsrEvents,
                            "--asr-events-sync", kAsrSync,
+                           "--asr-stream-endpoint", kAsrStream,
                            "--llm-endpoint", kLlmRpc, "--llm-events", kLlmEvents,
                            "--llm-events-sync", kLlmSync,
                            "--tts-endpoint", kTtsRpc, "--tts-events", kTtsEvents,
@@ -410,168 +410,6 @@ void test_session_net_e2e(const std::string& e2e_dir, const std::string& root) {
  std::cout << "  [ok] SIGTERM 四进程全部优雅退出（退出码 0）" << std::endl;
 }
 
-// 音频上行（ASR 真实负载）端到端测试：
-//  1. 节点级：直连 asr_node（fake 后端）发 pcm64 负载（voice.wav 的
-//     PCM），断言按帧数约定合成出精确文本（16000 采样 / 320 = 50 帧）
-//     ——证明 base64 解码与帧解释正确；
-//  2. 全链路：session_node --asr-uplink + 三 fake 节点，固定 WAV 链路
-//     完整（会话侧累积 PCM 上行 → 节点识别 → 路由 → TTS 节点合成），
-//     输出 WAV 可验证。
-void test_session_net_uplink_e2e(const std::string& e2e_dir,
-                                const std::string& root) {
- const std::string apps = e2e_dir + "/../../apps";
- const std::string out_dir = e2e_dir + "/session-net-uplink-out";
- std::filesystem::remove_all(out_dir);
- const std::string log_dir = out_dir + "/logs";
- std::filesystem::create_directories(log_dir);
-
- // 测试用独立端口段（与既有用例 192xx 错开）。
- constexpr const char* kUpSessionListen = "tcp://127.0.0.1:19410";
- constexpr const char* kUpAsrRpc = "tcp://127.0.0.1:19471";
- constexpr const char* kUpLlmRpc = "tcp://127.0.0.1:19472";
- constexpr const char* kUpTtsRpc = "tcp://127.0.0.1:19473";
- constexpr const char* kUpAsrEvents = "tcp://127.0.0.1:19481";
- constexpr const char* kUpLlmEvents = "tcp://127.0.0.1:19482";
- constexpr const char* kUpTtsEvents = "tcp://127.0.0.1:19483";
- constexpr const char* kUpAsrSync = "tcp://127.0.0.1:19491";
- constexpr const char* kUpLlmSync = "tcp://127.0.0.1:19492";
- constexpr const char* kUpTtsSync = "tcp://127.0.0.1:19493";
-
- // 固定 WAV 的 PCM → base64 上行负载（voice.wav：16 kHz/16bit/单声道，
- // 16000 采样 = 50 帧）。
- const auto wav =
-     slotnexus::common::WavReader::read(root + "/data/fixtures/voice.wav");
- CHECK(wav.ok);
- const std::uint8_t* raw =
-     reinterpret_cast<const std::uint8_t*>(wav.info.samples.data());
- const std::string b64 = slotnexus::common::base64_encode(
-     raw, wav.info.samples.size() * sizeof(int16_t));
- const std::string pcm_payload =
-     std::string(slotnexus::backend::kAsrPcmPayloadPrefix) + b64;
- constexpr int kFrames = 50;  // 16000 采样 / 320 采样每帧
- std::string expected_asr;
- for (int i = 1; i <= kFrames; ++i) {
-   if (i > 1) {
-     expected_asr += " ";
-   }
-   expected_asr += "第" + std::to_string(i) + "帧(320)";
- }
-
- ChildProc asr_node, llm_node, tts_node, session_node;
- CHECK(asr_node.spawn(apps + "/asr_node/asr_node",
-                      {"asr_node", "--listen", kUpAsrRpc,
-                       "--events", kUpAsrEvents, "--events-sync", kUpAsrSync},
-                      log_dir + "/asr_node.log"));
- CHECK(llm_node.spawn(apps + "/llm_node/llm_node",
-                      {"llm_node", "--listen", kUpLlmRpc,
-                       "--events", kUpLlmEvents, "--events-sync", kUpLlmSync},
-                      log_dir + "/llm_node.log"));
- CHECK(tts_node.spawn(apps + "/tts_node/tts_node",
-                      {"tts_node", "--listen", kUpTtsRpc,
-                       "--output-dir", out_dir + "/tts-node",
-                       "--events", kUpTtsEvents, "--events-sync", kUpTtsSync},
-                      log_dir + "/tts_node.log"));
- CHECK(session_node.spawn(apps + "/session_node/session_node",
-                          {"session_node", "--listen", kUpSessionListen,
-                           "--backend", "net",
-                           "--asr-uplink",
-                           "--asr-endpoint", kUpAsrRpc, "--asr-events", kUpAsrEvents,
-                           "--asr-events-sync", kUpAsrSync,
-                           "--llm-endpoint", kUpLlmRpc, "--llm-events", kUpLlmEvents,
-                           "--llm-events-sync", kUpLlmSync,
-                           "--tts-endpoint", kUpTtsRpc, "--tts-events", kUpTtsEvents,
-                           "--tts-events-sync", kUpTtsSync,
-                           "--config", root + "/config/mock/session.json",
-                           "--output-dir", out_dir,
-                           "--fixture-dir", root + "/data/fixtures",
-                           "--stage-delay-ms", "20"},
-                          log_dir + "/session_node.log"));
- // 确认四进程存活（启动失败立即暴露，避免后续连锁失败难定位）。
- std::this_thread::sleep_for(500ms);
- if (!asr_node.alive() || !llm_node.alive() || !tts_node.alive() ||
-     !session_node.alive()) {
-   std::cerr << "子进程启动失败: asr=" << asr_node.alive()
-             << " llm=" << llm_node.alive() << " tts=" << tts_node.alive()
-             << " session=" << session_node.alive() << std::endl;
-   for (const char* n : {"asr_node", "llm_node", "tts_node", "session_node"}) {
-     std::cerr << "--- " << n << ".log ---" << std::endl;
-     std::cerr << ReadFile(log_dir + "/" + n + ".log") << std::endl;
-   }
- }
-
- zmq::context_t ctx(1);
-
- // 1. 节点级：直连 asr_node（fake），pcm64 负载 → 帧数约定文本精确匹配。
- {
-   ZmqReqClient cn(ctx);
-   cn.connect(kUpAsrRpc);
-   MessageEnvelope reply;
-   CHECK(cn.call(MakeRequest(MessageType::kSetup, "w-up", "s-up"), reply,
-                 5000ms));
-   CHECK(reply.type() == MessageType::kAck);
-   CHECK(cn.call(MakeRequest(MessageType::kInference, "w-up", "r-up-1",
-                             {{"text", pcm_payload}}),
-                 reply, 5000ms));
-   CHECK(reply.type() == MessageType::kAck);
-   CHECK(reply.payload().value("text", std::string()) == expected_asr);
-   CHECK(cn.call(MakeRequest(MessageType::kExit, "w-up", "e-up"), reply,
-                 3000ms));
-   CHECK(reply.type() == MessageType::kAck);
-   std::cout << "  [ok] 节点级 pcm64 负载：base64 解码 + 帧解释精确匹配（"
-             << kFrames << " 帧）" << std::endl;
- }
-
- // 2. 全链路：--asr-uplink 下固定 WAV → 会话累积 PCM 上行 → 节点识别
- //   → 路由 → tts 节点合成 → RIFF 输出。
- {
-   ZmqReqClient ca(ctx);
-   ca.connect(kUpSessionListen);
-   MessageEnvelope reply;
-   CHECK(ca.call(MakeRequest(MessageType::kSetup, "w-1", "s-1"), reply,
-                 5000ms));
-   CHECK(reply.type() == MessageType::kAck);
-   CHECK(ca.call(MakeRequest(MessageType::kInference, "w-1", "r-wav-up",
-                             {{"mode", "wav"}, {"wav", "voice.wav"}}),
-                 reply, 15000ms));
-   CHECK(reply.type() == MessageType::kAck);
-   CHECK(reply.payload().value("status", std::string()) == "ok");
-   CHECK(!reply.payload().value("final_text", std::string()).empty());
-   CHECK(reply.payload().value("pcm_frames", 0) > 0);
-   const std::string wav_path =
-       reply.payload().value("wav_path", std::string());
-   CHECK(!wav_path.empty());
-   std::FILE* f = std::fopen(wav_path.c_str(), "rb");
-   CHECK(f != nullptr);
-   if (f != nullptr) {
-     char hdr[4] = {};
-     const std::size_t got = std::fread(hdr, 1, 4, f);
-     CHECK(got == 4 && std::memcmp(hdr, "RIFF", 4) == 0);
-     std::fclose(f);
-   }
-   CHECK(ca.call(MakeRequest(MessageType::kExit, "w-1", "e-1"), reply,
-                 3000ms));
-   CHECK(reply.type() == MessageType::kAck);
-   std::cout << "  [ok] 全链路 --asr-uplink：固定 WAV 音频上行 → 节点识别"
-             << " → 输出 RIFF" << std::endl;
- }
-
- // 3. SIGTERM 四进程全部优雅退出，退出码 0。
- session_node.kill();
- asr_node.kill();
- llm_node.kill();
- tts_node.kill();
- int code = -1;
- CHECK(session_node.wait_for(kGracefulExitWait, &code));
- CHECK(code == 0);
- CHECK(asr_node.wait_for(kGracefulExitWait, &code));
- CHECK(code == 0);
- CHECK(llm_node.wait_for(kGracefulExitWait, &code));
- CHECK(code == 0);
- CHECK(tts_node.wait_for(kGracefulExitWait, &code));
- CHECK(code == 0);
- std::cout << "  [ok] SIGTERM 四进程全部优雅退出（退出码 0）" << std::endl;
-}
-
 // 节点推理超时参数化验证：--infer-timeout-ms 生效（asr/tts 节点补齐后
 // 与 llm 节点一致）。极短超时 + 大帧数负载 → 节点按参数返回 kError；
 // 默认参数节点的正常完成由既有用例覆盖。
@@ -629,7 +467,6 @@ int main(int argc, char** argv) {
  ::chdir(root.c_str());
  std::cout << "session_net_e2e_test:" << std::endl;
  test_session_net_e2e(e2e_dir, root);
- test_session_net_uplink_e2e(e2e_dir, root);
  test_node_infer_timeout(e2e_dir, root);
 
  if (g_failures == 0) {

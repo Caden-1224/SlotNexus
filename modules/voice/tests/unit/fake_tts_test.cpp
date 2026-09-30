@@ -1,7 +1,7 @@
 // FakeTtsBackend 单元测试：确定性 PCM 块序列、取消语义与会话重置。
 // Author: Caden
 #include "slotnexus/backend/backend_event.hpp"
-#include "slotnexus/backend/fake/fake_tts_backend.hpp"
+#include "slotnexus/backend/fake/fake_backends.hpp"
 
 #include <cstdint>
 #include <iostream>

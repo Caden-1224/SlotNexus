@@ -16,14 +16,9 @@
 //                   [--asr-stream-endpoint <PULL>]（llm/tts 同理）
 //                   [--net-setup-timeout-ms <N>] [--net-rpc-timeout-ms <N>]
 //                   [--record-device <设备>] [--record-ms <N>]
-//                   [--wake-enabled] [--wake-model-dir <目录>]
-//                   [--wake-keywords-file <文件>]
-//                   [--wake-words <逗号分隔词>] [--sleep-words <逗号分隔词>]
-//                   [--wake-follow-up-ms <N>] [--wake-max-session-ms <N>]
-//                   [--wake-max-turns <N>]
 //                   （mode=stream 连续采集：录音设备与无语音兜底上限，默认
-//                   default/3000；需 SLOTNEXUS_HAS_ALSA 构建；wake 常驻
-//                   需要独立 KWS 模型和 ALSA 连续采集）
+//                   default/3000；需 SLOTNEXUS_HAS_ALSA 构建。唤醒配置
+//                   统一从 --config 的 wake 段读取，不再提供逐项 CLI）
 // 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204 /
 //             session 19210；数据面事件 asr 19211 / llm 19212 / tts 19213
 //             （握手 19221/19222/19223，与节点 --events/--events-sync 对应）。
@@ -82,25 +77,6 @@ double parse_double(const char* s, double fallback) {
  }
 }
 
-std::vector<std::string> split_words(const std::string& text) {
- std::vector<std::string> words;
- std::string current;
- for (const char ch : text) {
-   if (ch == ',' || ch == ' ' || ch == '\t') {
-     if (!current.empty()) {
-       words.push_back(std::move(current));
-       current.clear();
-     }
-   } else {
-     current.push_back(ch);
-   }
- }
- if (!current.empty()) {
-   words.push_back(std::move(current));
- }
- return words;
-}
-
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -156,11 +132,6 @@ int main(int argc, char** argv) {
        std::chrono::milliseconds(file_cfg.value("tts_min_duration_ms", 0));
    config.max_run =
        std::chrono::milliseconds(file_cfg.value("max_run_ms", 30000));
-   if (file_cfg.contains("net")) {
-     const auto& net_cfg = file_cfg["net"];
-     config.asr_audio_uplink =
-         net_cfg.value("asr_audio_uplink", config.asr_audio_uplink);
-   }
    if (file_cfg.contains("stream")) {
      const auto& stream_cfg = file_cfg["stream"];
      config.stream_pre_roll_ms =
@@ -202,16 +173,6 @@ int main(int argc, char** argv) {
    }
  } else {
    return 1;
- }
-
- // 布尔开关先独立扫描（无取值参数，避免与成对解析错位）。
- for (int i = 1; i < argc; ++i) {
-   if (std::string(argv[i]) == "--asr-uplink") {
-     config.asr_audio_uplink = true;
-   }
-   if (std::string(argv[i]) == "--wake-enabled") {
-     config.wake_enabled = true;
-   }
  }
 
  // 命令行覆盖。
@@ -268,22 +229,6 @@ int main(int argc, char** argv) {
    } else if (arg == "--record-ms") {
      config.stream_max_duration =
          std::chrono::milliseconds(parse_int(val.c_str(), 3000));
-   } else if (arg == "--wake-model-dir") {
-     config.wake_model_dir = val;
-   } else if (arg == "--wake-keywords-file") {
-     config.wake_keywords_file = val;
-   } else if (arg == "--wake-words") {
-     config.wake_words = split_words(val);
-   } else if (arg == "--sleep-words") {
-     config.sleep_words = split_words(val);
-   } else if (arg == "--wake-follow-up-ms") {
-     config.wake_follow_up_timeout =
-         std::chrono::milliseconds(parse_int(val.c_str(), 12000));
-   } else if (arg == "--wake-max-session-ms") {
-     config.wake_max_session =
-         std::chrono::milliseconds(parse_int(val.c_str(), 120000));
-   } else if (arg == "--wake-max-turns") {
-     config.wake_max_turns = parse_int(val.c_str(), 6);
    } else if (arg == "--backend") {
      config.backend = val;
    } else if (arg == "--asr-endpoint") {
@@ -371,10 +316,8 @@ int main(int argc, char** argv) {
    std::cout << "）" << std::endl;
    if (config.backend == "net") {
      std::cout << "  asr 节点 " << config.asr_ep.rpc << "（事件 "
-               << config.asr_ep.events << (config.asr_audio_uplink
-                                               ? "，音频上行真实负载"
-                                               : "，帧数约定 Mock 负载")
-               << "）" << std::endl;
+               << config.asr_ep.events << "，流式上行 "
+               << config.asr_stream_endpoint << "）" << std::endl;
      std::cout << "  llm 节点 " << config.llm_ep.rpc << "（事件 "
                << config.llm_ep.events << "）" << std::endl;
      std::cout << "  tts 节点 " << config.tts_ep.rpc << "（事件 "

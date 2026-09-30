@@ -33,7 +33,6 @@
 #include "slotnexus/backend/i_tts_backend.hpp"
 #include "slotnexus/common/bounded_queue.hpp"
 #include "slotnexus/rag/router.hpp"
-#include "slotnexus/session/session_state_machine.hpp"
 
 namespace slotnexus::session {
 
@@ -77,16 +76,11 @@ struct PipelineResult {
   bool wav_complete = false;        // WAV 头回填并关闭完成（文件写完）
   bool playback_complete = false;   // ALSA drain 完成（真实播放完）
   std::string sink_error;           // sink 打开/写入/关闭错误
-  bool llm_called = false;
-  rag::RouteDecision decision;  // 路由证据（命中块 id/text/得分）
   std::size_t token_count = 0;        // 本世代实际入列统计前的 token 数
   std::size_t pcm_frames = 0;         // 实际写入 sink 的 PCM 帧数
   std::size_t text_queue_peak = 0;    // 文本队列峰值（验收：≤ 容量）
   std::size_t pcm_queue_peak = 0;     // PCM 队列峰值（验收：≤ 容量）
-  std::size_t dropped_sentences = 0;  // 保留字段：当前背压策略不丢句，恒为 0
-  std::size_t dropped_pcm_frames = 0; // 保留字段：当前背压策略不丢帧，恒为 0
   std::size_t generation = 0;         // 本次运行世代
-  std::vector<std::string> transitions;  // 状态机迁移轨迹
 
   // 阶段耗时（相对 run 开始，steady_clock，未发生为 -1）。
   // WAV 固定输入先给 input_end_ms（喂入结束），ASR final、LLM 首
@@ -127,9 +121,22 @@ class SessionPipeline {
 
   // 状态机快照（taskinfo/日志用）。
   const char* state_name() const;
-  std::vector<std::string> state_trace() const;
 
  private:
+  // 管线阶段状态与合法迁移；轨迹用于 taskinfo/日志。状态与轨迹只在
+  // 互斥量保护下读写，cancel 可与运行线程并发。
+  enum class State {
+    kIdle,
+    kListening,
+    kRouting,
+    kThinking,
+    kSpeaking,
+    kCancelling
+  };
+
+  static const char* StateName(State state);
+  void reset_state();
+
   // 输出 WAV 路径：output_dir/session_<request_id 哈希>.wav（确定性）。
   std::string make_wav_path(const std::string& request_id) const;
 
@@ -140,7 +147,7 @@ class SessionPipeline {
   backend::ITtsBackend& tts_;
   SinkFactory sink_factory_;
 
-  SessionStateMachine state_machine_;  // 状态机（本管线生命周期内持久）
+  std::atomic<State> state_{State::kIdle};
 
   std::atomic<bool> running_{false};
   std::atomic<bool> cancelled_{false};

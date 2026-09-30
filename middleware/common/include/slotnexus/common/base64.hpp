@@ -2,7 +2,7 @@
 // Author: Caden
 //
 // 用于把二进制负载（如 16 kHz int16 PCM）编码进控制面 JSON 信封的
-// text 字段上行（NetAsrBackend 音频上行负载约定）。与 dataplane 事件
+// text 字段传输。与 dataplane 事件
 // 的 PCM base64 编码同表实现（libs/dataplane 内部另有一份，保持独立，
 // 不引入跨库耦合）。解码失败（非法字符）抛 std::invalid_argument。
 #pragma once

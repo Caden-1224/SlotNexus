@@ -2,10 +2,9 @@
 // Author: Caden
 // 转换为模型可消费的 phone/tone/language 张量。
 //
-// 移植自参考工程 nexweave `core/backend/melotts/melotts_text_frontend.cpp`，
-// 仅替换结果类型与命名空间，算法逐行保持一致：最长匹配处理中文词语、拉丁
-// 词表处理英文单词、词典外英文按字母回退、超预算时按 unit 边界切分而不丢失
-// 发音内容。
+// 文本前端在板端已验证的 MeloTTS 音素化行为上实现：最长匹配处理中文词语、
+// 拉丁词表处理英文单词、词典外英文按字母回退、超预算时按 unit 边界切分而
+// 不丢失发音内容。
 #include "melotts_internal.hpp"
 
 #include <algorithm>

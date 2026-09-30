@@ -10,9 +10,9 @@
 #include <cstdlib>
 #include <deque>
 #include <filesystem>
-#include <iostream>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -20,10 +20,7 @@
 
 #include <nlohmann/json.hpp>
 
-#include "slotnexus/backend/fake/fake_audio_sink.hpp"
-#include "slotnexus/backend/fake/fake_asr_backend.hpp"
-#include "slotnexus/backend/fake/fake_llm_backend.hpp"
-#include "slotnexus/backend/fake/fake_tts_backend.hpp"
+#include "slotnexus/backend/fake/fake_backends.hpp"
 #include "slotnexus/backend/i_asr_backend.hpp"
 #include "slotnexus/backend/i_llm_backend.hpp"
 #include "slotnexus/backend/i_tts_backend.hpp"
@@ -35,7 +32,6 @@
 #include "slotnexus/backend/sherpa_onnx/sherpa_kws.hpp"
 #include "slotnexus/backend/sherpa_onnx/sherpa_vad.hpp"
 #endif
-#include "slotnexus/backend/net/net_asr_backend.hpp"
 #include "slotnexus/backend/net/net_asr_stream_backend.hpp"
 #include "slotnexus/backend/net/net_llm_backend.hpp"
 #include "slotnexus/backend/net/net_tts_backend.hpp"
@@ -83,8 +79,8 @@ nlohmann::json ResultStats(const PipelineResult& r) {
           {"pcm_frames", r.pcm_frames},
           {"text_queue_peak", r.text_queue_peak},
           {"pcm_queue_peak", r.pcm_queue_peak},
-          {"dropped_sentences", r.dropped_sentences},
-          {"dropped_pcm_frames", r.dropped_pcm_frames},
+          {"dropped_sentences", 0},
+          {"dropped_pcm_frames", 0},
           {"output_mode", r.output_mode},
           {"audio_delivered", r.audio_delivered},
           {"wav_complete", r.wav_complete},
@@ -100,6 +96,41 @@ nlohmann::json ResultStats(const PipelineResult& r) {
             {"output_complete", r.output_complete_ms},
             {"total", r.total_ms}}}};
 }
+
+
+// 连续采集参数：wake 常驻输入与手动 mode=stream 共用同一套 20 ms 帧配置。
+session::StreamingInput::Config MakeStreamConfig(const SessionNodeConfig& cfg) {
+  session::StreamingInput::Config stream_cfg;
+  stream_cfg.frame_samples =
+      static_cast<std::size_t>(slotnexus::backend::kFrameSamples);
+  const int frame_ms = 20;
+  stream_cfg.pre_roll_frames =
+      std::max<std::size_t>(1, cfg.stream_pre_roll_ms / frame_ms);
+  stream_cfg.min_speech_frames =
+      std::max<std::size_t>(1, cfg.stream_min_speech_ms / frame_ms);
+  stream_cfg.min_silence_frames =
+      std::max<std::size_t>(1, cfg.stream_min_silence_ms / frame_ms);
+  stream_cfg.speech_rms_threshold = cfg.stream_speech_rms_threshold;
+  return stream_cfg;
+}
+
+#ifdef SLOTNEXUS_HAS_SHERTA_ONNX
+// 按配置加载 Silero VAD；失败或未配置时返回空，由 StreamingInput 退回能量阈值。
+std::shared_ptr<slotnexus::backend::sherpa_onnx::SherpaVad> MakeVad(
+    const std::string& model_path) {
+  if (model_path.empty()) {
+    return {};
+  }
+  auto vad = std::make_shared<slotnexus::backend::sherpa_onnx::SherpaVad>(
+      model_path, slotnexus::backend::kSampleRateHz);
+  if (vad->ready()) {
+    common::LogLine("session vad model=" + model_path);
+    return vad;
+  }
+  common::LogLine("session vad unavailable model=" + model_path);
+  return {};
+}
+#endif
 
 }  // namespace
 
@@ -122,7 +153,6 @@ struct SessionNode::Session {
   std::string last_request_id;
 
   // 唤醒期常驻输入：KWS/ASR 在采集线程，SessionPipeline 在单轮处理线程。
-  std::atomic<bool> wake_enabled{false};
   std::atomic<bool> wake_available{false};
   mutable std::mutex wake_meta_mutex;
   std::string wake_error;
@@ -130,7 +160,6 @@ struct SessionNode::Session {
   session::WakeGate wake_gate;
 #ifdef SLOTNEXUS_HAS_SHERTA_ONNX
   std::unique_ptr<slotnexus::backend::sherpa_onnx::SherpaKws> kws;
-  std::shared_ptr<slotnexus::backend::sherpa_onnx::SherpaVad> vad;
 #endif
   std::atomic<bool> input_stop{true};
   std::thread capture_thread;
@@ -138,7 +167,6 @@ struct SessionNode::Session {
   std::mutex turn_mutex;
   std::condition_variable turn_cv;
   std::deque<std::string> pending_turns;
-  std::atomic<int> wake_turns{0};
   int turn_sequence = 0;
 
   std::string WakeError() const {
@@ -155,7 +183,7 @@ struct SessionNode::Session {
     if (stream_input) {
       return wake_gate.state_name();
     }
-    if (wake_enabled.load()) {
+    if (wake_gate.enabled()) {
       return "unavailable";
     }
     return "disabled";
@@ -173,7 +201,6 @@ struct SessionNode::Session {
       std::lock_guard<std::mutex> lock(turn_mutex);
       pending_turns.push_back(std::move(text));
     }
-    wake_turns.fetch_add(1);
     turn_cv.notify_one();
   }
 
@@ -306,7 +333,6 @@ struct SessionNode::Session {
 
   bool StartWakeInput(const SessionNodeConfig& cfg,
                       const std::string& work_id) {
-    wake_enabled.store(cfg.wake_enabled);
     if (!cfg.wake_enabled) {
       return false;
     }
@@ -366,33 +392,13 @@ struct SessionNode::Session {
     return false;
 #endif
 
-    session::StreamingInput::Config stream_cfg;
-    stream_cfg.frame_samples =
-        static_cast<std::size_t>(slotnexus::backend::kFrameSamples);
-    const int frame_ms = 20;
-    stream_cfg.pre_roll_frames =
-        std::max<std::size_t>(1, cfg.stream_pre_roll_ms / frame_ms);
-    stream_cfg.min_speech_frames =
-        std::max<std::size_t>(1, cfg.stream_min_speech_ms / frame_ms);
-    stream_cfg.min_silence_frames =
-        std::max<std::size_t>(1, cfg.stream_min_silence_ms / frame_ms);
-    stream_cfg.speech_rms_threshold = cfg.stream_speech_rms_threshold;
+    session::StreamingInput::Config stream_cfg = MakeStreamConfig(cfg);
 #ifdef SLOTNEXUS_HAS_SHERTA_ONNX
-    if (!cfg.vad_model.empty()) {
-      vad = std::make_shared<slotnexus::backend::sherpa_onnx::SherpaVad>(
-          cfg.vad_model, slotnexus::backend::kSampleRateHz);
-      if (vad->ready()) {
-        common::LogLine("session wake vad model=" + cfg.vad_model);
-        std::shared_ptr<slotnexus::backend::sherpa_onnx::SherpaVad> shared_vad =
-            vad;
-        stream_cfg.speech_detector = [shared_vad](
-                                         const std::vector<std::int16_t>& frame) {
-          return shared_vad->is_speech(frame.data(), frame.size());
-        };
-      } else {
-        vad.reset();
-        common::LogLine("session wake vad unavailable model=" + cfg.vad_model);
-      }
+    if (auto vad = MakeVad(cfg.vad_model)) {
+      stream_cfg.speech_detector = [vad](
+                                       const std::vector<std::int16_t>& frame) {
+        return vad->is_speech(frame.data(), frame.size());
+      };
     }
 #endif
 
@@ -417,7 +423,6 @@ struct SessionNode::Session {
             LogWakeState(work_id, "final");
           }
         },
-        {},
         [this] { ResetKws(); },
         [this] { wake_gate.speech_started(); });
 
@@ -457,16 +462,14 @@ std::unique_ptr<slotnexus::backend::IAsrBackend> MakeAsrBackend(
     zmq::context_t& ctx, const SessionNodeConfig& cfg,
     const std::string& work_id) {
   if (cfg.backend == "net") {
+    if (cfg.asr_stream_endpoint.empty()) {
+      throw std::invalid_argument("net 模式需要 --asr-stream-endpoint");
+    }
     slotnexus::backend::net::NetBackendConfig c{
         cfg.asr_ep.rpc, cfg.asr_ep.events, cfg.asr_ep.sync, work_id,
         cfg.net_setup_timeout, cfg.net_rpc_timeout};
-    c.asr_audio_uplink = cfg.asr_audio_uplink;
     c.asr_stream_endpoint = cfg.asr_stream_endpoint;
-    if (!cfg.asr_stream_endpoint.empty()) {
-      return std::make_unique<slotnexus::backend::net::NetAsrStreamBackend>(
-          ctx, std::move(c));
-    }
-    return std::make_unique<slotnexus::backend::net::NetAsrBackend>(
+    return std::make_unique<slotnexus::backend::net::NetAsrStreamBackend>(
         ctx, std::move(c));
   }
   return std::make_unique<slotnexus::backend::fake::FakeAsrBackend>();
@@ -737,7 +740,7 @@ void SessionNode::handle_request(const std::string& identity,
                        {"asr_setup_ms", s->asr_setup_ms},
                        {"llm_setup_ms", s->llm_setup_ms},
                        {"tts_setup_ms", s->tts_setup_ms},
-                       {"wake_enabled", config_.wake_enabled},
+                       {"wake_enabled", s->wake_gate.enabled()},
                        {"wake_available", s->wake_available.load()},
                        {"wake_state", s->WakeState()},
                        {"wake_error", s->WakeError()}});
@@ -799,34 +802,13 @@ void SessionNode::handle_request(const std::string& identity,
           return;
         }
 
-        session::StreamingInput::Config stream_cfg;
-        stream_cfg.frame_samples = static_cast<std::size_t>(
-            slotnexus::backend::kFrameSamples);
-        const int frame_ms = 20;
-        stream_cfg.pre_roll_frames =
-            std::max<std::size_t>(1, config_.stream_pre_roll_ms / frame_ms);
-        stream_cfg.min_speech_frames =
-            std::max<std::size_t>(1, config_.stream_min_speech_ms / frame_ms);
-        stream_cfg.min_silence_frames =
-            std::max<std::size_t>(1, config_.stream_min_silence_ms / frame_ms);
-        stream_cfg.speech_rms_threshold = config_.stream_speech_rms_threshold;
+        session::StreamingInput::Config stream_cfg = MakeStreamConfig(config_);
 #ifdef SLOTNEXUS_HAS_SHERTA_ONNX
-        std::unique_ptr<slotnexus::backend::sherpa_onnx::SherpaVad> silero_vad;
-        if (!config_.vad_model.empty()) {
-          silero_vad =
-              std::make_unique<slotnexus::backend::sherpa_onnx::SherpaVad>(
-                  config_.vad_model, slotnexus::backend::kSampleRateHz);
-          if (silero_vad->ready()) {
-            common::LogLine("session vad model=" + config_.vad_model);
-            stream_cfg.speech_detector =
-                [&](const std::vector<std::int16_t>& frame) {
-                  return silero_vad->is_speech(frame.data(), frame.size());
-                };
-          } else {
-            silero_vad.reset();
-            std::cerr << "[session] VAD 模型加载失败，退回能量阈值: "
-                      << config_.vad_model << std::endl;
-          }
+        if (auto vad = MakeVad(config_.vad_model)) {
+          stream_cfg.speech_detector = [vad](
+                                           const std::vector<std::int16_t>& frame) {
+            return vad->is_speech(frame.data(), frame.size());
+          };
         }
 #endif
 
@@ -841,7 +823,6 @@ void SessionNode::handle_request(const std::string& identity,
               final_time = std::chrono::steady_clock::now();
               got_final = true;
             },
-            {},
             [&] { endpoint_time = std::chrono::steady_clock::now(); });
 
         const auto capture_start = std::chrono::steady_clock::now();
@@ -985,10 +966,10 @@ void SessionNode::handle_request(const std::string& identity,
       p["state"] = s->pipeline->state_name();
       p["busy"] = s->busy.load();
       p["in_flight"] = last_request_id;
-      p["wake_enabled"] = s->wake_enabled.load();
+      p["wake_enabled"] = s->wake_gate.enabled();
       p["wake_available"] = s->wake_available.load();
       p["wake_state"] = s->WakeState();
-      p["wake_turns"] = s->wake_turns.load();
+      p["wake_turns"] = s->wake_gate.turns();
       p["wake_error"] = s->WakeError();
       ack.set_payload(std::move(p));
       ack.set_finish(true);

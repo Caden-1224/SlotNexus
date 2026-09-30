@@ -1,7 +1,7 @@
 // MeloTTS 真实推理引擎：ONNX Runtime C API 编码器 + RKNN C API 解码器。
 // Author: Caden
 //
-// 移植自参考工程 nexweave `core/backend/melotts/melotts_real_engines.cpp`。
+// 本文件集中封装 ONNX Runtime 与 RKNN 厂商类型，避免泄漏到公共头或节点。
 // 厂商类型（OrtSession / rknn_context）只在本编译单元出现，公共头与节点不可见。
 // 该文件只在 SLOTNEXUS_ENABLE_HARDWARE_BACKENDS=ON 时参与构建。
 #include "melotts_internal.hpp"

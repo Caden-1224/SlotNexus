@@ -3,7 +3,6 @@
 # Author: Caden
 add_library(slotnexus_voice_session STATIC
   src/session_pipeline.cpp
-  src/session_state_machine.cpp
   src/streaming_input.cpp
 )
 add_library(slotnexus::voice_session ALIAS slotnexus_voice_session)

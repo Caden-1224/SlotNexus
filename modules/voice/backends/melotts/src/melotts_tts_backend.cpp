@@ -2,9 +2,8 @@
 // Author: Caden
 // ITtsBackend 状态机。
 //
-// 编排逻辑移植自参考工程 nexweave `core/backend/melotts/melotts_tts.cpp` 与
-// `melotts_adapter_factory.cpp`，并把结果类型换成本后端的 MeloStatus/MeloResult，
-// 把事件出口换成 SlotNexus 的 BackendEvent（kPcm… + kDone）。
+// 编排逻辑为板端已验证的 MeloTTS 推理路径：结果类型使用本后端的
+// MeloStatus/MeloResult，事件出口使用 SlotNexus 的 BackendEvent（kPcm… + kDone）。
 //
 // 线程与资源：不创建后台线程；编码/解码在 synthesize 调用线程同步执行，
 // PCM 回调也在同一线程逐帧发生（首块 PCM 早于整段合成完成即可交付）。

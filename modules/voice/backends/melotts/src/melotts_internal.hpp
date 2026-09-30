@@ -4,9 +4,8 @@
 // 本头文件只出现在 modules/voice/backends/melotts/src/ 内，不进入公共契约；ONNX Runtime 与
 // RKNN 的厂商类型只在 melotts_real_engines.cpp 出现。
 //
-// 移植说明：语义与参考工程 nexweave `core/backend/melotts/` 一致，仅把
-// `domain::Result/OperationResult` 换成本文件的最小结果类型，并去掉与
-// SlotNexus 契约无关的 capability 层。
+// 本文件只提供本后端需要的最小结果类型：加载/推理状态、消息与文本前端、
+// 流式重采样和编解码引擎接口，不引入与 SlotNexus 语音契约无关的层级。
 #pragma once
 
 #include <cstddef>
@@ -20,7 +19,7 @@
 namespace slotnexus::backend::melotts {
 
 // ---------------------------------------------------------------------------
-// 最小结果类型（对应参考工程的 domain::Result / domain::OperationResult）
+// 最小结果类型：表达一次加载/推理操作的状态与消息
 // ---------------------------------------------------------------------------
 
 enum class MeloCode {
