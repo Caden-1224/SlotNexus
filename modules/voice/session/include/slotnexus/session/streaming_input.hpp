@@ -24,6 +24,9 @@ class StreamingInput {
     std::size_t pre_roll_frames = 10;  // 起音前保留 200 ms
     std::size_t min_speech_frames = 1; // 连续多少帧算起音
     std::size_t min_silence_frames = 10;  // 连续多少帧算话语结束
+    // 续说判定：话语内连续人声达到该帧数后回调 on_resume_detected；
+    // 0 表示关闭。20 ms 帧下 96 ms 取整为 5 帧（约 100 ms）。
+    std::size_t resume_frames = 0;
     int speech_rms_threshold = 250;    // 未注入 VAD 时的 16-bit RMS 阈值
     // 可选人声判定（如 Silero VAD）；为空时退回 RMS 能量阈值。
     std::function<bool(const std::vector<int16_t>&)> speech_detector;
@@ -35,6 +38,7 @@ class StreamingInput {
   using FinalCallback = std::function<void(std::string)>;
   using EndpointCallback = std::function<void()>;
   using SpeechStartedCallback = std::function<void()>;
+  using ResumeDetectedCallback = std::function<void()>;
 
   StreamingInput(Config config, backend::IAsrBackend& asr);
 
@@ -44,7 +48,8 @@ class StreamingInput {
   // 设置本轮/后续所有话语的事件回调；可在 feed_audio 前设置一次。
   void set_callbacks(FinalCallback on_final,
                      EndpointCallback on_endpoint = {},
-                     SpeechStartedCallback on_speech_started = {});
+                     SpeechStartedCallback on_speech_started = {},
+                     ResumeDetectedCallback on_resume_detected = {});
 
   // 追加 PCM；内部按 frame_samples 切帧，不要求调用方恰好按帧喂入。
   void feed_audio(const int16_t* samples, std::size_t count);
@@ -63,11 +68,14 @@ class StreamingInput {
   FinalCallback on_final_;
   EndpointCallback on_endpoint_;
   SpeechStartedCallback on_speech_started_;
+  ResumeDetectedCallback on_resume_detected_;
 
   std::vector<int16_t> pending_samples_;
   std::vector<std::vector<int16_t>> pre_roll_;
   std::size_t speech_run_ = 0;
+  std::size_t active_speech_run_ = 0;
   std::size_t silence_run_ = 0;
+  bool resume_reported_ = false;
   bool active_ = false;
 };
 

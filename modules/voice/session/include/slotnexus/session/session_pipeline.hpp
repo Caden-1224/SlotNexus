@@ -20,10 +20,12 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -60,6 +62,12 @@ struct PipelineInput {
   Mode mode = Mode::kText;
   std::string text;      // kText：文本直接进入路由
   std::string wav_path;  // kWav：WAV → ASR → 路由
+  // 首帧 PCM 写入 sink 前的观察窗等待；0 表示立即提交。连续交互预推理
+  // 用它在首段播报前留出续说观察窗口。
+  std::chrono::milliseconds commit_delay{0};
+  // 可选取消标记：run 启动时读取。用于取消在 run 真正开始前已经发生的
+  // 旧预推理；调用方需保证指针在 run 返回前有效。
+  const std::atomic<bool>* cancel_requested = nullptr;
 };
 
 // 运行结果：路由证据、统计与状态机轨迹（验收/证据记录用）。
@@ -119,6 +127,10 @@ class SessionPipeline {
   // 取消在途运行（线程安全）：递增 generation 并传播到三个后端。
   void cancel();
 
+  // 只取消当前输出 generation（LLM/TTS），保留 ASR 继续采集；用于短停顿
+  // 续说时撤销旧预推理。
+  void cancel_generation();
+
   // 状态机快照（taskinfo/日志用）。
   const char* state_name() const;
 
@@ -152,6 +164,10 @@ class SessionPipeline {
   std::atomic<bool> running_{false};
   std::atomic<bool> cancelled_{false};
   std::atomic<std::uint64_t> generation_{0};
+
+  // 首帧输出提交等待；cancel_generation/cancel 会唤醒。
+  std::mutex commit_mutex_;
+  std::condition_variable commit_cv_;
 
   // 本次运行的世代与请求（驱动线程在启动工作线程前写入；
   // 线程创建建立 happens-before，运行期间只读）。

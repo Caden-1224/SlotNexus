@@ -89,9 +89,24 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
   active_generation_ = my_gen;
   active_request_id_ = request_id;
 
+  const auto pre_cancelled = [&] {
+    return input.cancel_requested != nullptr && input.cancel_requested->load();
+  };
+  if (pre_cancelled()) {
+    cancelled_.store(true);
+  }
+
   PipelineResult result;
   result.generation = my_gen;
   result.output_mode = config_.output_mode;
+  if (pre_cancelled()) {
+    result.cancelled = true;
+    result.error = "预推理已在启动前取消";
+    result.total_ms = 0;
+    state_.store(State::kCancelling);
+    state_.store(State::kIdle);
+    return result;
+  }
 
   // deadline.count() <= 0 表示不限时；否则从 run 开始计时。
   const auto start_time = std::chrono::steady_clock::now();
@@ -133,6 +148,18 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
   const auto is_active = [&] {
     return !cancelled_.load() && my_gen == active_generation_ &&
            request_id == active_request_id_;
+  };
+
+  // 首帧 PCM 提交前等待观察窗；窗口结束或取消后返回。等待期间 LLM/TTS
+  // 继续预推理，PCM 由有界队列暂存。
+  const auto commit_deadline = start_time + input.commit_delay;
+  const auto wait_for_commit = [&]() -> bool {
+    if (input.commit_delay.count() <= 0) {
+      return true;
+    }
+    std::unique_lock<std::mutex> lock(commit_mutex_);
+    commit_cv_.wait_until(lock, commit_deadline, [&] { return !is_active(); });
+    return is_active();
   };
 
   // 文本入队：满队列按 queue_push_timeout 重试，不丢弃。取消/超时或下游
@@ -255,6 +282,7 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
     // 写出工作线程：PCM 帧 → sink（取消后滞留帧不写出）。
     sink_thread = std::thread([&] {
       std::vector<std::int16_t> frame;
+      bool committed = input.commit_delay.count() <= 0;
       for (;;) {
         const auto r = pcm_queue.pop_timeout(frame, kPollInterval);
         if (r == QueueResult::kClosed) {
@@ -265,6 +293,12 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
         }
         if (!is_active()) {
           continue;  // 取消后滞留帧：不写入输出
+        }
+        if (!committed) {
+          if (!wait_for_commit()) {
+            continue;  // 观察窗内被取消：旧预推理不提交首帧
+          }
+          committed = true;
         }
         if (sink->write_pcm(frame)) {
           if (result.first_output_ms < 0) {
@@ -498,12 +532,17 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
 }
 
 void SessionPipeline::cancel() {
+  cancel_generation();
+  asr_.cancel();
+}
+
+void SessionPipeline::cancel_generation() {
   // 递增世代：后续（含在途）回调全部失去活动性；新请求获得新世代。
   generation_.fetch_add(1);
   cancelled_.store(true);
-  asr_.cancel();
   llm_.cancel();
   tts_.cancel();
+  commit_cv_.notify_all();
   if (state_.load() != State::kIdle) {
     state_.store(State::kCancelling);
   }

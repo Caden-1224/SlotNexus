@@ -64,7 +64,9 @@ class ContinuousGate {
   }
 
   // ASR final 到轮次调度的入口。answer=true 时 text 是本轮有效输入。
-  Result process(const std::string& asr_text) {
+  // continuation=true 表示这是观察窗内检测到续说后的合并 final：
+  // 它属于上一轮，不应再次增加 turns_。
+  Result process(const std::string& asr_text, bool continuation = false) {
     std::lock_guard<std::mutex> lock(mutex_);
     const std::string text = normalize(asr_text);
     if (!config_.enabled) {
@@ -81,6 +83,16 @@ class ContinuousGate {
       return {false, {}, true, false};
     }
     if (text.empty()) {
+      return {};
+    }
+    if (continuation) {
+      // 续说 final 仍属于当前轮；只要会话没有结束，就允许把状态拉回
+      // Processing 并返回合并文本，但不重复增加 turns_。
+      if (state_ == State::kListening || state_ == State::kFollowUp ||
+          state_ == State::kProcessing) {
+        state_ = State::kProcessing;
+        return {true, text, false, false};
+      }
       return {};
     }
     if (config_.max_turns > 0 && turns_ >= config_.max_turns) {

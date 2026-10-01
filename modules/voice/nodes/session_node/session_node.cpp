@@ -109,6 +109,11 @@ session::StreamingInput::Config MakeStreamConfig(const SessionNodeConfig& cfg) {
       std::max<std::size_t>(1, cfg.stream_min_speech_ms / frame_ms);
   stream_cfg.min_silence_frames =
       std::max<std::size_t>(1, cfg.stream_min_silence_ms / frame_ms);
+  if (cfg.continuous_pause_resume.count() > 0) {
+    const std::size_t resume_frames = static_cast<std::size_t>(
+        (cfg.continuous_pause_resume.count() + frame_ms - 1) / frame_ms);
+    stream_cfg.resume_frames = std::max<std::size_t>(1, resume_frames);
+  }
   stream_cfg.speech_rms_threshold = cfg.stream_speech_rms_threshold;
   return stream_cfg;
 }
@@ -163,8 +168,35 @@ struct SessionNode::Session {
   std::thread turn_thread;
   std::mutex turn_mutex;
   std::condition_variable turn_cv;
-  std::deque<std::string> pending_turns;
-  int turn_sequence = 0;
+
+  // 一次待执行的连续轮次。request_id 保持逻辑轮次稳定，run_id 用于识别
+  // 被续说取消的旧预推理；cancel_flag 覆盖“取消早于 run 启动”的窗口。
+  struct PendingTurn {
+    std::string text;
+    std::string request_id;
+    std::chrono::milliseconds commit_delay{0};
+    std::uint64_t run_id = 0;
+    std::shared_ptr<std::atomic<bool>> cancel_flag;
+  };
+
+  // 当前预推理/观察窗状态。text 是该逻辑轮次的最新合并文本。
+  struct Speculation {
+    bool active = false;
+    bool merge_pending = false;
+    bool resume_candidate = false;
+    std::string text;
+    std::string request_id;
+    std::uint64_t run_id = 0;
+    std::shared_ptr<std::atomic<bool>> cancel_flag;
+    std::chrono::steady_clock::time_point deadline{};
+  };
+
+  std::deque<PendingTurn> pending_turns;
+  std::mutex speculation_mutex_;
+  Speculation speculation_;
+  std::uint64_t next_run_id_ = 0;
+  int turn_sequence_ = 0;
+  std::chrono::milliseconds pause_observation_{500};
 
   std::string ContinuousError() const {
     std::lock_guard<std::mutex> lock(continuous_meta_mutex);
@@ -190,15 +222,164 @@ struct SessionNode::Session {
     return stream_input != nullptr && !input_stop.load();
   }
 
-  void EnqueueTurn(std::string text) {
-    if (text.empty() || input_stop.load()) {
+  void EnqueueTurn(PendingTurn turn) {
+    if (turn.text.empty() || input_stop.load()) {
       return;
     }
     {
       std::lock_guard<std::mutex> lock(turn_mutex);
-      pending_turns.push_back(std::move(text));
+      pending_turns.push_back(std::move(turn));
     }
     turn_cv.notify_one();
+  }
+
+  void OnContinuousFinal(std::string text, const std::string& work_id) {
+    if (input_stop.load() || text.empty()) {
+      return;
+    }
+
+    std::string gate_text;
+    bool continuation = false;
+    bool cancel_previous = false;
+    bool start_new_turn = false;
+    {
+      std::lock_guard<std::mutex> lock(speculation_mutex_);
+      if (speculation_.merge_pending) {
+        continuation = true;
+        gate_text = speculation_.text.empty()
+                        ? std::move(text)
+                        : speculation_.text + "，" + text;
+        speculation_.merge_pending = false;
+      } else {
+        gate_text = std::move(text);
+        if (speculation_.active) {
+          const bool within_window =
+              std::chrono::steady_clock::now() < speculation_.deadline;
+          if (within_window) {
+            // 观察窗内没有达到续说阈值、却先来了新的 final：按
+            // latest-only 撤销旧预推理，避免旧回答和新 final 同时成立。
+            cancel_previous = true;
+            if (speculation_.cancel_flag) {
+              speculation_.cancel_flag->store(true);
+            }
+            speculation_.active = false;
+          } else {
+            // 观察窗已经结束；旧 run 可能仍在写出，新 final 应按下一轮
+            // 接纳，先把 ContinuousGate 从 Processing 拉回 Listening。
+            start_new_turn = true;
+          }
+        }
+      }
+    }
+    if (cancel_previous) {
+      // 起音时若仍在观察窗内，OnContinuousSpeechStarted 没有调用
+      // speech_started；这里需要为紧接着的新 final 打开 Listening。
+      continuous_gate.speech_started();
+      common::LogLine("session continuous speculative cancel work_id=" +
+                      work_id + " reason=latest-final");
+      if (pipeline) {
+        pipeline->cancel_generation();
+      }
+    } else if (start_new_turn) {
+      continuous_gate.speech_started();
+    }
+
+    const auto result = continuous_gate.process(gate_text, continuation);
+    if (!result.answer) {
+      if (result.slept || result.expired) {
+        LogContinuousState(work_id, "final");
+      }
+      return;
+    }
+
+    PendingTurn turn;
+    turn.text = result.text;
+    turn.commit_delay = pause_observation_;
+    turn.cancel_flag = std::make_shared<std::atomic<bool>>(false);
+    {
+      std::lock_guard<std::mutex> lock(speculation_mutex_);
+      turn.request_id = continuation && !speculation_.request_id.empty()
+                            ? speculation_.request_id
+                            : "continuous-" + std::to_string(++turn_sequence_);
+      turn.run_id = ++next_run_id_;
+      speculation_.active = true;
+      speculation_.merge_pending = false;
+      speculation_.resume_candidate = false;
+      speculation_.text = turn.text;
+      speculation_.request_id = turn.request_id;
+      speculation_.run_id = turn.run_id;
+      speculation_.cancel_flag = turn.cancel_flag;
+      speculation_.deadline =
+          std::chrono::steady_clock::now() + pause_observation_;
+    }
+    common::LogLine(
+        "session continuous speculative request_id=" + turn.request_id +
+        " work_id=" + work_id + " run_id=" + std::to_string(turn.run_id) +
+        " observation_ms=" + std::to_string(turn.commit_delay.count()) +
+        " merged=" + (continuation ? std::string("1") : std::string("0")) +
+        " text=" + turn.text);
+    EnqueueTurn(std::move(turn));
+  }
+
+  void OnContinuousSpeechStarted(const std::string& work_id) {
+    bool candidate = false;
+    {
+      std::lock_guard<std::mutex> lock(speculation_mutex_);
+      if (speculation_.active &&
+          std::chrono::steady_clock::now() < speculation_.deadline) {
+        speculation_.resume_candidate = true;
+        candidate = true;
+      }
+    }
+    // 观察窗内的起音先不改变轮次状态；若 96 ms 内中断，仍按一轮提交，
+    // 若达到阈值由 resume 回调显式打开 Listening 并撤销旧预推理。
+    if (!candidate) {
+      continuous_gate.speech_started();
+    }
+    common::LogLine("session continuous speech_started work_id=" + work_id +
+                    " resume_candidate=" +
+                    (candidate ? std::string("1") : std::string("0")));
+  }
+
+  void OnContinuousResumeDetected(const std::string& work_id) {
+    std::shared_ptr<std::atomic<bool>> cancel_flag;
+    bool cancel = false;
+    {
+      std::lock_guard<std::mutex> lock(speculation_mutex_);
+      if (speculation_.active && speculation_.resume_candidate) {
+        speculation_.merge_pending = true;
+        speculation_.active = false;
+        speculation_.resume_candidate = false;
+        cancel_flag = speculation_.cancel_flag;
+        if (cancel_flag) {
+          cancel_flag->store(true);
+        }
+        cancel = true;
+      }
+    }
+    if (!cancel) {
+      return;
+    }
+    // 续说 final 会走 continuation 路径；先把 ContinuousGate 从
+    // Processing 拉回 Listening，保证合并 final 能被接纳。
+    continuous_gate.speech_started();
+    common::LogLine("session continuous pause resume work_id=" + work_id +
+                    " action=cancel-speculation");
+    if (pipeline) {
+      pipeline->cancel_generation();
+    }
+  }
+
+  bool OnContinuousRunFinished(std::uint64_t run_id) {
+    std::lock_guard<std::mutex> lock(speculation_mutex_);
+    // 旧 run 被续说/最新 final 取代后，新预推理已占用 gate 状态；
+    // 它不能再调用 finish_turn()，否则会把新轮的 Processing 误切到 FollowUp。
+    if (speculation_.run_id != run_id || speculation_.merge_pending) {
+      return false;
+    }
+    speculation_.active = false;
+    speculation_.resume_candidate = false;
+    return true;
   }
 
   void LogContinuousState(const std::string& work_id, const char* event) {
@@ -251,7 +432,7 @@ struct SessionNode::Session {
 
   void TurnLoop(SessionNodeConfig cfg, std::string work_id) {
     while (!input_stop.load()) {
-      std::string text;
+      PendingTurn turn;
       {
         std::unique_lock<std::mutex> lock(turn_mutex);
         turn_cv.wait(lock, [this] {
@@ -260,7 +441,7 @@ struct SessionNode::Session {
         if (input_stop.load() && pending_turns.empty()) {
           break;
         }
-        text = std::move(pending_turns.front());
+        turn = std::move(pending_turns.front());
         pending_turns.pop_front();
       }
 
@@ -273,26 +454,40 @@ struct SessionNode::Session {
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
       }
-      if (!acquired) {
+      if (!acquired || input_stop.load()) {
+        busy.store(false);
         break;
+      }
+      if (turn.cancel_flag && turn.cancel_flag->load()) {
+        common::LogLine("session continuous turn skip stale request_id=" +
+                        turn.request_id + " work_id=" + work_id +
+                        " run_id=" + std::to_string(turn.run_id));
+        busy.store(false);
+        continue;
       }
 
       session::PipelineInput input;
       input.mode = session::PipelineInput::Mode::kText;
-      input.text = text;
-      const std::string request_id =
-          "continuous-" + std::to_string(++turn_sequence);
-      common::LogLine("session continuous turn request_id=" + request_id +
-                      " work_id=" + work_id + " text=" + text);
+      input.text = turn.text;
+      input.commit_delay = turn.commit_delay;
+      input.cancel_requested = turn.cancel_flag.get();
+      common::LogLine(
+          "session continuous turn request_id=" + turn.request_id +
+          " work_id=" + work_id + " run_id=" + std::to_string(turn.run_id) +
+          " observation_ms=" + std::to_string(turn.commit_delay.count()) +
+          " text=" + turn.text);
       const session::PipelineResult result =
-          pipeline->run(input, request_id, cfg.max_run);
+          pipeline->run(input, turn.request_id, cfg.max_run);
       {
         std::lock_guard<std::mutex> lock(last_mutex);
         last_result = result;
-        last_request_id = request_id;
+        last_request_id = turn.request_id;
       }
       busy.store(false);
-      continuous_gate.finish_turn();
+      const bool finish_turn = OnContinuousRunFinished(turn.run_id);
+      if (finish_turn) {
+        continuous_gate.finish_turn();
+      }
       std::string answer = result.final_text;
       for (char& ch : answer) {
         if (ch == '\r' || ch == '\n') {
@@ -300,8 +495,9 @@ struct SessionNode::Session {
         }
       }
       common::LogLine(
-          "session continuous done request_id=" + request_id +
+          "session continuous done request_id=" + turn.request_id +
           " work_id=" + work_id +
+          " run_id=" + std::to_string(turn.run_id) +
           " status=" + (result.ok ? std::string("ok")
                                   : (result.cancelled ? std::string("cancelled")
                                                       : std::string("error"))) +
@@ -372,25 +568,21 @@ struct SessionNode::Session {
     gate_cfg.max_turns = cfg.continuous_max_turns;
     continuous_gate.configure(gate_cfg);
     continuous_gate.start();
+    pause_observation_ = cfg.continuous_pause_observation;
 
     stream_input = std::make_unique<session::StreamingInput>(stream_cfg, *asr);
     stream_input->set_callbacks(
         [this, work_id](std::string text) {
-          const session::ContinuousGate::Result result =
-              continuous_gate.process(text);
-          if (result.answer) {
-            EnqueueTurn(std::move(result.text));
-          }
-          if (result.slept || result.expired) {
-            LogContinuousState(work_id, "final");
-          }
+          OnContinuousFinal(std::move(text), work_id);
         },
         [this, work_id] {
           common::LogLine("session continuous endpoint work_id=" + work_id);
         },
         [this, work_id] {
-          common::LogLine("session continuous speech_started work_id=" + work_id);
-          continuous_gate.speech_started();
+          OnContinuousSpeechStarted(work_id);
+        },
+        [this, work_id] {
+          OnContinuousResumeDetected(work_id);
         });
 
     input_stop.store(false);
@@ -415,7 +607,11 @@ struct SessionNode::Session {
     common::LogLine(
         "session continuous started work_id=" + work_id +
         " device=" + cfg.record_device +
-        " max_turns=" + std::to_string(cfg.continuous_max_turns));
+        " max_turns=" + std::to_string(cfg.continuous_max_turns) +
+        " pause_observation_ms=" +
+        std::to_string(cfg.continuous_pause_observation.count()) +
+        " pause_resume_ms=" +
+        std::to_string(cfg.continuous_pause_resume.count()));
     return true;
   }
 };

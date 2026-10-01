@@ -12,10 +12,12 @@ StreamingInput::StreamingInput(Config config, backend::IAsrBackend& asr)
 
 void StreamingInput::set_callbacks(FinalCallback on_final,
                                    EndpointCallback on_endpoint,
-                                   SpeechStartedCallback on_speech_started) {
+                                   SpeechStartedCallback on_speech_started,
+                                   ResumeDetectedCallback on_resume_detected) {
   on_final_ = std::move(on_final);
   on_endpoint_ = std::move(on_endpoint);
   on_speech_started_ = std::move(on_speech_started);
+  on_resume_detected_ = std::move(on_resume_detected);
 }
 
 void StreamingInput::feed_audio(const int16_t* samples, std::size_t count) {
@@ -69,10 +71,19 @@ void StreamingInput::process_frame(const std::vector<int16_t>& frame) {
 
   if (speech) {
     silence_run_ = 0;
+    ++active_speech_run_;
+    if (!resume_reported_ && config_.resume_frames > 0 &&
+        active_speech_run_ >= config_.resume_frames) {
+      resume_reported_ = true;
+      if (on_resume_detected_) {
+        on_resume_detected_();
+      }
+    }
     asr_.feed_audio(frame, false);
     return;
   }
 
+  active_speech_run_ = 0;
   ++silence_run_;
   if (silence_run_ >= config_.min_silence_frames) {
     if (on_endpoint_) {
@@ -102,11 +113,23 @@ bool StreamingInput::is_speech(const std::vector<int16_t>& frame) const {
 }
 
 void StreamingInput::begin_utterance() {
+  // 起音判定的这几帧也是连续人声的一部分；保留首帧计数，避免续说阈值
+  // 因 begin_utterance 重置而晚一帧。
+  const std::size_t start_frames = speech_run_;
   active_ = true;
   speech_run_ = 0;
+  active_speech_run_ = start_frames;
   silence_run_ = 0;
+  resume_reported_ = false;
   if (on_speech_started_) {
     on_speech_started_();
+  }
+  if (!resume_reported_ && config_.resume_frames > 0 &&
+      active_speech_run_ >= config_.resume_frames) {
+    resume_reported_ = true;
+    if (on_resume_detected_) {
+      on_resume_detected_();
+    }
   }
   asr_.set_event_callback([this](const backend::BackendEvent& event) {
     if (event.kind == backend::BackendEvent::Kind::kFinal) {
@@ -128,7 +151,9 @@ void StreamingInput::end_utterance() {
   }
   pre_roll_.clear();
   speech_run_ = 0;
+  active_speech_run_ = 0;
   silence_run_ = 0;
+  resume_reported_ = false;
   active_ = false;
 }
 

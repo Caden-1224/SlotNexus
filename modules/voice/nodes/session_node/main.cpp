@@ -16,6 +16,7 @@
 //                   [--asr-stream-endpoint <PULL>]（llm/tts 同理）
 //                   [--net-setup-timeout-ms <N>] [--net-rpc-timeout-ms <N>]
 //                   [--record-device <设备>] [--record-ms <N>]
+//                   [--pause-observation-ms <N>] [--pause-resume-ms <N>]
 //                   （mode=stream 单轮连续采集：录音设备与无语音兜底上限，
 //                   默认 default/3000；需 SLOTNEXUS_HAS_ALSA 构建。连续
 //                   交互配置统一从 --config 的 continuous 段读取）
@@ -161,6 +162,14 @@ int main(int argc, char** argv) {
              static_cast<int>(config.continuous_max_session.count())));
      config.continuous_max_turns =
          continuous_cfg.value("max_turns", config.continuous_max_turns);
+     config.continuous_pause_observation = std::chrono::milliseconds(
+         continuous_cfg.value(
+             "pause_observation_ms",
+             static_cast<int>(config.continuous_pause_observation.count())));
+     config.continuous_pause_resume = std::chrono::milliseconds(
+         continuous_cfg.value(
+             "pause_resume_ms",
+             static_cast<int>(config.continuous_pause_resume.count())));
    }
  } else {
    return 1;
@@ -220,6 +229,14 @@ int main(int argc, char** argv) {
    } else if (arg == "--record-ms") {
      config.stream_max_duration =
          std::chrono::milliseconds(parse_int(val.c_str(), 3000));
+   } else if (arg == "--pause-observation-ms") {
+     config.continuous_pause_observation = std::chrono::milliseconds(
+         parse_int(val.c_str(),
+                   static_cast<int>(config.continuous_pause_observation.count())));
+   } else if (arg == "--pause-resume-ms") {
+     config.continuous_pause_resume = std::chrono::milliseconds(
+         parse_int(val.c_str(),
+                   static_cast<int>(config.continuous_pause_resume.count())));
    } else if (arg == "--backend") {
      config.backend = val;
    } else if (arg == "--asr-endpoint") {

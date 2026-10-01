@@ -70,6 +70,9 @@ NetBackendSession::~NetBackendSession() {
 }
 
 void NetBackendSession::set_event_callback(EventCallback cb) {
+  // 每次推理开始前调用：清理上一轮 cancel 标志，否则被取消后端在下次
+  // 预推理合并/续说重跑时会直接空返回。
+  cancelled_.store(false);
   cb_ = std::move(cb);
 }
 

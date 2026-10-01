@@ -112,6 +112,48 @@ void test_long_pause_splits_into_two_utterances() {
   std::cout << "  [ok] 长静音：两段独立话语分别收尾" << std::endl;
 }
 
+void test_resume_detected_after_continuous_speech() {
+  RecordingAsr asr;
+  slotnexus::session::StreamingInput::Config config;
+  config.pre_roll_frames = 1;
+  config.min_speech_frames = 1;
+  config.min_silence_frames = 3;
+  config.resume_frames = 3;  // 60 ms 连续人声
+  slotnexus::session::StreamingInput input(config, asr);
+  std::vector<std::string> finals;
+  int speech_started = 0;
+  int resume_detected = 0;
+  input.set_callbacks(
+      [&](std::string text) { finals.push_back(std::move(text)); },
+      [&] {},
+      [&] { ++speech_started; },
+      [&] { ++resume_detected; });
+
+  for (int i = 0; i < 2; ++i) {
+    input.feed_audio(make_frame(1000).data(), 320);
+  }
+  for (int i = 0; i < 3; ++i) {
+    input.feed_audio(make_frame(0).data(), 320);
+  }
+  CHECK(finals.size() == 1);
+
+  speech_started = 0;
+  resume_detected = 0;
+  for (int i = 0; i < 2; ++i) {
+    input.feed_audio(make_frame(1000).data(), 320);
+  }
+  CHECK(speech_started == 1);
+  CHECK(resume_detected == 0);  // 未达到续说阈值
+  input.feed_audio(make_frame(1000).data(), 320);
+  CHECK(resume_detected == 1);  // 第 3 帧达到阈值
+
+  // 阈值只报告一次；同一 active 话语不会重复触发。
+  input.feed_audio(make_frame(1000).data(), 320);
+  CHECK(resume_detected == 1);
+  std::cout << "  [ok] 续说判定：连续人声达到阈值后仅回调一次"
+            << std::endl;
+}
+
 void test_flush_ends_active_utterance() {
   RecordingAsr asr;
   slotnexus::session::StreamingInput::Config config;
@@ -165,6 +207,7 @@ int main() {
   test_long_pause_splits_into_two_utterances();
   test_flush_ends_active_utterance();
   test_pre_roll_keeps_speech_start();
+  test_resume_detected_after_continuous_speech();
 
   if (g_failures == 0) {
     std::cout << "streaming_input_test 全部通过" << std::endl;

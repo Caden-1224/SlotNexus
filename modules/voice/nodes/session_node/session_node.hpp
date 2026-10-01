@@ -86,6 +86,10 @@ struct SessionNodeConfig {
  std::chrono::milliseconds continuous_follow_up_timeout{60000};
  std::chrono::milliseconds continuous_max_session{300000};
  int continuous_max_turns = 6;
+ // 短停顿续说：端点 final 后先预推理，首帧播报前等待观察窗；窗口内
+ // 持续人声达到 resume 阈值时撤销旧预推理并合并相邻 ASR 文本。
+ std::chrono::milliseconds continuous_pause_observation{500};
+ std::chrono::milliseconds continuous_pause_resume{96};
 };
 
 class SessionNode {

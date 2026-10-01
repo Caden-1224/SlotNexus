@@ -27,6 +27,8 @@
     "sleep_words": ["退下"],
     "follow_up_timeout_ms": 60000,
     "max_session_ms": 300000,
-    "max_turns": 6
+    "max_turns": 6,
+    "pause_observation_ms": 500,
+    "pause_resume_ms": 96
   }
 }

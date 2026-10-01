@@ -168,6 +168,36 @@ void TestStartAndTwoIndependentTurns() {
   CHECK(input.gate_.turns() == 2);
 }
 
+void TestContinuationKeepsOneTurn() {
+  ContinuousGate gate(MakeGateConfig());
+  CHECK(gate.start());
+
+  const auto first = gate.process("第一段");
+  CHECK(first.answer);
+  CHECK(first.text == "第一段");
+  CHECK(gate.turns() == 1);
+  CHECK(gate.state() == ContinuousGate::State::kProcessing);
+
+  // 续说起音先把 Processing 切回 Listening；合并 final 回到 Processing，
+  // 但不增加 turns_。
+  gate.speech_started();
+  CHECK(gate.state() == ContinuousGate::State::kListening);
+  const auto merged = gate.process("第一段，第二段", true);
+  CHECK(merged.answer);
+  CHECK(merged.text == "第一段，第二段");
+  CHECK(gate.turns() == 1);
+  CHECK(gate.state() == ContinuousGate::State::kProcessing);
+
+  gate.finish_turn();
+  CHECK(gate.state() == ContinuousGate::State::kFollowUp);
+
+  const auto next = gate.process("独立第二问");
+  CHECK(next.answer);
+  CHECK(next.text == "独立第二问");
+  CHECK(gate.turns() == 2);
+  CHECK(gate.state() == ContinuousGate::State::kProcessing);
+}
+
 void TestSleepWordAndRestart() {
   ScriptedAsrBackend asr;
   ContinuousInputHarness input(asr, MakeGateConfig());
@@ -246,6 +276,7 @@ int main() {
   TestGateDisabledAnswersAll();
   TestStartAndSleepWord();
   TestStartAndTwoIndependentTurns();
+  TestContinuationKeepsOneTurn();
   TestSleepWordAndRestart();
   TestFollowUpTimeoutAndMaxTurns();
   TestMaxSessionTimeout();

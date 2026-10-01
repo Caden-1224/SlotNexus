@@ -310,6 +310,17 @@ class CountingSink final : public back::IAudioSink {
   }
 };
 
+// 只统计 cancel 调用的 ASR 后端：文本模式下不会被 run 使用，用于验证
+// cancel_generation() 不会误取消正在继续采集的 ASR。
+class CountingCancelAsr final : public back::IAsrBackend {
+ public:
+  std::atomic<int> cancels{0};
+
+  void set_event_callback(back::EventCallback) override {}
+  void feed_audio(const std::vector<std::int16_t>&, bool) override {}
+  void cancel() override { ++cancels; }
+};
+
 // 写入测试 WAV（16kHz 单声道 16-bit，N 个采样）。
 bool write_test_wav(const std::string& path, std::uint32_t sample_rate,
                     std::size_t samples) {
@@ -690,6 +701,91 @@ void test_min_tts_duration_padding() {
             << std::endl;
 }
 
+// ---------- 观察窗提交与续说取消 ----------
+
+void test_observation_delay_before_first_output() {
+  Fixture f;
+  CountingCancelAsr asr;
+  fake::FakeLlmBackend llm;
+  fake::FakeTtsBackend tts;
+  auto sink_factory = [](const std::string&) {
+    return std::make_unique<CountingSink>();
+  };
+  sess::SessionPipeline pipe(base_config(f), f.router, asr, llm, tts,
+                             sink_factory);
+
+  sess::PipelineInput input{sess::PipelineInput::Mode::kText, "the cat", ""};
+  input.commit_delay = 200ms;
+  const auto r = pipe.run(input, "req-observation", 0ms);
+
+  CHECK(r.ok);
+  CHECK(r.pcm_frames > 0);
+  CHECK(r.first_output_ms >= 200);  // L1 直答已生成，但首帧等观察窗后才提交
+  CHECK(asr.cancels.load() == 0);
+  std::cout << "  [ok] 观察窗：预推理先跑，首帧提交不早于配置窗口"
+            << std::endl;
+}
+
+void test_cancel_requested_before_run() {
+  Fixture f;
+  CountingCancelAsr asr;
+  fake::FakeLlmBackend llm;
+  fake::FakeTtsBackend tts;
+  auto sink_factory = [](const std::string&) {
+    return std::make_unique<CountingSink>();
+  };
+  sess::SessionPipeline pipe(base_config(f), f.router, asr, llm, tts,
+                             sink_factory);
+
+  std::atomic<bool> cancel_requested{true};
+  sess::PipelineInput input{sess::PipelineInput::Mode::kText, "the cat", ""};
+  input.commit_delay = 500ms;
+  input.cancel_requested = &cancel_requested;
+  const auto r = pipe.run(input, "req-pre-cancel", 0ms);
+
+  CHECK(r.cancelled);
+  CHECK(r.pcm_frames == 0);
+  CHECK(asr.cancels.load() == 0);
+  std::cout << "  [ok] 启动前取消：旧预推理不进入输出，ASR 未被取消"
+            << std::endl;
+}
+
+void test_cancel_generation_during_observation() {
+  Fixture f;
+  CountingCancelAsr asr;
+  fake::FakeLlmBackend llm;
+  fake::FakeTtsBackend tts;
+  auto sink_factory = [](const std::string&) {
+    return std::make_unique<CountingSink>();
+  };
+  sess::SessionPipeline pipe(base_config(f), f.router, asr, llm, tts,
+                             sink_factory);
+
+  sess::PipelineInput input{sess::PipelineInput::Mode::kText, "the cat", ""};
+  input.commit_delay = 500ms;
+  sess::PipelineResult r;
+  std::thread runner([&] {
+    r = pipe.run(input, "req-observation-cancel", 0ms);
+  });
+  std::this_thread::sleep_for(50ms);
+  pipe.cancel_generation();
+  runner.join();
+
+  CHECK(r.cancelled);
+  CHECK(r.pcm_frames == 0);  // 旧预推理未提交首帧
+  CHECK(asr.cancels.load() == 0);  // ASR 流保留给续说
+
+  // 取消后仍可用同一 ASR 后端完整提交下一轮。
+  input.commit_delay = 0ms;
+  const auto r2 = pipe.run(input, "req-observation-after", 0ms);
+  CHECK(r2.ok);
+  CHECK(r2.pcm_frames > 0);
+  CHECK(asr.cancels.load() == 0);
+  std::cout << "  [ok] 续说取消：旧 generation 首帧 0 提交，ASR 未被取消"
+            << std::endl;
+}
+
+// ---------- 超时与单流 ----------
 // ---------- 超时与单流 ----------
 
 void test_deadline_timeout() {
@@ -746,6 +842,9 @@ int main() {
   test_tts_overlaps_llm();
   test_cancel_mid_llm_late_tokens();
   test_cancel_mid_tts_late_pcm();
+  test_observation_delay_before_first_output();
+  test_cancel_requested_before_run();
+  test_cancel_generation_during_observation();
   test_min_tts_duration_padding();
   test_deadline_timeout();
   test_single_flow_busy();
