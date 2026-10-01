@@ -34,7 +34,7 @@
 #include "slotnexus/rag/knowledge_store.hpp"
 #include "slotnexus/rag/router.hpp"
 #include "slotnexus/runtime/ibackend.hpp"
-#include "runtime_node.hpp"
+#include "slotnexus/services/runtime_node.hpp"
 
 namespace {
 

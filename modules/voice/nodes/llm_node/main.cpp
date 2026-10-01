@@ -53,7 +53,7 @@
 #endif
 #include "slotnexus/runtime/ibackend.hpp"
 #include "slotnexus/voice/event_adapter.hpp"
-#include "runtime_node.hpp"
+#include "slotnexus/services/runtime_node.hpp"
 
 namespace {
 
