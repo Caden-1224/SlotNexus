@@ -43,6 +43,7 @@ struct PipelineConfig {
   std::size_t text_queue_capacity = 8;       // 待合成句子队列容量
   std::size_t pcm_queue_capacity = 32;       // 待写出 PCM 帧队列容量
   std::size_t text_chunk_max_bytes = 60;     // 单个待合成片段上限；0 = 只按标点切
+  std::size_t text_first_chunk_max_bytes = 42;  // 首片软上限；0 = 与普通上限相同
   std::chrono::milliseconds queue_push_timeout{50};  // 满队列重试间隔，不丢弃
   std::chrono::milliseconds stage_delay{0};  // 测试仪表：阶段人工延时（模拟流式）
   std::string output_dir = "session-out";    // WAV 输出目录

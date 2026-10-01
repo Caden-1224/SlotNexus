@@ -20,6 +20,7 @@
   "output_dir": "session-out",
   "stage_delay_ms": 0,
   "text_chunk_max_bytes": 60,
+  "text_first_chunk_max_bytes": 42,
   "asr": {
     "backend": "sherpa_onnx",
     "model": "models/sherpa-zipformer-bilingual-zh-en-2023-02-16",

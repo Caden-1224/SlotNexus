@@ -6,8 +6,10 @@
 //     序列，按字节模式识别；切分标点归属于前一句，换行符不进入句子；
 //   - 连续句末标点只保留首个；句子不以标点开头（句首标点丢弃）；
 //   - 普通字符累计到 max_bytes 前先切一片，长句不再等标点；多字节字符
-//     不跨片段截断，因此单片可能比 max_bytes 多一个 UTF-8 字符（最多 4 字节）；
-//   - max_bytes = 0 表示只按句末标点切分，保持旧行为；
+//     不跨片段截断，因此单片可能比上限多一个 UTF-8 字符（最多 4 字节）；
+//   - first_max_bytes 是首片普通字符软上限：首片发出前用它，发出后切回
+//     max_bytes；0 表示首片沿用 max_bytes；
+//   - max_bytes = 0 表示只按句末标点切分，保持旧行为（first_max_bytes 被忽略）；
 //   - feed(text) 返回本次输入中完成的句子（可能为空）；
 //   - flush() 返回未完成的收尾句子（仅含尾部标点时丢弃），并重置状态。
 //
@@ -26,7 +28,9 @@ namespace slotnexus::common {
 class SentenceChunker {
  public:
   // max_bytes：普通字符缓冲的软上限；0 表示只按标点切分。
-  explicit SentenceChunker(std::size_t max_bytes = 0);
+  // first_max_bytes：首片普通字符软上限；0 表示与 max_bytes 相同。
+  explicit SentenceChunker(std::size_t max_bytes = 0,
+                           std::size_t first_max_bytes = 0);
 
   // 处理一段文本，返回其中完整的句子（标点归属前一句）。
   std::vector<std::string> feed(const std::string& text);
@@ -35,9 +39,15 @@ class SentenceChunker {
   std::vector<std::string> flush();
 
  private:
+  // 当前片普通字符软上限：首片用 first_max_bytes，首片发出后切回 max_bytes。
+  std::size_t active_max_bytes() const;
+
   std::string cur_;            // 当前句缓冲
+  std::string pending_utf8_;   // 上一次 feed 尾部不完整的 UTF-8 字节
   bool split_pending_ = false; // 上一句已切分、等待下一句内容
+  bool first_chunk_ = true;    // 尚未发出首片
   const std::size_t max_bytes_;
+  const std::size_t first_max_bytes_;
 };
 
 }  // namespace slotnexus::common

@@ -48,6 +48,16 @@ int g_failures = 0;
     }                                                                        \
   } while (0)
 
+// 返回 count 个 UTF-8 单元拼接的字符串（测试中用于构造固定长度的中文文本）。
+std::string repeat_utf8(const std::string& unit, std::size_t count) {
+  std::string out;
+  out.reserve(unit.size() * count);
+  for (std::size_t i = 0; i < count; ++i) {
+    out += unit;
+  }
+  return out;
+}
+
 // 与 rag_test 相同的确定性小语料（得分已在 rag_test 中标定：
 // "the cat"→1.334、单独高频词→0.66 左右）。
 struct Fixture {
@@ -282,6 +292,69 @@ class NotifyingTts final : public back::ITtsBackend {
 
  private:
   OverlapLlm* llm_;
+};
+
+// 首片提前切分验证：14 个汉字（42 字节）达到首片软上限即切；随后等待
+// TTS 确认已消费首片，证明首段进入 TTS 早于 LLM 生成结束。
+class FirstChunkLlm final : public back::ILlmBackend {
+ public:
+  std::atomic<bool> first_chunk_seen_before_done{false};
+
+  void set_event_callback(back::EventCallback cb) override {
+    cb_ = std::move(cb);
+  }
+
+  void generate(const std::string& /*prompt*/) override {
+    if (!cb_) {
+      return;
+    }
+    cb_({back::BackendEvent::Kind::kToken, repeat_utf8("甲", 14), {}});
+    cb_({back::BackendEvent::Kind::kToken, "乙", {}});
+    for (int i = 0; i < 100 && !tts_seen_.load(); ++i) {
+      std::this_thread::sleep_for(5ms);
+    }
+    first_chunk_seen_before_done.store(tts_seen_.load());
+    cb_({back::BackendEvent::Kind::kToken, "。", {}});
+    cb_({back::BackendEvent::Kind::kDone, {}, {}});
+  }
+
+  void cancel() override {}
+  void mark_tts_seen() { tts_seen_.store(true); }
+
+ private:
+  std::atomic<bool> tts_seen_{false};
+  back::EventCallback cb_;
+};
+
+// 记录 TTS 收到的片段，并把“已消费首片”通知给 FirstChunkLlm。
+class FirstChunkTts final : public back::ITtsBackend {
+ public:
+  explicit FirstChunkTts(FirstChunkLlm* llm) : llm_(llm) {}
+
+  std::vector<std::string> texts;
+
+  void set_event_callback(back::EventCallback cb) override {
+    cb_ = std::move(cb);
+  }
+
+  void synthesize(const std::string& text) override {
+    texts.push_back(text);
+    if (llm_ != nullptr) {
+      llm_->mark_tts_seen();
+    }
+    if (cb_) {
+      std::vector<std::int16_t> pcm(static_cast<std::size_t>(back::kFrameSamples),
+                                    0);
+      cb_({back::BackendEvent::Kind::kPcm, {}, std::move(pcm)});
+      cb_({back::BackendEvent::Kind::kDone, {}, {}});
+    }
+  }
+
+  void cancel() override {}
+
+ private:
+  FirstChunkLlm* llm_;
+  back::EventCallback cb_;
 };
 
 // 计数 sink：统计写入帧数（不落盘）。
@@ -572,6 +645,39 @@ void test_tts_overlaps_llm() {
   std::cout << "  [ok] 首段重叠：LLM 未结束即已进入 TTS" << std::endl;
 }
 
+// ---------- 首片提前切分：无标点长 token 也能让 TTS 早于生成结束启动 ----------
+
+void test_first_chunk_reaches_tts_early() {
+  Fixture f;
+  fake::FakeAsrBackend asr;
+  FirstChunkLlm llm;
+  FirstChunkTts tts(&llm);
+  auto sink_factory = [](const std::string&) {
+    return std::make_unique<CountingSink>();
+  };
+  sess::PipelineConfig c = base_config(f);
+  c.text_chunk_max_bytes = 60;
+  c.text_first_chunk_max_bytes = 42;
+  sess::SessionPipeline pipe(c, f.router, asr, llm, tts, sink_factory);
+
+  const auto r = pipe.run({sess::PipelineInput::Mode::kText, "hello world", ""},
+                          "r-first-chunk", 0ms);
+  CHECK(r.ok);
+  CHECK(r.route == "l3");
+  CHECK(llm.first_chunk_seen_before_done.load());
+  CHECK(r.token_count == 3);
+  CHECK(tts.texts.size() == 2);
+  if (tts.texts.size() == 2) {
+    const std::string first = repeat_utf8("甲", 14);
+    CHECK(tts.texts[0] == first);
+    CHECK(tts.texts[1] == "乙。");
+    CHECK(tts.texts[0] + tts.texts[1] == first + "乙。");
+    CHECK(r.final_text == first + " 乙 。");
+  }
+  std::cout << "  [ok] 首片提前：无标点 42 字节即入 TTS，全文完整无重复"
+            << std::endl;
+}
+
 // ---------- 取消传播：顽固 LLM 晚到 token 过滤 ----------
 
 void test_cancel_mid_llm_late_tokens() {
@@ -840,6 +946,7 @@ int main() {
   test_empty_asr_text_stops_pipeline();
   test_queue_backpressure_no_drop();
   test_tts_overlaps_llm();
+  test_first_chunk_reaches_tts_early();
   test_cancel_mid_llm_late_tokens();
   test_cancel_mid_tts_late_pcm();
   test_observation_delay_before_first_output();

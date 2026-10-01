@@ -874,9 +874,11 @@ void SessionNode::handle_request(const std::string& identity,
 
         s->pipeline = std::make_unique<session::SessionPipeline>(
             PipelineConfig{config_.text_capacity, config_.pcm_capacity,
-                           config_.text_chunk_max_bytes, config_.push_timeout,
-                           config_.stage_delay, config_.output_dir,
-                           config_.tts_min_duration, config_.output_sink},
+                           config_.text_chunk_max_bytes,
+                           config_.text_first_chunk_max_bytes,
+                           config_.push_timeout, config_.stage_delay,
+                           config_.output_dir, config_.tts_min_duration,
+                           config_.output_sink},
             *router_, *s->asr, *s->llm, *s->tts, std::move(sink_factory));
         // 连续交互由客户端显式 mode=continuous 启动；setup 不打开录音设备。
         s->continuous_enabled.store(config_.continuous_enabled);

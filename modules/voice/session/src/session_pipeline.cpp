@@ -198,7 +198,8 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
   };
   // 回答文本（L0/L1 直答或 LLM 输出）→ 分句 → 文本队列。
   auto feed_answer_sentences = [&](const std::string& text) -> bool {
-    common::SentenceChunker chunker(config_.text_chunk_max_bytes);
+    common::SentenceChunker chunker(config_.text_chunk_max_bytes,
+                                   config_.text_first_chunk_max_bytes);
     for (const auto& s : chunker.feed(text)) {
       if (!push_text(s)) {
         return false;
@@ -399,7 +400,8 @@ PipelineResult SessionPipeline::run(const PipelineInput& input,
         // 已在 generate 之前启动，因此首句不会被整段生成阻塞。
         state_.store(State::kThinking);
         bool feed_stopped = false;
-        common::SentenceChunker chunker(config_.text_chunk_max_bytes);
+        common::SentenceChunker chunker(config_.text_chunk_max_bytes,
+                                   config_.text_first_chunk_max_bytes);
         llm_.set_event_callback([&](const BackendEvent& e) {
           if (!is_active() || feed_stopped) {
             return;  // 取消后或下游已停止：不再分句入队

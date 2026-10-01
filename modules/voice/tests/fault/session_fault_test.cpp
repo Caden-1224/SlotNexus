@@ -231,7 +231,9 @@ void test_cancel_during_inference() {
                          "微风 散步 唱歌 跳舞 画画 读书 写字 下棋 钓鱼 爬山"}}),
            r_infer, 5000ms);
   });
-  std::this_thread::sleep_for(150ms);
+  // 首片提前切分后，取消要早于首个可播片段送达输出，才能验证“取消后
+  // 不再提交旧数据”的边界；50ms 仍在 LLM 生成开始阶段。
+  std::this_thread::sleep_for(50ms);
   CHECK(b.call(MakeRequest(MessageType::kCancel, "w-c", "c-c"), reply, 3000ms));
   CHECK(reply.type() == MessageType::kAck);
   infer_thread.join();

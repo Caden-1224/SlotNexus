@@ -34,6 +34,16 @@ void check_sentences(const std::vector<std::string>& got,
   }
 }
 
+// 返回 count 个 UTF-8 单元拼接的字符串（测试中用于构造固定长度的中文文本）。
+std::string repeat_utf8(const std::string& unit, std::size_t count) {
+  std::string out;
+  out.reserve(unit.size() * count);
+  for (std::size_t i = 0; i < count; ++i) {
+    out += unit;
+  }
+  return out;
+}
+
 void test_cjk_terminators() {
   cq::SentenceChunker c;
   // 中文句号/感叹号/问号/分号；无标点的收尾句在 flush 返回。
@@ -113,6 +123,81 @@ void test_max_bytes_limit() {
             << std::endl;
 }
 
+void test_first_chunk_limit() {
+  // 首片无标点时按 42 字节（14 个汉字）软上限切，随后切回普通 60 字节。
+  cq::SentenceChunker c(60, 42);
+  const std::string first = repeat_utf8("甲", 14);
+  const std::string tail = repeat_utf8("乙", 21);
+  check_sentences(c.feed(first), {first});  // 恰好 42 字节，达到首片软上限即切
+  check_sentences(c.feed(tail),
+                  {repeat_utf8("乙", 20)});  // 后续恢复 60 字节普通上限
+  check_sentences(c.flush(), {repeat_utf8("乙", 1)});
+  std::cout << "  [ok] 首片软上限：无标点达到 14 字即切，后续恢复普通上限"
+            << std::endl;
+}
+
+void test_first_chunk_zero_disables_early_cut() {
+  // first_max_bytes=0 表示不启用首片提前切分，仍按普通 max_bytes 原触发方式。
+  cq::SentenceChunker c(60, 0);
+  const std::string text = repeat_utf8("甲", 20);  // 60 字节，等下一个字符触发
+  check_sentences(c.feed(text), {});
+  check_sentences(c.flush(), {text});
+  std::cout << "  [ok] 首片软上限 0：不提前切分，保持普通上限行为" << std::endl;
+}
+
+void test_first_chunk_punctuation_priority() {
+  cq::SentenceChunker c(60, 42);
+  // 标点优先：即使未到首片软上限，也按自然句末切分。
+  check_sentences(c.feed("短句。"), {"短句。"});
+  // 首片已由标点发出，之后恢复 60 字节普通上限。
+  const std::string tail = repeat_utf8("甲", 20);
+  check_sentences(c.feed(tail), {});
+  check_sentences(c.feed("乙"), {tail});
+  check_sentences(c.flush(), {"乙"});
+  std::cout << "  [ok] 首片标点优先：自然句末先切，后续恢复普通上限"
+            << std::endl;
+}
+
+void test_first_chunk_flush_resets() {
+  cq::SentenceChunker c(60, 42);
+  const std::string first = repeat_utf8("甲", 14);
+  check_sentences(c.feed(first), {first});
+  check_sentences(c.flush(), {});
+  // flush 后首片状态重置：新一轮仍在达到首片软上限时立即切分。
+  check_sentences(c.feed(first), {first});
+  check_sentences(c.flush(), {});
+  std::cout << "  [ok] flush：收尾后重置首片状态" << std::endl;
+}
+
+void test_utf8_boundaries_and_old_behavior() {
+  // 容量切分不跨 UTF-8 字符：6 字节首片上限容纳两个汉字。
+  cq::SentenceChunker c(6, 6);
+  check_sentences(c.feed("你好世界"), {"你好"});
+  check_sentences(c.flush(), {"世界"});
+
+  // feed 间按字节边界输入：残留字节补齐后才处理，跨 feed 的中文标点仍有效。
+  cq::SentenceChunker byte_stream(0, 42);
+  const std::string text = "第一句。第二句";
+  std::vector<std::string> got;
+  for (char ch : text) {
+    for (auto& piece : byte_stream.feed(std::string(1, ch))) {
+      got.push_back(std::move(piece));
+    }
+  }
+  for (auto& piece : byte_stream.flush()) {
+    got.push_back(std::move(piece));
+  }
+  check_sentences(got, {"第一句。", "第二句"});
+
+  // max_bytes=0 保持只按标点切分，首片软上限被忽略。
+  cq::SentenceChunker only_punct(0, 42);
+  const std::string long_text = repeat_utf8("甲", 30);
+  check_sentences(only_punct.feed(long_text), {});
+  check_sentences(only_punct.flush(), {long_text});
+  std::cout << "  [ok] UTF-8 边界：跨 feed 字符完整，0 上限保持旧行为"
+            << std::endl;
+}
+
 void test_edge_cases() {
   cq::SentenceChunker c;
   // 空输入。
@@ -141,6 +226,11 @@ int main() {
   test_flush_remainder();
   test_commas_do_not_split();
   test_max_bytes_limit();
+  test_first_chunk_limit();
+  test_first_chunk_zero_disables_early_cut();
+  test_first_chunk_punctuation_priority();
+  test_first_chunk_flush_resets();
+  test_utf8_boundaries_and_old_behavior();
   test_edge_cases();
 
   if (g_failures == 0) {

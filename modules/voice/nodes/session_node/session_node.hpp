@@ -47,6 +47,7 @@ struct SessionNodeConfig {
  std::size_t text_capacity = 8;              // 有界文本队列容量
  std::size_t pcm_capacity = 32;              // 有界 PCM 队列容量
  std::size_t text_chunk_max_bytes = 60;      // 单个待合成片段上限；0 = 只按标点切
+ std::size_t text_first_chunk_max_bytes = 42;  // 首片软上限；0 = 与普通上限相同
  std::chrono::milliseconds push_timeout{50}; // 满队列重试间隔，不丢弃
  std::chrono::milliseconds stage_delay{0};   // 测试仪表：阶段人工延时
  std::chrono::milliseconds tts_min_duration{0};  // 最小合成时长（补静音）
