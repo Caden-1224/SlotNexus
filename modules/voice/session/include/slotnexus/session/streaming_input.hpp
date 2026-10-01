@@ -27,6 +27,9 @@ class StreamingInput {
     int speech_rms_threshold = 250;    // 未注入 VAD 时的 16-bit RMS 阈值
     // 可选人声判定（如 Silero VAD）；为空时退回 RMS 能量阈值。
     std::function<bool(const std::vector<int16_t>&)> speech_detector;
+    // 可选人声判定状态复位；每段话语收尾后调用，避免下一轮起音受上一轮
+    // VAD 内部状态影响。为空时无事发生。
+    std::function<void()> speech_detector_reset;
   };
 
   using FinalCallback = std::function<void(std::string)>;

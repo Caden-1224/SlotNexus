@@ -83,8 +83,8 @@ struct SessionNodeConfig {
  // 显式启动的连续交互会话（任务会话生命周期内常驻采集）。
  bool continuous_enabled = false;
  std::vector<std::string> sleep_words;
- std::chrono::milliseconds continuous_follow_up_timeout{12000};
- std::chrono::milliseconds continuous_max_session{120000};
+ std::chrono::milliseconds continuous_follow_up_timeout{60000};
+ std::chrono::milliseconds continuous_max_session{300000};
  int continuous_max_turns = 6;
 };
 

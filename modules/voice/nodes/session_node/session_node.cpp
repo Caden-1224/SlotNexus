@@ -293,6 +293,12 @@ struct SessionNode::Session {
       }
       busy.store(false);
       continuous_gate.finish_turn();
+      std::string answer = result.final_text;
+      for (char& ch : answer) {
+        if (ch == '\r' || ch == '\n') {
+          ch = ' ';
+        }
+      }
       common::LogLine(
           "session continuous done request_id=" + request_id +
           " work_id=" + work_id +
@@ -302,7 +308,8 @@ struct SessionNode::Session {
           " route=" + result.route +
           " asr_text=" + result.asr_text +
           " total_ms=" + std::to_string(result.total_ms) +
-          (result.error.empty() ? "" : " error=" + result.error));
+          (result.error.empty() ? "" : " error=" + result.error) +
+          (answer.empty() ? "" : " final_text=" + answer));
     }
   }
 
@@ -353,6 +360,7 @@ struct SessionNode::Session {
                                        const std::vector<std::int16_t>& frame) {
         return vad->is_speech(frame.data(), frame.size());
       };
+      stream_cfg.speech_detector_reset = [vad] { vad->reset(); };
     }
 #endif
 
@@ -377,8 +385,13 @@ struct SessionNode::Session {
             LogContinuousState(work_id, "final");
           }
         },
-        {},
-        [this] { continuous_gate.speech_started(); });
+        [this, work_id] {
+          common::LogLine("session continuous endpoint work_id=" + work_id);
+        },
+        [this, work_id] {
+          common::LogLine("session continuous speech_started work_id=" + work_id);
+          continuous_gate.speech_started();
+        });
 
     input_stop.store(false);
     SetContinuousError({});
@@ -798,6 +811,7 @@ void SessionNode::handle_request(const std::string& identity,
                                            const std::vector<std::int16_t>& frame) {
             return vad->is_speech(frame.data(), frame.size());
           };
+          stream_cfg.speech_detector_reset = [vad] { vad->reset(); };
         }
 #endif
 

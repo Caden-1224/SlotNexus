@@ -123,6 +123,9 @@ void StreamingInput::begin_utterance() {
 }
 
 void StreamingInput::end_utterance() {
+  if (config_.speech_detector_reset) {
+    config_.speech_detector_reset();
+  }
   pre_roll_.clear();
   speech_run_ = 0;
   silence_run_ = 0;

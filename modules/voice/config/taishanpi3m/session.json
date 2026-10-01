@@ -14,7 +14,7 @@
   "stream": {
     "pre_roll_ms": 500,
     "min_speech_ms": 60,
-    "min_silence_ms": 500,
+    "min_silence_ms": 800,
     "speech_rms_threshold": 100
   },
   "output_dir": "session-out",
@@ -68,8 +68,8 @@
   "continuous": {
     "enabled": true,
     "sleep_words": ["退下"],
-    "follow_up_timeout_ms": 12000,
-    "max_session_ms": 120000,
+    "follow_up_timeout_ms": 60000,
+    "max_session_ms": 300000,
     "max_turns": 6
   }
 }

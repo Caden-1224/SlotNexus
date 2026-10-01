@@ -22,8 +22,8 @@ class ContinuousGate {
   struct Config {
     bool enabled = false;
     std::vector<std::string> sleep_words;
-    std::chrono::milliseconds follow_up_timeout{12000};
-    std::chrono::milliseconds max_session{120000};
+    std::chrono::milliseconds follow_up_timeout{60000};
+    std::chrono::milliseconds max_session{300000};
     int max_turns = 6;
   };
 
