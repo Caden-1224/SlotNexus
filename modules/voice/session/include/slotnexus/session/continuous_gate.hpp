@@ -1,10 +1,10 @@
-// WakeGate：任务会话内的唤醒期状态机。
+// ContinuousGate：任务会话内的连续交互状态机。
 // Author: Caden
 //
-// 职责：只维护“休眠 → 唤醒 → 独立轮次 → 休眠”的状态、轮数和截止时间，
-// 不访问 ASR/声卡/管线。KWS 只负责调用 wake()；ASR final 文本通过
-// process() 进入回答队列或触发休眠；轮次处理结束后由调用方 finish_turn()
-// 把唤醒期切到跟进空闲。所有公开方法线程安全。
+// 职责：维护“sleeping → listening → 独立轮次 → sleeping”的状态、轮数和
+// 截止时间，不访问 ASR/声卡/管线。显式启动入口调用 start()；ASR final
+// 文本通过 process() 接纳为轮次或触发休眠；一轮处理结束后由调用方
+// finish_turn() 进入跟进空闲。所有公开方法线程安全。
 #pragma once
 
 #include <chrono>
@@ -15,13 +15,12 @@
 
 namespace slotnexus::session {
 
-class WakeGate {
+class ContinuousGate {
  public:
   enum class State { kSleeping, kListening, kProcessing, kFollowUp };
 
   struct Config {
     bool enabled = false;
-    std::vector<std::string> wake_words;
     std::vector<std::string> sleep_words;
     std::chrono::milliseconds follow_up_timeout{12000};
     std::chrono::milliseconds max_session{120000};
@@ -35,20 +34,20 @@ class WakeGate {
     bool expired = false;
   };
 
-  WakeGate() = default;
-  explicit WakeGate(Config config) { configure(std::move(config)); }
+  ContinuousGate() = default;
+  explicit ContinuousGate(Config config) { configure(std::move(config)); }
 
   void configure(Config config) {
     std::lock_guard<std::mutex> lock(mutex_);
     config_ = std::move(config);
-    state_ = config_.enabled ? State::kSleeping : State::kListening;
+    state_ = State::kSleeping;
     turns_ = 0;
     session_started_ = {};
     follow_up_deadline_ = {};
   }
 
-  // 由 KWS 触发。仅在启用且 Sleeping 时切到 Listening，返回是否发生迁移。
-  bool wake(const std::string& /*keyword*/) {
+  // 由显式启动入口触发。仅在启用且 Sleeping 时进入 Listening，返回是否发生迁移。
+  bool start() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!config_.enabled) {
       return false;
@@ -89,8 +88,8 @@ class WakeGate {
       return {false, {}, false, true};
     }
     if (state_ == State::kProcessing) {
-      // VAD 起音边沿应先调用 speech_started() 把 Processing 切回 Listening；
-      // 未观察到起音边沿的重复 final 不重复开轮。
+      // 新一轮起音边沿应先调用 speech_started() 把 Processing 切回
+      // Listening；未观察到起音边沿的重复 final 不重复开轮。
       return {};
     }
 
@@ -131,10 +130,7 @@ class WakeGate {
 
   State state() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!config_.enabled) {
-      return State::kListening;
-    }
-    const_cast<WakeGate*>(this)->expire_locked(Clock::now());
+    const_cast<ContinuousGate*>(this)->expire_locked(Clock::now());
     return state_;
   }
 
@@ -160,19 +156,6 @@ class WakeGate {
   int turns() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return turns_;
-  }
-
-  // KWS 返回词是否属于配置的唤醒词；唤醒词为空时接受任意非空 KWS 结果。
-  bool accepts_wake_word(const std::string& keyword) const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (keyword.empty()) {
-      return false;
-    }
-    if (config_.wake_words.empty()) {
-      return true;
-    }
-    const std::string normalized = normalize(keyword);
-    return contains_any(normalized, config_.wake_words);
   }
 
  private:

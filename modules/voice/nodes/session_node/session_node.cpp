@@ -29,7 +29,6 @@
 #include "slotnexus/backend/alsa/alsa_audio_source.hpp"
 #endif
 #ifdef SLOTNEXUS_HAS_SHERTA_ONNX
-#include "slotnexus/backend/sherpa_onnx/sherpa_kws.hpp"
 #include "slotnexus/backend/sherpa_onnx/sherpa_vad.hpp"
 #endif
 #include "slotnexus/backend/net/net_asr_stream_backend.hpp"
@@ -39,7 +38,7 @@
 #include "slotnexus/protocol/message_envelope.hpp"
 #include "slotnexus/rag/knowledge_store.hpp"
 #include "slotnexus/session/streaming_input.hpp"
-#include "slotnexus/session/wake_gate.hpp"
+#include "slotnexus/session/continuous_gate.hpp"
 
 namespace slotnexus::app {
 
@@ -98,7 +97,7 @@ nlohmann::json ResultStats(const PipelineResult& r) {
 }
 
 
-// 连续采集参数：wake 常驻输入与手动 mode=stream 共用同一套 20 ms 帧配置。
+// 连续采集参数：常驻连续会话与手动 mode=stream 共用同一套 20 ms 帧配置。
 session::StreamingInput::Config MakeStreamConfig(const SessionNodeConfig& cfg) {
   session::StreamingInput::Config stream_cfg;
   stream_cfg.frame_samples =
@@ -137,7 +136,7 @@ std::shared_ptr<slotnexus::backend::sherpa_onnx::SherpaVad> MakeVad(
 // 一个会话实例：后端归本实例所有（embedded=Fake / net=节点代理，见
 // MakeAsrBackend 等），管线只依赖接口引用。
 struct SessionNode::Session {
-  ~Session() { StopWakeInput(); }
+  ~Session() { StopContinuousInput(); }
 
   std::unique_ptr<slotnexus::backend::IAsrBackend> asr;
   std::unique_ptr<slotnexus::backend::ILlmBackend> llm;
@@ -152,15 +151,13 @@ struct SessionNode::Session {
   session::PipelineResult last_result;
   std::string last_request_id;
 
-  // 唤醒期常驻输入：KWS/ASR 在采集线程，SessionPipeline 在单轮处理线程。
-  std::atomic<bool> wake_available{false};
-  mutable std::mutex wake_meta_mutex;
-  std::string wake_error;
+  // 连续交互常驻输入：采集线程只做 ALSA 帧流、VAD/ASR final 和收尾；
+  // SessionPipeline 在单轮处理线程上串行执行。
+  std::atomic<bool> continuous_enabled{false};
+  mutable std::mutex continuous_meta_mutex;
+  std::string continuous_error;
   std::unique_ptr<session::StreamingInput> stream_input;
-  session::WakeGate wake_gate;
-#ifdef SLOTNEXUS_HAS_SHERTA_ONNX
-  std::unique_ptr<slotnexus::backend::sherpa_onnx::SherpaKws> kws;
-#endif
+  session::ContinuousGate continuous_gate;
   std::atomic<bool> input_stop{true};
   std::thread capture_thread;
   std::thread turn_thread;
@@ -169,27 +166,27 @@ struct SessionNode::Session {
   std::deque<std::string> pending_turns;
   int turn_sequence = 0;
 
-  std::string WakeError() const {
-    std::lock_guard<std::mutex> lock(wake_meta_mutex);
-    return wake_error;
+  std::string ContinuousError() const {
+    std::lock_guard<std::mutex> lock(continuous_meta_mutex);
+    return continuous_error;
   }
 
-  void SetWakeError(std::string error) {
-    std::lock_guard<std::mutex> lock(wake_meta_mutex);
-    wake_error = std::move(error);
+  void SetContinuousError(std::string error) {
+    std::lock_guard<std::mutex> lock(continuous_meta_mutex);
+    continuous_error = std::move(error);
   }
 
-  std::string WakeState() const {
-    if (stream_input) {
-      return wake_gate.state_name();
+  std::string ContinuousState() const {
+    if (!continuous_enabled.load()) {
+      return "disabled";
     }
-    if (wake_gate.enabled()) {
-      return "unavailable";
+    if (stream_input == nullptr) {
+      return "sleeping";
     }
-    return "disabled";
+    return continuous_gate.state_name();
   }
 
-  bool WakeInputActive() const {
+  bool ContinuousInputActive() const {
     return stream_input != nullptr && !input_stop.load();
   }
 
@@ -204,48 +201,30 @@ struct SessionNode::Session {
     turn_cv.notify_one();
   }
 
-  void LogWakeState(const std::string& work_id, const char* event) {
-    common::LogLine("session wake state=" +
-                    std::string(wake_gate.state_name()) + " work_id=" +
+  void LogContinuousState(const std::string& work_id, const char* event) {
+    common::LogLine("session continuous state=" +
+                    std::string(continuous_gate.state_name()) + " work_id=" +
                     work_id + " event=" + event);
   }
 
-  void ResetKws() {
-#ifdef SLOTNEXUS_HAS_SHERTA_ONNX
-    if (kws) {
-      kws->reset();
-    }
-#endif
-  }
-
-  void FeedWakeFrame(const std::int16_t* pcm, std::size_t count,
-                     const std::string& work_id) {
-#ifdef SLOTNEXUS_HAS_SHERTA_ONNX
-    if (kws && wake_gate.state() == session::WakeGate::State::kSleeping) {
-      const std::string keyword = kws->accept(pcm, count);
-      if (wake_gate.accepts_wake_word(keyword) && wake_gate.wake(keyword)) {
-        LogWakeState(work_id, "kws");
-      }
-    }
-#else
-    (void)pcm;
-    (void)count;
-    (void)work_id;
-#endif
+  void FeedContinuousFrame(const std::int16_t* pcm, std::size_t count) {
     stream_input->feed_audio(pcm, count);
   }
 
-  void TickWake(const std::string& work_id) {
-    if (!wake_gate.tick()) {
-      return;
+  void TickContinuous(const std::string& work_id) {
+    if (continuous_gate.tick()) {
+      LogContinuousState(work_id, "tick");
     }
-    if (wake_gate.state() == session::WakeGate::State::kSleeping) {
-      ResetKws();
-    }
-    LogWakeState(work_id, "tick");
   }
 
-  void StopWakeInput() {
+  void ResumeContinuousInput(const std::string& work_id) {
+    if (continuous_gate.state() == session::ContinuousGate::State::kSleeping) {
+      continuous_gate.start();
+      LogContinuousState(work_id, "start");
+    }
+  }
+
+  void StopContinuousInput() {
     input_stop.store(true);
     if (asr) {
       asr->cancel();
@@ -268,11 +247,6 @@ struct SessionNode::Session {
       pending_turns.clear();
     }
     stream_input.reset();
-    ResetKws();
-#ifdef SLOTNEXUS_HAS_SHERTA_ONNX
-    kws.reset();
-#endif
-    wake_available.store(false);
   }
 
   void TurnLoop(SessionNodeConfig cfg, std::string work_id) {
@@ -307,8 +281,8 @@ struct SessionNode::Session {
       input.mode = session::PipelineInput::Mode::kText;
       input.text = text;
       const std::string request_id =
-          "wake-" + std::to_string(++turn_sequence);
-      common::LogLine("session wake turn request_id=" + request_id +
+          "continuous-" + std::to_string(++turn_sequence);
+      common::LogLine("session continuous turn request_id=" + request_id +
                       " work_id=" + work_id + " text=" + text);
       const session::PipelineResult result =
           pipeline->run(input, request_id, cfg.max_run);
@@ -318,9 +292,10 @@ struct SessionNode::Session {
         last_request_id = request_id;
       }
       busy.store(false);
-      wake_gate.finish_turn();
+      continuous_gate.finish_turn();
       common::LogLine(
-          "session wake done request_id=" + request_id + " work_id=" + work_id +
+          "session continuous done request_id=" + request_id +
+          " work_id=" + work_id +
           " status=" + (result.ok ? std::string("ok")
                                   : (result.cancelled ? std::string("cancelled")
                                                       : std::string("error"))) +
@@ -331,64 +306,43 @@ struct SessionNode::Session {
     }
   }
 
-  bool StartWakeInput(const SessionNodeConfig& cfg,
-                      const std::string& work_id) {
-    if (!cfg.wake_enabled) {
+  bool StartContinuousInput(const SessionNodeConfig& cfg,
+                            const std::string& work_id) {
+    if (!cfg.continuous_enabled) {
+      SetContinuousError("未启用连续交互");
+      common::LogLine("session continuous unavailable work_id=" + work_id +
+                      " reason=" + ContinuousError());
       return false;
     }
-
-#ifdef SLOTNEXUS_HAS_SHERTA_ONNX
-    if (cfg.wake_model_dir.empty() || cfg.wake_keywords_file.empty()) {
-      SetWakeError("未配置 KWS 模型目录或关键词文件");
-      common::LogLine("session wake unavailable work_id=" + work_id +
-                      " reason=" + WakeError());
-      return false;
+    if (ContinuousInputActive()) {
+      ResumeContinuousInput(work_id);
+      return true;
     }
-    slotnexus::backend::sherpa_onnx::KwsConfig kws_config;
-    kws_config.model_dir = cfg.wake_model_dir;
-    kws_config.keywords_file = cfg.wake_keywords_file;
-    kws_config.keywords_score = cfg.wake_score;
-    kws_config.keywords_threshold = cfg.wake_threshold;
-    kws_config.num_trailing_blanks = cfg.wake_trailing_blanks;
-    kws_config.num_threads = cfg.wake_num_threads;
-    kws = std::make_unique<slotnexus::backend::sherpa_onnx::SherpaKws>();
-    if (!kws->load(kws_config)) {
-      kws.reset();
-      SetWakeError("KWS 模型加载失败: " + cfg.wake_model_dir);
-      common::LogLine("session wake unavailable work_id=" + work_id +
-                      " reason=" + WakeError());
-      return false;
-    }
-#else
-    SetWakeError("当前构建未启用语音唤醒（需硬件后端构建）");
-    common::LogLine("session wake unavailable work_id=" + work_id +
-                    " reason=" + WakeError());
-    return false;
-#endif
 
 #ifdef SLOTNEXUS_HAS_ALSA
     auto source = std::make_unique<slotnexus::backend::alsa::AlsaAudioSource>(
         cfg.record_device, slotnexus::backend::kSampleRateHz);
     if (!source->open()) {
-      SetWakeError("录音设备打开失败: " + cfg.record_device);
-      common::LogLine("session wake unavailable work_id=" + work_id +
-                      " reason=" + WakeError());
+      SetContinuousError("录音设备打开失败: " + cfg.record_device);
+      common::LogLine("session continuous unavailable work_id=" + work_id +
+                      " reason=" + ContinuousError());
       return false;
     }
     if (source->actual_sample_rate() != slotnexus::backend::kSampleRateHz) {
+      const int actual_rate = source->actual_sample_rate();
       source->close();
-      SetWakeError("录音采样率 " + std::to_string(source->actual_sample_rate()) +
-                   " Hz 与 ASR 要求 " +
-                   std::to_string(slotnexus::backend::kSampleRateHz) +
-                   " Hz 不一致");
-      common::LogLine("session wake unavailable work_id=" + work_id +
-                      " reason=" + WakeError());
+      SetContinuousError("录音采样率 " + std::to_string(actual_rate) +
+                         " Hz 与 ASR 要求 " +
+                         std::to_string(slotnexus::backend::kSampleRateHz) +
+                         " Hz 不一致");
+      common::LogLine("session continuous unavailable work_id=" + work_id +
+                      " reason=" + ContinuousError());
       return false;
     }
 #else
-    SetWakeError("当前构建未启用 ALSA 连续采集");
-    common::LogLine("session wake unavailable work_id=" + work_id +
-                    " reason=" + WakeError());
+    SetContinuousError("当前构建未启用 ALSA 连续采集");
+    common::LogLine("session continuous unavailable work_id=" + work_id +
+                    " reason=" + ContinuousError());
     return false;
 #endif
 
@@ -402,54 +356,53 @@ struct SessionNode::Session {
     }
 #endif
 
-    session::WakeGate::Config gate_cfg;
+    session::ContinuousGate::Config gate_cfg;
     gate_cfg.enabled = true;
-    gate_cfg.wake_words = cfg.wake_words;
     gate_cfg.sleep_words = cfg.sleep_words;
-    gate_cfg.follow_up_timeout = cfg.wake_follow_up_timeout;
-    gate_cfg.max_session = cfg.wake_max_session;
-    gate_cfg.max_turns = cfg.wake_max_turns;
-    wake_gate.configure(gate_cfg);
+    gate_cfg.follow_up_timeout = cfg.continuous_follow_up_timeout;
+    gate_cfg.max_session = cfg.continuous_max_session;
+    gate_cfg.max_turns = cfg.continuous_max_turns;
+    continuous_gate.configure(gate_cfg);
+    continuous_gate.start();
 
     stream_input = std::make_unique<session::StreamingInput>(stream_cfg, *asr);
     stream_input->set_callbacks(
         [this, work_id](std::string text) {
-          const session::WakeGate::Result result = wake_gate.process(text);
+          const session::ContinuousGate::Result result =
+              continuous_gate.process(text);
           if (result.answer) {
             EnqueueTurn(std::move(result.text));
           }
           if (result.slept || result.expired) {
-            ResetKws();
-            LogWakeState(work_id, "final");
+            LogContinuousState(work_id, "final");
           }
         },
-        [this] { ResetKws(); },
-        [this] { wake_gate.speech_started(); });
+        {},
+        [this] { continuous_gate.speech_started(); });
 
     input_stop.store(false);
-    wake_available.store(true);
-    SetWakeError({});
+    SetContinuousError({});
 #ifdef SLOTNEXUS_HAS_ALSA
     capture_thread = std::thread(
         [this, source = std::move(source), work_id]() mutable {
           while (!input_stop.load()) {
             auto chunk = source->read(slotnexus::backend::kFrameSamples);
             if (chunk.empty()) {
-              TickWake(work_id);
+              TickContinuous(work_id);
               std::this_thread::sleep_for(std::chrono::milliseconds(1));
               continue;
             }
-            FeedWakeFrame(chunk.data(), chunk.size(), work_id);
-            TickWake(work_id);
+            FeedContinuousFrame(chunk.data(), chunk.size());
+            TickContinuous(work_id);
           }
           source->close();
         });
 #endif
     turn_thread = std::thread(&Session::TurnLoop, this, cfg, work_id);
-    common::LogLine("session wake started work_id=" + work_id +
-                    " device=" + cfg.record_device +
-                    " wake_words=" + std::to_string(cfg.wake_words.size()) +
-                    " max_turns=" + std::to_string(cfg.wake_max_turns));
+    common::LogLine(
+        "session continuous started work_id=" + work_id +
+        " device=" + cfg.record_device +
+        " max_turns=" + std::to_string(cfg.continuous_max_turns));
     return true;
   }
 };
@@ -585,7 +538,7 @@ void SessionNode::close() {
   {
     std::lock_guard<std::mutex> lock(sessions_mutex_);
     for (auto& [id, s] : sessions_) {
-      s->StopWakeInput();
+      s->StopContinuousInput();
     }
   }
   // 等待工作线程退出（管线均有兜底 deadline，不会无限挂起）。
@@ -716,9 +669,8 @@ void SessionNode::handle_request(const std::string& identity,
                            config_.stage_delay, config_.output_dir,
                            config_.tts_min_duration, config_.output_sink},
             *router_, *s->asr, *s->llm, *s->tts, std::move(sink_factory));
-        // 唤醒常驻采集必须在 pipeline 创建后才启动；失败不阻断 setup，
-        // 手动 mode=stream 仍可用。
-        s->StartWakeInput(config_, request.work_id());
+        // 连续交互由客户端显式 mode=continuous 启动；setup 不打开录音设备。
+        s->continuous_enabled.store(config_.continuous_enabled);
         s->setup_ms = setup_elapsed_ms();
         common::LogLine(
             "session setup done request_id=" + request.request_id() +
@@ -740,10 +692,10 @@ void SessionNode::handle_request(const std::string& identity,
                        {"asr_setup_ms", s->asr_setup_ms},
                        {"llm_setup_ms", s->llm_setup_ms},
                        {"tts_setup_ms", s->tts_setup_ms},
-                       {"wake_enabled", s->wake_gate.enabled()},
-                       {"wake_available", s->wake_available.load()},
-                       {"wake_state", s->WakeState()},
-                       {"wake_error", s->WakeError()}});
+                       {"continuous_enabled", config_.continuous_enabled},
+                       {"continuous_active", s->ContinuousInputActive()},
+                       {"continuous_state", s->ContinuousState()},
+                       {"continuous_error", s->ContinuousError()}});
       ack.set_finish(true);
       send_reply(ack);
       return;
@@ -760,17 +712,49 @@ void SessionNode::handle_request(const std::string& identity,
         }
         s = it->second;
       }
+      const auto& payload = request.payload();
+      const std::string mode = payload.value("mode", "text");
+      if (mode == "continuous") {
+        if (!config_.continuous_enabled) {
+          log_err(request, "continuous_disabled");
+          send_reply(build_error(request, 3, "连续交互未启用"));
+          return;
+        }
+        if (!s->ContinuousInputActive()) {
+          if (!s->StartContinuousInput(config_, request.work_id())) {
+            log_err(request, "continuous_start_failed");
+            send_reply(build_error(
+                request, 3,
+                "连续交互启动失败: " + s->ContinuousError()));
+            return;
+          }
+        } else {
+          s->ResumeContinuousInput(request.work_id());
+        }
+        MessageEnvelope ack;
+        ack.set_type(MessageType::kAck);
+        ack.set_work_id(request.work_id());
+        ack.set_request_id(request.request_id());
+        ack.set_session_id(request.session_id());
+        ack.set_payload({{"status", "ok"},
+                         {"continuous_enabled", true},
+                         {"continuous_active", s->ContinuousInputActive()},
+                         {"continuous_state", s->ContinuousState()},
+                         {"continuous_error", s->ContinuousError()}});
+        ack.set_finish(true);
+        send_reply(ack);
+        return;
+      }
+
       bool expected = false;
       if (!s->busy.compare_exchange_strong(expected, true)) {
         log_err(request, "busy");
         send_reply(build_error(request, 3, "会话忙碌（单流）"));  // kBusy
         return;
       }
-      // 解析输入：{"mode": "text"|"wav"|"stream", ...}。stream 为无 KWS
-      // 手动入口，在采集侧完成判停后把 final 文本送入文本路由。
+      // 解析输入：{"mode": "text"|"wav"|"stream"|"continuous", ...}。
+      // stream 为手动单轮入口，continuous 显式启动常驻连续会话。
       PipelineInput input;
-      const auto& payload = request.payload();
-      const std::string mode = payload.value("mode", "text");
       if (mode == "wav") {
         input.mode = PipelineInput::Mode::kWav;
         std::string wav = payload.value("wav", std::string());
@@ -783,11 +767,12 @@ void SessionNode::handle_request(const std::string& identity,
         }
         input.wav_path = wav;
       } else if (mode == "stream") {
-        if (s->WakeInputActive()) {
-          log_err(request, "wake_input_active");
+        if (s->ContinuousInputActive()) {
+          log_err(request, "continuous_input_active");
+          s->busy.store(false);
           send_reply(build_error(
               request, 3,
-              "常驻唤醒采集已启用，请直接使用唤醒词；不可重复打开录音设备"));
+              "常驻连续交互已启动；不可重复打开录音设备"));
           return;
         }
 #ifdef SLOTNEXUS_HAS_ALSA
@@ -795,8 +780,12 @@ void SessionNode::handle_request(const std::string& identity,
         // stream_max_duration 只作无语音/不判停的兜底上限。
         slotnexus::backend::alsa::AlsaAudioSource mic(
             config_.record_device, slotnexus::backend::kSampleRateHz);
+        common::LogLine("session stream open request_id=" +
+                        request.request_id() +
+                        " device=" + config_.record_device);
         if (!mic.open()) {
           log_err(request, "mic_open_failed");
+          s->busy.store(false);
           send_reply(build_error(request, 3,
                                  "录音设备打开失败: " + config_.record_device));
           return;
@@ -871,7 +860,7 @@ void SessionNode::handle_request(const std::string& identity,
                 ? 0.0
                 : std::sqrt(sum_sq / static_cast<double>(total_samples));
         common::LogLine(
-            "session stream request_id=" + request.request_id() +
+            "session stream close request_id=" + request.request_id() +
             " device=" + config_.record_device +
             " requested_max_ms=" +
             std::to_string(config_.stream_max_duration.count()) +
@@ -885,6 +874,7 @@ void SessionNode::handle_request(const std::string& identity,
             (got_final ? "1" : "0") + " asr_text=" + final_text);
         if (!got_final) {
           log_err(request, "stream_no_final");
+          s->busy.store(false);
           send_reply(build_error(
               request, 3,
               "连续采集未产生 ASR final（未检测到有效语音或未判停）"));
@@ -893,6 +883,7 @@ void SessionNode::handle_request(const std::string& identity,
         input.mode = PipelineInput::Mode::kText;
         input.text = final_text;
 #else
+        s->busy.store(false);
         send_reply(build_error(
             request, 3,
             "当前构建未启用 ALSA 连续采集（需硬件后端构建，mode=stream）"));
@@ -966,11 +957,11 @@ void SessionNode::handle_request(const std::string& identity,
       p["state"] = s->pipeline->state_name();
       p["busy"] = s->busy.load();
       p["in_flight"] = last_request_id;
-      p["wake_enabled"] = s->wake_gate.enabled();
-      p["wake_available"] = s->wake_available.load();
-      p["wake_state"] = s->WakeState();
-      p["wake_turns"] = s->wake_gate.turns();
-      p["wake_error"] = s->WakeError();
+      p["continuous_enabled"] = s->continuous_enabled.load();
+      p["continuous_active"] = s->ContinuousInputActive();
+      p["continuous_state"] = s->ContinuousState();
+      p["continuous_turns"] = s->continuous_gate.turns();
+      p["continuous_error"] = s->ContinuousError();
       ack.set_payload(std::move(p));
       ack.set_finish(true);
       send_reply(ack);
@@ -989,7 +980,7 @@ void SessionNode::handle_request(const std::string& identity,
         s = it->second;
         sessions_.erase(it);
       }
-      s->StopWakeInput();  // 常驻采集退出后再让在途推理失效
+      s->StopContinuousInput();  // 常驻采集退出后再让在途推理失效
       s->pipeline->cancel();
       MessageEnvelope ack;
       ack.set_type(MessageType::kAck);

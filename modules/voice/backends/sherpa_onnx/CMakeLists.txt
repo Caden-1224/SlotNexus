@@ -19,7 +19,6 @@ endif()
 add_library(slotnexus_sherpa_asr STATIC
   src/sherpa_asr_backend.cpp
   src/sherpa_vad.cpp
-  src/sherpa_kws.cpp
 )
 add_library(slotnexus::sherpa_asr ALIAS slotnexus_sherpa_asr)
 

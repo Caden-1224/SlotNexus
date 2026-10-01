@@ -22,7 +22,7 @@ vox_voice_unit_test(wav_reader_test slotnexus::voice_common)
 vox_voice_unit_test(session_pipeline_test slotnexus::voice_session
   slotnexus::voice_fake_backends)
 vox_voice_unit_test(streaming_input_test slotnexus::voice_session)
-vox_voice_unit_test(wake_input_test slotnexus::voice_session)
+vox_voice_unit_test(continuous_input_test slotnexus::voice_session)
 
 add_executable(rkllm_reasoning_filter_test rkllm_reasoning_filter_test.cpp)
 target_include_directories(rkllm_reasoning_filter_test PRIVATE

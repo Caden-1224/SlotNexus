@@ -1,7 +1,7 @@
-// 唤醒输入确定性测试：WakeGate 状态迁移 + StreamingInput 帧到独立轮次。
+// 连续交互输入确定性测试：ContinuousGate 状态迁移 + StreamingInput 独立轮次。
 // Author: Caden
+#include "slotnexus/session/continuous_gate.hpp"
 #include "slotnexus/session/streaming_input.hpp"
-#include "slotnexus/session/wake_gate.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -17,8 +17,8 @@ using namespace std::chrono_literals;
 using slotnexus::backend::BackendEvent;
 using slotnexus::backend::EventCallback;
 using slotnexus::backend::IAsrBackend;
+using slotnexus::session::ContinuousGate;
 using slotnexus::session::StreamingInput;
-using slotnexus::session::WakeGate;
 
 namespace {
 
@@ -70,10 +70,9 @@ StreamingInput::Config MakeStreamConfig() {
   return cfg;
 }
 
-WakeGate::Config MakeGateConfig() {
-  WakeGate::Config cfg;
+ContinuousGate::Config MakeGateConfig() {
+  ContinuousGate::Config cfg;
   cfg.enabled = true;
-  cfg.wake_words = {"小凯"};
   cfg.sleep_words = {"退下"};
   cfg.follow_up_timeout = 5000ms;
   cfg.max_session = 5000ms;
@@ -81,11 +80,11 @@ WakeGate::Config MakeGateConfig() {
   return cfg;
 }
 
-// 测试侧直接按 session 采集线程的职责组合 StreamingInput 与 WakeGate：
-// KWS 触发只管休眠→唤醒，ASR final 经 WakeGate 接纳为独立轮次。
-class WakeInputHarness {
+// 测试侧直接按 session 采集线程的职责组合 StreamingInput 与 ContinuousGate：
+// 显式 start 进入 Listening，ASR final 经 gate 接纳为独立轮次。
+class ContinuousInputHarness {
  public:
-  WakeInputHarness(ScriptedAsrBackend& asr, WakeGate::Config gate_config)
+  ContinuousInputHarness(ScriptedAsrBackend& asr, ContinuousGate::Config gate_config)
       : asr_(asr), gate_(std::move(gate_config)) {
     stream_ = std::make_unique<StreamingInput>(MakeStreamConfig(), asr_);
     stream_->set_callbacks(
@@ -98,11 +97,9 @@ class WakeInputHarness {
         [this] {}, [this] { gate_.speech_started(); });
   }
 
+  void Start() { gate_.start(); }
+
   void Feed(const std::vector<std::int16_t>& pcm) {
-    if (kws_trigger && gate_.state() == WakeGate::State::kSleeping) {
-      kws_trigger = false;
-      gate_.wake("小凯");
-    }
     stream_->feed_audio(pcm.data(), pcm.size());
     gate_.tick();
   }
@@ -117,54 +114,52 @@ class WakeInputHarness {
   }
 
   ScriptedAsrBackend& asr_;
-  WakeGate gate_;
+  ContinuousGate gate_;
   std::unique_ptr<StreamingInput> stream_;
   std::deque<std::string> turns;
-  bool kws_trigger = false;
 };
 
-void TestWakeGateDisabledAnswersAll() {
-  WakeGate::Config cfg;
+void TestGateDisabledAnswersAll() {
+  ContinuousGate::Config cfg;
   cfg.enabled = false;
-  WakeGate gate(std::move(cfg));
+  ContinuousGate gate(std::move(cfg));
   const auto result = gate.process("你好");
   CHECK(result.answer);
   CHECK(result.text == "你好");
-  CHECK(gate.state() == WakeGate::State::kListening);
+  CHECK(gate.state() == ContinuousGate::State::kSleeping);
 }
 
-void TestWakeGateSleepWordAndWakeWordMatch() {
-  WakeGate gate(MakeGateConfig());
-  CHECK(!gate.accepts_wake_word("小乐"));
-  CHECK(gate.accepts_wake_word("小凯"));
-  CHECK(gate.state() == WakeGate::State::kSleeping);
-  CHECK(gate.wake("小凯"));
-  CHECK(gate.state() == WakeGate::State::kListening);
+void TestStartAndSleepWord() {
+  ContinuousGate gate(MakeGateConfig());
+  CHECK(gate.state() == ContinuousGate::State::kSleeping);
+  CHECK(gate.start());
+  CHECK(gate.state() == ContinuousGate::State::kListening);
+  CHECK(!gate.start());  // 已在 Listening，不重复进入
 
   const auto result = gate.process("退下");
   CHECK(result.slept);
   CHECK(!result.answer);
-  CHECK(gate.state() == WakeGate::State::kSleeping);
+  CHECK(gate.state() == ContinuousGate::State::kSleeping);
   CHECK(gate.process("休眠期不应回答").answer == false);
 
-  CHECK(gate.wake("小凯"));
-  CHECK(gate.process("重新唤醒").answer);
+  CHECK(gate.start());
+  CHECK(gate.process("重新启动").answer);
   CHECK(gate.turns() == 1);
 }
 
-void TestWakeAndTwoIndependentTurns() {
+void TestStartAndTwoIndependentTurns() {
   ScriptedAsrBackend asr;
-  WakeInputHarness input(asr, MakeGateConfig());
+  ContinuousInputHarness input(asr, MakeGateConfig());
 
+  input.Start();
   asr.push_final("第一问");
-  input.kws_trigger = true;
   input.FeedUtterance();
   CHECK(input.turns.size() == 1);
   CHECK(input.turns.at(0) == "第一问");
-  CHECK(input.gate_.state() == WakeGate::State::kProcessing);
+  CHECK(input.gate_.state() == ContinuousGate::State::kProcessing);
 
   input.gate_.finish_turn();
-  CHECK(input.gate_.state() == WakeGate::State::kFollowUp);
+  CHECK(input.gate_.state() == ContinuousGate::State::kFollowUp);
 
   asr.push_final("第二问");
   input.FeedUtterance();
@@ -173,21 +168,21 @@ void TestWakeAndTwoIndependentTurns() {
   CHECK(input.gate_.turns() == 2);
 }
 
-void TestSleepWordAndRewake() {
+void TestSleepWordAndRestart() {
   ScriptedAsrBackend asr;
-  WakeInputHarness input(asr, MakeGateConfig());
+  ContinuousInputHarness input(asr, MakeGateConfig());
 
+  input.Start();
   asr.push_final("退下");
-  input.kws_trigger = true;
   input.FeedUtterance();
   CHECK(input.turns.empty());
-  CHECK(input.gate_.state() == WakeGate::State::kSleeping);
+  CHECK(input.gate_.state() == ContinuousGate::State::kSleeping);
 
-  asr.push_final("重新唤醒后的问题");
-  input.kws_trigger = true;
+  asr.push_final("重新启动后的问题");
+  input.Start();
   input.FeedUtterance();
   CHECK(input.turns.size() == 1);
-  CHECK(input.turns.at(0) == "重新唤醒后的问题");
+  CHECK(input.turns.at(0) == "重新启动后的问题");
   CHECK(input.gate_.turns() == 1);
 }
 
@@ -195,17 +190,17 @@ void TestFollowUpTimeoutAndMaxTurns() {
   auto gate_cfg = MakeGateConfig();
   gate_cfg.follow_up_timeout = 30ms;
   ScriptedAsrBackend asr;
-  WakeInputHarness input(asr, gate_cfg);
+  ContinuousInputHarness input(asr, gate_cfg);
 
+  input.Start();
   asr.push_final("第一问");
-  input.kws_trigger = true;
   input.FeedUtterance();
   CHECK(input.turns.size() == 1);
   input.gate_.finish_turn();
 
   std::this_thread::sleep_for(60ms);
   input.gate_.tick();
-  CHECK(input.gate_.state() == WakeGate::State::kSleeping);
+  CHECK(input.gate_.state() == ContinuousGate::State::kSleeping);
 
   asr.push_final("休眠期不应回答");
   input.FeedUtterance();
@@ -214,9 +209,9 @@ void TestFollowUpTimeoutAndMaxTurns() {
   auto max_cfg = MakeGateConfig();
   max_cfg.max_turns = 1;
   ScriptedAsrBackend max_asr;
-  WakeInputHarness max_input(max_asr, max_cfg);
+  ContinuousInputHarness max_input(max_asr, max_cfg);
+  max_input.Start();
   max_asr.push_final("唯一一轮");
-  max_input.kws_trigger = true;
   max_input.FeedUtterance();
   CHECK(max_input.turns.size() == 1);
   max_input.gate_.finish_turn();
@@ -224,28 +219,41 @@ void TestFollowUpTimeoutAndMaxTurns() {
   max_asr.push_final("超出轮数");
   max_input.FeedUtterance();
   CHECK(max_input.turns.size() == 1);
-  CHECK(max_input.gate_.state() == WakeGate::State::kSleeping);
+  CHECK(max_input.gate_.state() == ContinuousGate::State::kSleeping);
 
-  max_asr.push_final("重新唤醒后的新一轮");
-  max_input.kws_trigger = true;
+  max_asr.push_final("重新启动后的新一轮");
+  max_input.Start();
   max_input.FeedUtterance();
   CHECK(max_input.turns.size() == 2);
   CHECK(max_input.gate_.turns() == 1);
 }
 
+void TestMaxSessionTimeout() {
+  auto gate_cfg = MakeGateConfig();
+  gate_cfg.max_session = 30ms;
+  ScriptedAsrBackend asr;
+  ContinuousInputHarness input(asr, gate_cfg);
+
+  input.Start();
+  std::this_thread::sleep_for(60ms);
+  input.gate_.tick();
+  CHECK(input.gate_.state() == ContinuousGate::State::kSleeping);
+}
+
 }  // namespace
 
 int main() {
-  TestWakeGateDisabledAnswersAll();
-  TestWakeGateSleepWordAndWakeWordMatch();
-  TestWakeAndTwoIndependentTurns();
-  TestSleepWordAndRewake();
+  TestGateDisabledAnswersAll();
+  TestStartAndSleepWord();
+  TestStartAndTwoIndependentTurns();
+  TestSleepWordAndRestart();
   TestFollowUpTimeoutAndMaxTurns();
+  TestMaxSessionTimeout();
 
   if (g_failures == 0) {
-    std::cout << "wake_input_test 全部通过" << std::endl;
+    std::cout << "continuous_input_test 全部通过" << std::endl;
     return 0;
   }
-  std::cerr << "wake_input_test 失败 " << g_failures << " 项" << std::endl;
+  std::cerr << "continuous_input_test 失败 " << g_failures << " 项" << std::endl;
   return 1;
 }

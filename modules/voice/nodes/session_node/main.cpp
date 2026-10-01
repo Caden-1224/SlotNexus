@@ -16,9 +16,9 @@
 //                   [--asr-stream-endpoint <PULL>]（llm/tts 同理）
 //                   [--net-setup-timeout-ms <N>] [--net-rpc-timeout-ms <N>]
 //                   [--record-device <设备>] [--record-ms <N>]
-//                   （mode=stream 连续采集：录音设备与无语音兜底上限，默认
-//                   default/3000；需 SLOTNEXUS_HAS_ALSA 构建。唤醒配置
-//                   统一从 --config 的 wake 段读取，不再提供逐项 CLI）
+//                   （mode=stream 单轮连续采集：录音设备与无语音兜底上限，
+//                   默认 default/3000；需 SLOTNEXUS_HAS_ALSA 构建。连续
+//                   交互配置统一从 --config 的 continuous 段读取）
 // 默认端口约定：echo 19200 / asr 19201 / rag 19202 / llm 19203 / tts 19204 /
 //             session 19210；数据面事件 asr 19211 / llm 19212 / tts 19213
 //             （握手 19221/19222/19223，与节点 --events/--events-sync 对应）。
@@ -143,33 +143,24 @@ int main(int argc, char** argv) {
      config.stream_speech_rms_threshold = stream_cfg.value(
          "speech_rms_threshold", config.stream_speech_rms_threshold);
    }
-   if (file_cfg.contains("wake")) {
-     const auto& wake_cfg = file_cfg["wake"];
-     config.wake_enabled = wake_cfg.value("enabled", config.wake_enabled);
-     if (wake_cfg.contains("wake_words")) {
-       config.wake_words = wake_cfg["wake_words"].get<std::vector<std::string>>();
+   if (file_cfg.contains("continuous")) {
+     const auto& continuous_cfg = file_cfg["continuous"];
+     config.continuous_enabled =
+         continuous_cfg.value("enabled", config.continuous_enabled);
+     if (continuous_cfg.contains("sleep_words")) {
+       config.sleep_words =
+           continuous_cfg["sleep_words"].get<std::vector<std::string>>();
      }
-     if (wake_cfg.contains("sleep_words")) {
-       config.sleep_words = wake_cfg["sleep_words"].get<std::vector<std::string>>();
-     }
-     config.wake_follow_up_timeout = std::chrono::milliseconds(
-         wake_cfg.value("follow_up_timeout_ms",
-                        static_cast<int>(config.wake_follow_up_timeout.count())));
-     config.wake_max_session = std::chrono::milliseconds(
-         wake_cfg.value("max_session_ms",
-                        static_cast<int>(config.wake_max_session.count())));
-     config.wake_max_turns = wake_cfg.value("max_turns", config.wake_max_turns);
-     config.wake_model_dir =
-         wake_cfg.value("model_dir", config.wake_model_dir);
-     config.wake_keywords_file =
-         wake_cfg.value("keywords_file", config.wake_keywords_file);
-     config.wake_score = wake_cfg.value("score", config.wake_score);
-     config.wake_threshold =
-         wake_cfg.value("threshold", config.wake_threshold);
-     config.wake_trailing_blanks = wake_cfg.value(
-         "num_trailing_blanks", config.wake_trailing_blanks);
-     config.wake_num_threads =
-         wake_cfg.value("num_threads", config.wake_num_threads);
+     config.continuous_follow_up_timeout = std::chrono::milliseconds(
+         continuous_cfg.value(
+             "follow_up_timeout_ms",
+             static_cast<int>(config.continuous_follow_up_timeout.count())));
+     config.continuous_max_session = std::chrono::milliseconds(
+         continuous_cfg.value(
+             "max_session_ms",
+             static_cast<int>(config.continuous_max_session.count())));
+     config.continuous_max_turns =
+         continuous_cfg.value("max_turns", config.continuous_max_turns);
    }
  } else {
    return 1;
