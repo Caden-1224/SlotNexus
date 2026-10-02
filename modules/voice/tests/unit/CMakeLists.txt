@@ -79,13 +79,21 @@ if(SLOTNEXUS_ENABLE_HARDWARE_BACKENDS)
   set_tests_properties(melotts_pcm_converter_test PROPERTIES
     ENVIRONMENT "${VOX_TEST_ENV}")
 
+  add_executable(melotts_decode_slices_test melotts_decode_slices_test.cpp)
+  target_link_libraries(melotts_decode_slices_test PRIVATE slotnexus::melotts)
+  target_include_directories(melotts_decode_slices_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../backends/melotts/src)
+  add_test(NAME melotts_decode_slices_test COMMAND melotts_decode_slices_test)
+  set_tests_properties(melotts_decode_slices_test PROPERTIES
+    ENVIRONMENT "${VOX_TEST_ENV}")
+
   add_executable(alsa_audio_test alsa_audio_test.cpp)
   target_link_libraries(alsa_audio_test PRIVATE slotnexus::alsa)
   add_test(NAME alsa_audio_test COMMAND alsa_audio_test)
   set_tests_properties(alsa_audio_test PROPERTIES
     ENVIRONMENT "SLOTNEXUS_ALSA_DEVICE=${SLOTNEXUS_ALSA_DEVICE}")
 
-  foreach(target_name IN ITEMS sherpa_asr_test streaming_input_hardware_test rkllm_llm_test melotts_tts_test melotts_pcm_converter_test alsa_audio_test)
+  foreach(target_name IN ITEMS sherpa_asr_test streaming_input_hardware_test rkllm_llm_test melotts_tts_test melotts_pcm_converter_test melotts_decode_slices_test alsa_audio_test)
     set_target_properties(${target_name} PROPERTIES
       RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests/unit)
   endforeach()

@@ -184,6 +184,17 @@ struct MeloDecoderInfo {
   std::size_t samples_per_frame = 0;
 };
 
+// 一次 RKNN 解码要覆盖的 z_p 帧区间；切片按帧连续覆盖 [0,total)，无重叠。
+struct DecodeSlice {
+  std::size_t frame_begin = 0;
+  std::size_t frame_end = 0;
+};
+
+// 把单词级帧数合计成不超过 frames_per_call 的连续帧切片；run 数等于
+// ceil(total/frames_per_call)。空输入或预算为 0 返回失败。
+MeloResult<std::vector<DecodeSlice>> build_decode_slices(
+    const std::vector<std::size_t>& unit_frames, std::size_t frames_per_call);
+
 class IMeloDecoder {
  public:
   virtual ~IMeloDecoder() = default;
