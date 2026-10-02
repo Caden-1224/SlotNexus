@@ -193,7 +193,20 @@ struct MeloStats {
   std::size_t last_frame_valid_samples = 0;
   const char* tail_kind = "none";
   double elapsed_ms = 0.0;
+  // 阶段耗时用于定位 TTS 瓶颈：文本前端、ONNX 编码器、RKNN 解码器与重采样
+  // 分别累计；first_pcm_ms 是从 synthesize 开始到首个 PCM 事件的墙钟时间。
+  double frontend_ms = 0.0;
+  double encode_ms = 0.0;
+  double decode_ms = 0.0;
+  double convert_ms = 0.0;
+  double first_pcm_ms = -1.0;
 };
+
+double elapsed_ms_since(std::chrono::steady_clock::time_point begin) {
+  return std::chrono::duration<double, std::milli>(
+             std::chrono::steady_clock::now() - begin)
+      .count();
+}
 
 }  // namespace
 
@@ -272,6 +285,10 @@ struct MeloTtsBackend::Impl {
       *error = "MeloTTS 解码器形状信息非法";
       return false;
     }
+    std::cerr << "[melotts] 解码器形状 channels_per_frame="
+              << decoder_info.channels_per_frame
+              << " frames_per_call=" << decoder_info.frames_per_call
+              << " samples_per_frame=" << decoder_info.samples_per_frame << std::endl;
     return true;
   }
 
@@ -285,6 +302,9 @@ struct MeloTtsBackend::Impl {
       std::vector<std::int16_t> frame(
           frame_buffer.begin(),
           frame_buffer.begin() + static_cast<std::ptrdiff_t>(kFrameSamples));
+      if (stats.first_pcm_ms < 0.0) {
+        stats.first_pcm_ms = elapsed_ms_since(synth_begin);
+      }
       cb(BackendEvent{BackendEvent::Kind::kPcm, {}, std::move(frame)});
       ++stats.delivered_frames;
       frame_buffer.erase(frame_buffer.begin(),
@@ -299,6 +319,9 @@ struct MeloTtsBackend::Impl {
       const std::size_t valid_samples = frame_buffer.size();
       std::vector<std::int16_t> frame = std::move(frame_buffer);
       frame.resize(static_cast<std::size_t>(kFrameSamples), 0);
+      if (stats.first_pcm_ms < 0.0) {
+        stats.first_pcm_ms = elapsed_ms_since(synth_begin);
+      }
       cb(BackendEvent{BackendEvent::Kind::kPcm, {}, std::move(frame)});
       ++stats.delivered_frames;
       frame_buffer.clear();
@@ -318,7 +341,9 @@ struct MeloTtsBackend::Impl {
 
   // 合成主循环；成功返回 true，失败返回 false 并写入 error。
   bool run_synthesis(const std::string& text, std::string* error) {
+    const auto frontend_begin = std::chrono::steady_clock::now();
     auto chunks = frontend.convert(text, config.max_encoder_phones);
+    stats.frontend_ms += elapsed_ms_since(frontend_begin);
     if (!chunks.ok()) {
       *error = chunks.message;
       return false;
@@ -367,7 +392,9 @@ struct MeloTtsBackend::Impl {
       request.sdp_ratio = config.sdp_ratio;
 
       MeloEncoderResponse response;
+      const auto encode_begin = std::chrono::steady_clock::now();
       const MeloStatus encoded = encoder->run(request, response);
+      stats.encode_ms += elapsed_ms_since(encode_begin);
       if (!encoded.ok()) {
         *error = encoded.message;
         return false;
@@ -431,9 +458,11 @@ struct MeloTtsBackend::Impl {
         }
 
         std::vector<float> native_audio;
+        const auto decode_begin = std::chrono::steady_clock::now();
         const MeloStatus decoded =
             decoder->decode(response.z_p.data(), response.frames, slice.frame_begin,
                             frame_count, native_audio);
+        stats.decode_ms += elapsed_ms_since(decode_begin);
         if (!decoded.ok()) {
           *error = decoded.message;
           return false;
@@ -465,7 +494,9 @@ struct MeloTtsBackend::Impl {
         if (keep_samples > 0U) {
           stats.native_samples += keep_samples;
           std::vector<std::int16_t> converted;
+          const auto convert_begin = std::chrono::steady_clock::now();
           converter.push(native_audio.data() + drop_samples, keep_samples, converted);
+          stats.convert_ms += elapsed_ms_since(convert_begin);
           frame_buffer.insert(frame_buffer.end(), converted.begin(), converted.end());
           if (!emit_frames(frame_buffer, false)) {
             *error = "MeloTTS 回调取消";
@@ -512,6 +543,8 @@ struct MeloTtsBackend::Impl {
   EventCallback cb;
   std::atomic<bool> cancelled{false};
   MeloStats stats{};
+  // synthesize 起点，用于首个 PCM 的墙钟时间；不在统计重置时清零。
+  std::chrono::steady_clock::time_point synth_begin{};
 };
 
 MeloTtsBackend::MeloTtsBackend(MeloTtsConfig config) {
@@ -548,6 +581,7 @@ void MeloTtsBackend::synthesize(const std::string& text) {
   }
 
   const auto begin = std::chrono::steady_clock::now();
+  impl_->synth_begin = begin;
   std::string error;
   const bool ok = impl_->run_synthesis(text, &error);
   const auto end = std::chrono::steady_clock::now();
@@ -573,6 +607,11 @@ void MeloTtsBackend::synthesize(const std::string& text) {
             << " last_frame_valid=" << impl_->stats.last_frame_valid_samples
             << " audio_s=" << audio_s
             << " elapsed_ms=" << impl_->stats.elapsed_ms
+            << " frontend_ms=" << impl_->stats.frontend_ms
+            << " encode_ms=" << impl_->stats.encode_ms
+            << " decode_ms=" << impl_->stats.decode_ms
+            << " convert_ms=" << impl_->stats.convert_ms
+            << " first_pcm_ms=" << impl_->stats.first_pcm_ms
             << " rtf=" << (audio_s > 0.0 ? impl_->stats.elapsed_ms / 1000.0 / audio_s
                                          : 0.0)
             << std::endl;

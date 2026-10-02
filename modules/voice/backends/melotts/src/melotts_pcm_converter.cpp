@@ -81,6 +81,12 @@ void MeloTtsPcmConverter::compact_before(std::size_t global_index) {
     input_base_ = total_input_samples_;
     return;
   }
+  // drain 每个输出样本都会推进到这里。若每次都 erase 已消费前缀，需要移动
+  // 整个剩余输入，单次 push 就会退化成 O(输入样本×输出样本)。已消费样本留在
+  // 缓冲里不参与计算，只有前缀超过一半时才搬移一次，摊还 O(1) 且输出逐样本不变。
+  if (drop_count * 2U < input_.size()) {
+    return;
+  }
   input_.erase(input_.begin(),
                input_.begin() + static_cast<std::ptrdiff_t>(drop_count));
   input_base_ = global_index;
