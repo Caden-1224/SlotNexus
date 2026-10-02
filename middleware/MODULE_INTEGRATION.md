@@ -25,7 +25,7 @@ modules/<name>/
 | --- | --- | --- | --- |
 | 基础工具 | `slotnexus::common` | `slotnexus/common/*` | 队列、日志、Base64、版本 |
 | 消息协议 | `slotnexus::protocol` | `MessageEnvelope` | 所有跨进程请求和响应 |
-| 通信原语 | `slotnexus::transport` | `RpcClient`、`EventPublisher`、Push/Pull | RPC、事件和流式数据传输 |
+| 通信原语 | `slotnexus::transport` | `RpcClient`、`PubSocket` / `SubSocket`、Push/Pull | RPC、事件和流式数据传输 |
 | 任务执行 | `slotnexus::runtime` | `IBackend`、`TaskRuntime` | 实现一个计算节点 |
 | 节点外壳 | `slotnexus::node_host` | `RuntimeNode` | 把 Backend 暴露为标准节点进程 |
 | 中间事件 | `slotnexus::dataplane` | `DataplaneEvent`、事件通道 | token、音频帧等非最终结果 |
@@ -43,23 +43,35 @@ class MyBackend final : public slotnexus::runtime::IBackend {
  public:
   slotnexus::runtime::BackendResult infer(
       const nlohmann::json& input,
-      std::stop_token stop,
+      std::chrono::steady_clock::time_point deadline,
+      const std::atomic<bool>& cancelled,
       const slotnexus::runtime::EventSink& events) override {
     // 校验模块自己的 input payload，执行模型或业务逻辑。
-    // 长任务在合适的边界检查 stop，事件通过 events 发布。
+    if (cancelled.load()) {
+      return {slotnexus::runtime::BackendResult::Code::kCancelled, {}};
+    }
+    if (std::chrono::steady_clock::now() >= deadline) {
+      return {slotnexus::runtime::BackendResult::Code::kTimeout, {}};
+    }
+    // 长任务在执行过程中继续检查 deadline / cancelled；中间事件通过 events 发布。
     return {slotnexus::runtime::BackendResult::Code::kOk,
             {{"result", "..."}}};
   }
 };
 ```
 
-节点入口使用 `RuntimeNode` 连接标准控制协议和 Backend 工厂：
+节点入口使用 `RuntimeNode` 连接标准控制协议和 Backend 工厂。下例假设 `stopping` 是由应用退出逻辑设置的 `std::atomic<bool>`，并已定义上面的 `MyBackend`：
 
 ```cpp
+zmq::context_t context(1);
 auto runtime = std::make_unique<slotnexus::runtime::TaskRuntime>(
     [] { return std::make_shared<MyBackend>(); });
 slotnexus::node::RuntimeNode node(context, std::move(runtime));
-node.run();
+node.bind("tcp://127.0.0.1:19220");
+while (!stopping.load()) {
+  node.serve_once(std::chrono::milliseconds(100));
+}
+node.close();
 ```
 
 真实模型或厂商 SDK 放在 `backends/<provider>/`，通过模块自己的 target 隔离。默认构建应提供 Fake Backend，使协议、任务和节点生命周期可以在没有硬件的环境中验证。
@@ -68,7 +80,7 @@ node.run();
 
 - `MessageEnvelope` 的外层字段由 Core 处理；模块只定义自己的 `payload` 内容。
 - 每个模块使用稳定的 `module_id`，并在 Manager 配置中登记节点端点和协议版本。
-- 事件 `kind` 使用模块命名空间前缀，例如 `voice.token`、`voice.audio_chunk`，避免不同模块发生碰撞。
+- `BackendEvent::type` 会映射为数据面的事件 `kind`，由模块定义并由消费者一致解释。当前语音使用 `partial`、`final`、`token`、`pcm`、`done`；新增模块可约定命名空间前缀，但 Core 不强制添加前缀。
 - 最终结果通过 BackendResult 返回；需要低延迟或连续输出的内容才发布 dataplane 事件。
 - 不要把模型 SDK 类型、音频设备句柄或模块业务结构体加入 middleware 公共头。
 

@@ -5,8 +5,8 @@ namespace slotnexus {
 
 namespace {
 
-const Version kVersion{0, 1, 0};
-const std::string kVersionString = "0.1.0";
+const Version kVersion{0, 2, 0};
+const std::string kVersionString = "0.2.0";
 
 }  // namespace
 

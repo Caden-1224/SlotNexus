@@ -16,7 +16,7 @@ struct Version {
 // 当前编译进库的版本号。
 const Version& version();
 
-// 形如 "0.1.0" 的版本字符串。
+// 形如 "0.2.0" 的版本字符串。
 const std::string& version_string();
 
 }  // namespace slotnexus
