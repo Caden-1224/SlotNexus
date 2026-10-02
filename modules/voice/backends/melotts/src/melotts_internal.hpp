@@ -221,6 +221,8 @@ class MeloOrtEncoder final : public IMeloEncoder {
 struct MeloRknnDecoderConfig {
   std::string model_path;
   std::uint32_t run_timeout_ms = 30000u;
+  // rknn_core_mask；0 = AUTO，1/2/4 = core0/1/2，按位组合。
+  int core_mask = 0;
 };
 
 class MeloRknnDecoder final : public IMeloDecoder {

@@ -258,6 +258,7 @@ struct MeloTtsBackend::Impl {
     MeloRknnDecoderConfig decoder_config;
     decoder_config.model_path = config.decoder_model_path;
     decoder_config.run_timeout_ms = config.run_timeout_ms;
+    decoder_config.core_mask = config.decoder_core_mask;
     auto created_decoder = MeloRknnDecoder::create(decoder_config);
     if (!created_decoder.ok()) {
       *error = created_decoder.message;

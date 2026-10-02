@@ -195,6 +195,7 @@ struct MeloConfigValues {
   float noise_scale_w = 0.6f;
   float sdp_ratio = 0.2f;
   int intra_op_threads = 1;
+  int decoder_core_mask = 0;
   int native_sample_rate = 44100;
   int max_encoder_phones = 240;
   int run_timeout_ms = 30000;
@@ -263,6 +264,8 @@ int main(int argc, char** argv) {
         melo.noise_scale_w = t.value("noise_scale_w", melo.noise_scale_w);
         melo.sdp_ratio = t.value("sdp_ratio", melo.sdp_ratio);
         melo.intra_op_threads = t.value("intra_op_threads", melo.intra_op_threads);
+        melo.decoder_core_mask =
+            t.value("decoder_core_mask", melo.decoder_core_mask);
         melo.native_sample_rate =
             t.value("native_sample_rate", melo.native_sample_rate);
         melo.max_encoder_phones =
@@ -353,6 +356,7 @@ int main(int argc, char** argv) {
       config.noise_scale_w = melo.noise_scale_w;
       config.sdp_ratio = melo.sdp_ratio;
       config.intra_op_num_threads = melo.intra_op_threads;
+      config.decoder_core_mask = melo.decoder_core_mask;
       if (melo.native_sample_rate > 0) {
         config.native_sample_rate_hz =
             static_cast<std::uint32_t>(melo.native_sample_rate);
@@ -415,7 +419,8 @@ int main(int argc, char** argv) {
     std::cout << "tts_node 监听 " << listen << "（" << backend_name << " 后端";
     if (backend_name == "melotts") {
       std::cout << "，编码器 " << melo.encoder_model << "，解码器 "
-                << melo.decoder_model << "，语速 " << melo.speed;
+                << melo.decoder_model << "，语速 " << melo.speed
+                << "，decoder_core_mask " << melo.decoder_core_mask;
     }
     std::cout << "，sink " << sink_name;
     if (sink_name == "alsa") {

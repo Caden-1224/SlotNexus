@@ -45,6 +45,30 @@ struct RkllmBackend::Impl {
     std::uint64_t generation;  // 产生该事件的会话代号（用于丢弃残留）
     LLMCallState state;
     std::string text;
+    // 回调线程入队时刻，用于测量下游交付前的队列等待。
+    std::chrono::steady_clock::time_point enqueued_at{};
+    // 仅 FINISH/ERROR 事件携带厂商最终性能统计；按值拷贝，不保存 SDK 指针。
+    bool has_perf = false;
+    RKLLMPerfStat perf{};
+  };
+
+  // 单轮 generate 的性能观测：厂商 perf + 队列等待 + 应用侧交付时间。
+  // 只由 generate 调用线程读写；callback 线程只把数据拷进 Item。
+  struct Metrics {
+    std::chrono::steady_clock::time_point start;
+    std::chrono::steady_clock::time_point first_vendor;
+    std::chrono::steady_clock::time_point first_deliver;
+    std::chrono::steady_clock::time_point last_deliver;
+    bool has_first_vendor = false;
+    bool has_first_deliver = false;
+    bool has_deliver = false;
+    bool has_perf = false;
+    RKLLMPerfStat perf{};
+    std::uint64_t queue_items = 0;
+    std::uint64_t queue_wait_total_us = 0;
+    std::uint64_t queue_wait_max_us = 0;
+    std::uint64_t text_events = 0;
+    std::uint64_t text_bytes = 0;
   };
 
   explicit Impl(const RkllmOptions& options) : options_(options) {
@@ -113,10 +137,17 @@ struct RkllmBackend::Impl {
       return;
     }
     Item item;
+    item.enqueued_at = std::chrono::steady_clock::now();
     item.state = state;
     if (state == RKLLM_RUN_NORMAL && result != nullptr &&
         result->text != nullptr) {
       item.text = result->text;
+    }
+    // 最终回调携带 perf；立即拷贝，避免回调返回后 SDK 复用/释放数据。
+    if (result != nullptr &&
+        (state == RKLLM_RUN_FINISH || state == RKLLM_RUN_ERROR)) {
+      item.perf = result->perf;
+      item.has_perf = true;
     }
     {
       std::lock_guard<std::mutex> lk(self->mu);
@@ -144,40 +175,97 @@ struct RkllmBackend::Impl {
   // 正常结束（FINISH / ERROR）返回 true，delivered 为实际下发给下游的文本
   // 拼接（已剔除思考段），供 kDone 使用。
   bool pump(std::uint64_t my_generation, const EventCallback& cb,
-            std::string* delivered) {
+            std::string* delivered, Metrics* metrics) {
     delivered->clear();
     std::string pending_waiting;  // WAITING 状态携带的 UTF-8 半字符
     // 思考段过滤（每轮 generate 独立状态）：见 ReasoningFilter 头文件注释。
     ReasoningFilter filter(options_.reasoning_end_tag,
                            options_.reasoning_max_buffer_bytes);
 
-    // 把过滤结果投递给下游；空结果不下发。
-    const auto emit = [&](const std::string& raw) {
-      std::string out = filter.accept(raw);
+    // 真正投递一段已过滤文本；空结果不下发。返回 false 表示已取消，需停发。
+    const auto deliver = [&](const std::string& out) -> bool {
       if (out.empty()) {
-        return;
+        return true;
       }
-      *delivered += out;
-      if (cb) {
-        cb({BackendEvent::Kind::kToken, out, {}});
-      }
-    };
-
-    for (;;) {
-      std::unique_lock<std::mutex> lk(mu);
-      cv.wait_for(lk, kPumpWaitMs,
-                  [this] { return cancelled.load() || !queue.empty(); });
       if (cancelled.load()) {
         return false;
       }
-      while (!queue.empty()) {
+      *delivered += out;
+      if (cb) {
+        const auto t0 = std::chrono::steady_clock::now();
+        cb({BackendEvent::Kind::kToken, out, {}});
+        const auto t1 = std::chrono::steady_clock::now();
+        if (metrics != nullptr) {
+          if (!metrics->has_first_deliver) {
+            metrics->first_deliver = t0;
+            metrics->has_first_deliver = true;
+          }
+          metrics->last_deliver = t1;
+          metrics->has_deliver = true;
+          ++metrics->text_events;
+          metrics->text_bytes += out.size();
+        }
+      }
+      return true;
+    };
+
+    // 把过滤结果投递给下游；空结果不下发。
+    const auto emit = [&](const std::string& raw) -> bool {
+      if (cancelled.load()) {
+        return false;
+      }
+      std::string out = filter.accept(raw);
+      if (out.empty()) {
+        return true;
+      }
+      return deliver(out);
+    };
+
+    for (;;) {
+      // 关键：只在取队列时持锁。取出后立即解锁，过滤、下游 cb() 都在锁外
+      // 执行；否则下游处理慢会阻塞厂商回调线程入队，进而拖慢生成。
+      std::deque<Item> batch;
+      {
+        std::unique_lock<std::mutex> lk(mu);
+        cv.wait_for(lk, kPumpWaitMs,
+                    [this] { return cancelled.load() || !queue.empty(); });
+        if (cancelled.load()) {
+          return false;
+        }
+        if (queue.empty()) {
+          continue;
+        }
+        batch.swap(queue);  // O(1)：把当前已到达的事件整批拿到锁外处理
+      }
+      while (!batch.empty()) {
         if (cancelled.load()) {
           return false;  // 停发：旧 token 过滤
         }
-        Item item = std::move(queue.front());
-        queue.pop_front();
+        Item item = std::move(batch.front());
+        batch.pop_front();
         if (item.generation != my_generation) {
           continue;  // 上一会话残留（vendor 线程晚到），丢弃
+        }
+        if (metrics != nullptr) {
+          if (item.has_perf) {
+            metrics->has_perf = true;
+            metrics->perf = item.perf;
+          }
+          if (!metrics->has_first_vendor) {
+            metrics->first_vendor = item.enqueued_at;
+            metrics->has_first_vendor = true;
+          }
+          const auto now = std::chrono::steady_clock::now();
+          const auto wait_us =
+              std::chrono::duration_cast<std::chrono::microseconds>(
+                  now - item.enqueued_at)
+                  .count();
+          metrics->queue_wait_total_us +=
+              static_cast<std::uint64_t>(wait_us > 0 ? wait_us : 0);
+          if (static_cast<std::uint64_t>(wait_us) > metrics->queue_wait_max_us) {
+            metrics->queue_wait_max_us = static_cast<std::uint64_t>(wait_us);
+          }
+          ++metrics->queue_items;
         }
         if (item.state == RKLLM_RUN_WAITING) {
           // 半截 UTF-8 字符：暂存，等下一个 NORMAL 补全后合并投递。
@@ -185,11 +273,15 @@ struct RkllmBackend::Impl {
         } else if (item.state == RKLLM_RUN_NORMAL) {
           std::string text = pending_waiting + item.text;
           pending_waiting.clear();
-          emit(text);
+          if (!emit(text)) {
+            return false;
+          }
         } else {
           // FINISH / ERROR：本次 run 终止（generate 统一补 kDone）。
           if (!pending_waiting.empty()) {
-            emit(pending_waiting);
+            if (!emit(pending_waiting)) {
+              return false;
+            }
             pending_waiting.clear();
           }
           // 思考段未闭合（token 预算耗尽 / 生成出错）：回退放行缓冲内容，
@@ -205,15 +297,80 @@ struct RkllmBackend::Impl {
                 "被缓冲的回答延迟到生成结束才下发；"
                 "若该模型不输出思考段，请把 reasoning_end_tag 设为空\n",
                 options_.reasoning_end_tag.c_str());
-            *delivered += tail;
-            if (cb) {
-              cb({BackendEvent::Kind::kToken, tail, {}});
+            if (!deliver(tail)) {
+              return false;
             }
           }
           return true;
         }
       }
     }
+  }
+
+  // 打印本轮真实 / 应用侧指标。只读，不改变生成行为，便于板端基线对照。
+  void log_metrics(const Metrics& m, std::chrono::steady_clock::time_point end,
+                   std::chrono::steady_clock::time_point done_return,
+                   std::size_t prompt_bytes) const {
+    const auto ms = [](std::chrono::steady_clock::time_point a,
+                       std::chrono::steady_clock::time_point b) {
+      return std::chrono::duration<double, std::milli>(b - a).count();
+    };
+    const double total_ms = ms(m.start, end);
+    const double done_return_ms = ms(m.start, done_return);
+    const double first_vendor_ms =
+        m.has_first_vendor ? ms(m.start, m.first_vendor) : -1.0;
+    const double first_deliver_ms =
+        m.has_first_deliver ? ms(m.start, m.first_deliver) : -1.0;
+    const double last_deliver_ms =
+        m.has_deliver ? ms(m.start, m.last_deliver) : -1.0;
+    const double queue_wait_avg_ms =
+        m.queue_items
+            ? static_cast<double>(m.queue_wait_total_us) /
+                  static_cast<double>(m.queue_items) / 1000.0
+            : 0.0;
+    const double queue_wait_max_ms =
+        static_cast<double>(m.queue_wait_max_us) / 1000.0;
+
+    if (!m.has_perf) {
+      std::fprintf(
+          stderr,
+          "[rkllm][perf] prompt_bytes=%zu perf=none queue_items=%llu "
+          "queue_wait_avg_ms=%.3f queue_wait_max_ms=%.3f "
+          "first_vendor_ms=%.2f first_deliver_ms=%.2f last_deliver_ms=%.2f "
+          "total_ms=%.2f done_return_ms=%.2f text_events=%llu text_bytes=%llu\n",
+          prompt_bytes, static_cast<unsigned long long>(m.queue_items),
+          queue_wait_avg_ms, queue_wait_max_ms, first_vendor_ms,
+          first_deliver_ms, last_deliver_ms, total_ms, done_return_ms,
+          static_cast<unsigned long long>(m.text_events),
+          static_cast<unsigned long long>(m.text_bytes));
+      return;
+    }
+
+    const double prefill_tps =
+        m.perf.prefill_time_ms > 0.0f
+            ? static_cast<double>(m.perf.prefill_tokens) * 1000.0 /
+                  static_cast<double>(m.perf.prefill_time_ms)
+            : 0.0;
+    const double decode_tps =
+        m.perf.generate_time_ms > 0.0f
+            ? static_cast<double>(m.perf.generate_tokens) * 1000.0 /
+                  static_cast<double>(m.perf.generate_time_ms)
+            : 0.0;
+    std::fprintf(
+        stderr,
+        "[rkllm][perf] prompt_bytes=%zu prefill_ms=%.2f prefill_tokens=%d "
+        "prefill_tps=%.2f generate_ms=%.2f generate_tokens=%d "
+        "decode_tps=%.2f memory_mb=%.2f queue_items=%llu "
+        "queue_wait_avg_ms=%.3f queue_wait_max_ms=%.3f "
+        "first_vendor_ms=%.2f first_deliver_ms=%.2f last_deliver_ms=%.2f "
+        "total_ms=%.2f done_return_ms=%.2f text_events=%llu text_bytes=%llu\n",
+        prompt_bytes, m.perf.prefill_time_ms, m.perf.prefill_tokens, prefill_tps,
+        m.perf.generate_time_ms, m.perf.generate_tokens, decode_tps,
+        m.perf.memory_usage_mb, static_cast<unsigned long long>(m.queue_items),
+        queue_wait_avg_ms, queue_wait_max_ms, first_vendor_ms,
+        first_deliver_ms, last_deliver_ms, total_ms, done_return_ms,
+        static_cast<unsigned long long>(m.text_events),
+        static_cast<unsigned long long>(m.text_bytes));
   }
 
   RkllmOptions options_;  // 模型路径与全部采样/运行参数（值语义，持有副本）
@@ -268,6 +425,8 @@ void RkllmBackend::generate(const std::string& prompt) {
   // max_new_tokens <= 0 表示沿用 rkllm_init 时的取值。
   infer.max_new_tokens = 0;
 
+  Impl::Metrics metrics;
+  metrics.start = std::chrono::steady_clock::now();
   impl_->running.store(true);
   // rkllm_run_async 立即返回，回调由厂商内部线程按 token 流式触发，泵队列
   // 才能实时投递、生成中途才能取消。
@@ -278,12 +437,15 @@ void RkllmBackend::generate(const std::string& prompt) {
     return;
   }
   std::string delivered;
-  const bool normal_end = impl_->pump(gen, cb, &delivered);
+  const bool normal_end = impl_->pump(gen, cb, &delivered, &metrics);
+  const auto end = std::chrono::steady_clock::now();
   impl_->running.store(false);
   if (normal_end) {
     // kDone 携带实际下发文本（思考段已在 pump 内剔除）。
     cb({BackendEvent::Kind::kDone, std::move(delivered), {}});
   }
+  const auto done_return = std::chrono::steady_clock::now();
+  impl_->log_metrics(metrics, end, done_return, prompt.size());
 }
 
 void RkllmBackend::cancel() {

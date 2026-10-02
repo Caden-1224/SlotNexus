@@ -1,6 +1,14 @@
 {
   "router": {
-    "l0_keywords": ["停止", "取消", "暂停", "闭嘴", "stop", "cancel", "quit"],
+    "l0_keywords": [
+      "停止",
+      "取消",
+      "暂停",
+      "闭嘴",
+      "stop",
+      "cancel",
+      "quit"
+    ],
     "direct_threshold": 4.5,
     "context_threshold": 2.0,
     "top_k": 2
@@ -43,8 +51,8 @@
     "ignore_eos_token": false,
     "enable_thinking": false,
     "reasoning_end_tag": "",
-    "enabled_cpus_num": 4,
-    "enabled_cpus_mask": 240,
+    "enabled_cpus_num": 3,
+    "enabled_cpus_mask": 112,
     "embed_flash": true,
     "base_domain_id": 0
   },
@@ -60,15 +68,18 @@
     "noise_scale": 0.3,
     "noise_scale_w": 0.6,
     "sdp_ratio": 0.2,
-    "intra_op_threads": 1,
+    "intra_op_threads": 4,
     "max_encoder_phones": 240,
-    "run_timeout_ms": 30000
+    "run_timeout_ms": 30000,
+    "decoder_core_mask": 2
   },
   "tts_min_duration_ms": 1000,
   "max_run_ms": 180000,
   "continuous": {
     "enabled": true,
-    "sleep_words": ["退下"],
+    "sleep_words": [
+      "退下"
+    ],
     "follow_up_timeout_ms": 60000,
     "max_session_ms": 300000,
     "max_turns": 6,

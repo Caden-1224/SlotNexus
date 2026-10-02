@@ -36,6 +36,18 @@ load_environment() {
   SHERTA_ROOT=${SLOTNEXUS_SHERTA_ROOT:-$HOME/workspace/upstream_rkllm/sherpa-root}
   MELOTTS_ROOT=${SLOTNEXUS_MELOTTS_ROOT:-$HOME/workspace/upstream_melotts}
   export LD_LIBRARY_PATH="$RKLLM_ROOT/aarch64:$SHERTA_ROOT/build/lib:$SHERTA_ROOT/build/_deps/onnxruntime-src/lib:$MELOTTS_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+  # 泰山派 3M（RK3576，4×A72 + 4×A53）默认资源预留：
+  #   - LLM 在 session.json 中绑定 CPU4/5/6（3×A72）；
+  #   - TTS 钉在 CPU0-3 + CPU7，避免与 LLM 抢 A72，同时保留一颗 A72 给
+  #     编码器，板端实测完整链路 wall 明显下降；
+  #   - session/控制面钉 CPU0-3，避免占用 A72；
+  #   - ASR 不默认钉核，因为它只在 LLM 前运行，放开跑满 A72 反而更快。
+  # 环境变量显式设为空串可关闭默认钉核（- 而非 :-，保留空值）。
+  SLOTNEXUS_TTS_CPUSET=${SLOTNEXUS_TTS_CPUSET-0-3,7}
+  SLOTNEXUS_SESSION_CPUSET=${SLOTNEXUS_SESSION_CPUSET-0-3}
+  SLOTNEXUS_CONTROL_CPUSET=${SLOTNEXUS_CONTROL_CPUSET-0-3}
+  export SLOTNEXUS_TTS_CPUSET SLOTNEXUS_SESSION_CPUSET SLOTNEXUS_CONTROL_CPUSET
 }
 
 # 节点推理超时与会话附加参数：start_real_chain 按场景读取这三项超时和
@@ -47,10 +59,25 @@ SESSION_EXTRA_ARGS=()
 
 # 启动单个后台服务并记录 PID：start_service <名称> <命令...>
 # 日志与 PID 文件落在 $RUN_DIR；stop.sh 按 PID 文件优雅退出。
+# 可选 CPU 预留：设置 SLOTNEXUS_<服务>_CPUSET 时用 taskset 把该服务
+# 整体钉在指定核上。默认不设置，行为与旧版完全一致；板端性能测量可用
+# 它把 ASR/TTS/控制面赶到小核，把 A72 留给 RKLLM 内部线程。
 start_service() {
   local name=$1
   shift
-  nohup "$@" >"$RUN_DIR/$name.log" 2>&1 </dev/null &
+  local cpuset=""
+  case "$name" in
+    asr_node) cpuset=${SLOTNEXUS_ASR_CPUSET:-} ;;
+    llm_node) cpuset=${SLOTNEXUS_LLM_CPUSET:-} ;;
+    tts_node) cpuset=${SLOTNEXUS_TTS_CPUSET:-} ;;
+    session_node) cpuset=${SLOTNEXUS_SESSION_CPUSET:-} ;;
+    edge_gateway|unit_manager) cpuset=${SLOTNEXUS_CONTROL_CPUSET:-} ;;
+  esac
+  if [ -n "$cpuset" ]; then
+    nohup taskset -c "$cpuset" "$@" >"$RUN_DIR/$name.log" 2>&1 </dev/null &
+  else
+    nohup "$@" >"$RUN_DIR/$name.log" 2>&1 </dev/null &
+  fi
   echo $! >"$RUN_DIR/$name.pid"
 }
 

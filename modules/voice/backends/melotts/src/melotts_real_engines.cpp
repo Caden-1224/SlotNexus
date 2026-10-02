@@ -560,6 +560,15 @@ MeloResult<std::unique_ptr<MeloRknnDecoder>> MeloRknnDecoder::create(
     return MeloResult<std::unique_ptr<MeloRknnDecoder>>::failure(status.code,
                                                                 status.message);
   }
+  if (config.core_mask != 0) {
+    const int core_result = rknn_set_core_mask(
+        impl->context, static_cast<rknn_core_mask>(config.core_mask));
+    if (core_result != RKNN_SUCC) {
+      const MeloStatus status = rknn_failure(core_result, "set_core_mask");
+      return MeloResult<std::unique_ptr<MeloRknnDecoder>>::failure(
+          status.code, status.message);
+    }
+  }
 
   int result = rknn_query(impl->context, RKNN_QUERY_IN_OUT_NUM, &impl->io_num,
                           sizeof(impl->io_num));

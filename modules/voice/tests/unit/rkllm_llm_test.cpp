@@ -69,6 +69,14 @@ er::RkllmOptions options_from_env() {
   o.repeat_penalty =
       std::stof(env_or("SLOTNEXUS_RKLLM_REPEAT_PENALTY", "1.1"));
   o.enable_thinking = env_or("SLOTNEXUS_RKLLM_ENABLE_THINKING", "0") == "1";
+  o.ignore_eos_token =
+      env_or("SLOTNEXUS_RKLLM_IGNORE_EOS_TOKEN", "0") == "1";
+  o.enabled_cpus_num =
+      std::atoi(env_or("SLOTNEXUS_RKLLM_CPU_NUM", "2").c_str());
+  o.enabled_cpus_mask = static_cast<unsigned int>(
+      std::strtoul(env_or("SLOTNEXUS_RKLLM_CPU_MASK", "0x05").c_str(), nullptr,
+                   0));
+  o.embed_flash = env_or("SLOTNEXUS_RKLLM_EMBED_FLASH", "1") != "0";
   const std::string tag =
       env_or("SLOTNEXUS_RKLLM_REASONING_END_TAG", "</think>");
   o.reasoning_end_tag = (tag == "-" || tag == "off") ? std::string() : tag;
@@ -77,6 +85,46 @@ er::RkllmOptions options_from_env() {
 
 // 固定 prompt 用于对比 TTFT / tok/s 指标。
 const char* kSmokePrompt = "你好，请用一句话介绍你自己。";
+
+// 供板端基准使用的重复吞吐测试：一个 RkllmBackend 只加载一次模型，
+// 先 warmup 轮，再按 SLOTNEXUS_RKLLM_BENCH_RUNS 轮统计；每轮真实 token
+// 数据由后端 [rkllm][perf] 行给出，本函数只补墙钟时间和事件数。
+void test_repeat_throughput(const er::RkllmOptions& options) {
+  const int total_runs =
+      std::atoi(env_or("SLOTNEXUS_RKLLM_BENCH_RUNS", "5").c_str());
+  const int warmup_runs =
+      std::atoi(env_or("SLOTNEXUS_RKLLM_BENCH_WARMUP", "1").c_str());
+  if (total_runs <= 0) {
+    return;
+  }
+
+  er::RkllmBackend llm(options);
+  std::vector<eb::BackendEvent> events;
+  std::mutex mu;
+  llm.set_event_callback([&](const eb::BackendEvent& e) {
+    std::lock_guard<std::mutex> lk(mu);
+    events.push_back(e);
+  });
+
+  for (int i = -warmup_runs; i < total_runs; ++i) {
+    {
+      std::lock_guard<std::mutex> lk(mu);
+      events.clear();
+    }
+    const auto start = std::chrono::steady_clock::now();
+    llm.generate(kSmokePrompt);
+    const auto end = std::chrono::steady_clock::now();
+    std::size_t event_count = 0;
+    {
+      std::lock_guard<std::mutex> lk(mu);
+      event_count = events.size();
+    }
+    const double elapsed_s =
+        std::chrono::duration<double>(end - start).count();
+    std::printf("  [bench] run=%d warmup=%d total_s=%.3f events=%zu\n",
+                i + 1, i < 0 ? 1 : 0, elapsed_s, event_count);
+  }
+}
 
 // 收集一次生成会话的全部事件；记录首个事件与结束时的时间戳用于指标。
 struct Session {
@@ -257,7 +305,22 @@ int main() {
             << (options.reasoning_end_tag.empty()
                     ? std::string("<off>")
                     : options.reasoning_end_tag)
+            << "，cpus=" << options.enabled_cpus_num << "/0x" << std::hex
+            << options.enabled_cpus_mask << std::dec
+            << "，embed_flash=" << (options.embed_flash ? 1 : 0)
+            << "，ignore_eos=" << (options.ignore_eos_token ? 1 : 0)
             << std::endl;
+  const int bench_runs =
+      std::atoi(env_or("SLOTNEXUS_RKLLM_BENCH_RUNS", "0").c_str());
+  if (bench_runs > 0) {
+    try {
+      test_repeat_throughput(options);
+    } catch (const std::exception& e) {
+      std::cerr << "  [fail] benchmark 异常: " << e.what() << std::endl;
+      return 1;
+    }
+    return g_failures == 0 ? 0 : 1;
+  }
   try {
     test_fixed_prompt_matches_smoke(options);
     test_cancel_suppresses_generation(options);

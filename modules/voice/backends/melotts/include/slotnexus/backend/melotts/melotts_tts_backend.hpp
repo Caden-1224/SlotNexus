@@ -63,6 +63,11 @@ struct MeloTtsConfig {
   // ONNX Runtime intra-op 线程数；RKNN 侧同步执行，不创建线程。
   int intra_op_num_threads = 1;
 
+  // RKNN NPU 核绑定：0=AUTO（默认），1=core0，2=core1，4=core2，
+  // 3=core0+1，7=core0+1+2。多模型并发时可用它把 TTS 解码器钉在
+  // RKLLM 未占用的 NPU 核上，避免解码器随机抢核拖慢生成。
+  int decoder_core_mask = 0;
+
   // 单次 synthesize 的文本字节上限；超限显式失败，绝不静默截断。
   std::size_t max_text_bytes = 64u * 1024u;
   // 单个文本片段送入编码器的 interspersed phone 数上限（导出模型预算）。
